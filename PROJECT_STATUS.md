@@ -1,4 +1,4 @@
-# Project status — v1.6.1
+# Project status — v1.7
 
 ## Permanent data foundation
 
@@ -11,35 +11,36 @@
 
 - 15-minute multi-timeframe research snapshots
 - 5, 15, 30, 60 and 240-minute outcome labels
-- Weekday, month, quarter and session context
-- Research-question and discovery storage
-- Prediction ledger and model registry
+- Calendar, session, volatility, momentum and regime context
+- Prediction ledger and controlled model registry
 
-## New autonomous capability
+## Autonomous learning
 
-- 15-minute background cycle
 - Automatic incremental learning
 - Prediction creation and grading
-- Locked chronological question testing
-- Automatic hypothesis generation
+- Challenger training on chronological holdouts
+- Promotion only after locked unseen-data improvement
+
+## Continuous historical research
+
+- Dedicated independent Railway worker
+- Runs whether markets are open or closed
+- Self-refilling research queue
+- One controlled experiment at a time
+- Chronological validation and locked testing
 - Year-stability and multiple-testing controls
-- Daily explainable challenger training checks
-- Strict automatic promotion governance
-- Research reports and cycle audit trail
-
-## Responsive dashboard
-
-- Live Data price fits common desktop, laptop and mobile widths
-- OHLC and sync context wrap without horizontal clipping
+- Persistent job audit trail and restart recovery
+- Automatic rejected, promising and validated classification
+- Dashboard heartbeat and visible work counters
 
 ## Next major engine
 
-v1.7: **Historical Pattern Match and Ask EVE** — compare the current six-timeframe state with the closest historical states and answer structured natural-language research questions from the autonomous evidence base.
+v1.8: **Historical Pattern Match and Ask EVE** — compare the live six-timeframe state with the closest historical states and answer structured research questions from the validated evidence base.
 
 ## Not yet claimed
 
 - Guaranteed profitable signals
 - Tick-level predictive replay
-- AI strategy generation
+- Fully generated deployable strategies
 - Live paper trading
 - Live MT5 execution

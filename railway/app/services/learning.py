@@ -831,7 +831,7 @@ class LearningService:
             outcome_labels_written=labels_written,
             questions_generated=len(questions),
             discoveries_created=len(discoveries),
-            message="Learning foundation ready. The autonomous v1.6 engine will maintain it without button presses.",
+            message="Learning foundation ready. v1.7 autonomous learning and continuous historical research will maintain and investigate it without button presses.",
             finished_at=datetime.now(timezone.utc).isoformat(),
         )
         await self.repo.log_event(

@@ -1,11 +1,12 @@
+FILE_MANIFEST.txt
 .gitignore
 DEPLOYMENT_GUIDE.md
-FILE_MANIFEST.txt
 PROJECT_STATUS.md
 README.md
 RELEASE_NOTES.md
 STRATEGY_IMPORT_AUDIT.md
 SUPABASE_UPDATE_v1.6.sql
+SUPABASE_UPDATE_v1.7.sql
 VERSION
 frontend/app.js
 frontend/favicon.svg
@@ -27,6 +28,7 @@ railway/app/models/schemas.py
 railway/app/services/__init__.py
 railway/app/services/autonomy.py
 railway/app/services/backtests.py
+railway/app/services/historical_research.py
 railway/app/services/ingestion.py
 railway/app/services/learning.py
 railway/app/services/supabase_repo.py
@@ -37,6 +39,7 @@ railway/railway.toml
 railway/requirements.txt
 railway/tests/test_autonomous_learning.py
 railway/tests/test_fixed_ladder_v261.py
+railway/tests/test_historical_research.py
 railway/tests/test_ingestion.py
 railway/tests/test_learning_foundation.py
 railway/tests/test_m1_replay.py
@@ -50,4 +53,5 @@ supabase/migrations/20260731131000_m1_market_memory_replay_v1_3.sql
 supabase/migrations/20260731154500_multitimeframe_data_foundation_v1_4.sql
 supabase/migrations/20260731190000_learning_foundation_v1_5.sql
 supabase/migrations/20260731203000_autonomous_learning_v1_6.sql
+supabase/migrations/20260731211500_continuous_historical_research_v1_7.sql
 supabase/schema.sql

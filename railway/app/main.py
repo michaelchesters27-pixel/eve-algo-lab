@@ -21,12 +21,13 @@ from app.models.schemas import (
 from app.services.autonomy import AutonomousLearningService
 from app.services.backtests import BacktestService
 from app.services.ingestion import IngestionService, historical_backfill_complete
+from app.services.historical_research import ContinuousHistoricalResearchService
 from app.services.learning import LearningService, SNAPSHOT_INTERVAL
 from app.services.supabase_repo import SupabaseRepository
 from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
 from app.settings import Settings, get_settings
 
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.7.0"
 
 settings = get_settings()
 logging.basicConfig(
@@ -46,6 +47,7 @@ ingestion = IngestionService(settings, repo, twelve)
 backtests = BacktestService(repo)
 learning = LearningService(repo)
 autonomy = AutonomousLearningService(settings, repo)
+historical_research = ContinuousHistoricalResearchService(settings, repo)
 background_tasks: list[asyncio.Task[Any]] = []
 
 
@@ -56,6 +58,7 @@ async def lifespan(_: FastAPI):
     background_tasks.append(asyncio.create_task(ingestion.worker_loop(), name="ingestion-worker"))
     background_tasks.append(asyncio.create_task(learning.worker_loop(), name="learning-worker"))
     background_tasks.append(asyncio.create_task(autonomy.loop(), name="autonomous-learning-engine"))
+    background_tasks.append(asyncio.create_task(historical_research.loop(), name="continuous-historical-research"))
     for sync_index, interval in enumerate(settings.auto_sync_interval_list):
         if interval not in INTERVAL_SECONDS:
             logger.warning("Skipping unsupported AUTO_SYNC_INTERVALS value: %s", interval)
@@ -67,6 +70,7 @@ async def lifespan(_: FastAPI):
     await ingestion.stop()
     await learning.stop()
     await autonomy.stop()
+    await historical_research.stop()
     for task in background_tasks:
         task.cancel()
     for task in list(backtests.tasks.values()):
@@ -79,7 +83,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="EVE Algo Lab API",
     version=APP_VERSION,
-    description="Permanent multi-timeframe XAU/USD memory with autonomous learning, research, challenger training and high-resolution backtesting.",
+    description="Permanent multi-timeframe XAU/USD memory with autonomous learning, continuous 24/7 historical research, challenger training and high-resolution backtesting.",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -223,6 +227,7 @@ async def learning_status(
     dashboard["service"] = "online"
     dashboard["version"] = APP_VERSION
     dashboard["snapshot_interval"] = SNAPSHOT_INTERVAL
+    dashboard["historical_research"] = await repo.historical_research_dashboard(symbol, SNAPSHOT_INTERVAL)
     return ApiEnvelope(data=dashboard)
 
 
@@ -279,6 +284,15 @@ async def run_autonomous_cycle() -> ApiEnvelope:
     return ApiEnvelope(
         data={"status": "requested"},
         message="Autonomous learning cycle requested. Railway will run it in the background.",
+    )
+
+
+@app.post("/api/research/wake", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])
+async def wake_historical_research() -> ApiEnvelope:
+    await historical_research.request_wake()
+    return ApiEnvelope(
+        data={"status": "requested"},
+        message="Historical research worker wake requested. Normal 24/7 research never requires this button.",
     )
 
 

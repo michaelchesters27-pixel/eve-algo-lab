@@ -511,7 +511,7 @@ class SupabaseRepository:
     ) -> list[dict[str, Any]]:
         safe_limit = max(1, min(1000, int(limit)))
         filters = [
-            "select=symbol,snapshot_interval,candle_time,weekday,month,quarter,hour_utc,session,direction,compression_ratio,trend_12_atr,trend_48_atr,streak,regime,alignment_score,outcomes,outcome_complete",
+            "select=symbol,snapshot_interval,candle_time,weekday,month,quarter,week_of_month,hour_utc,session,direction,compression_ratio,trend_12_atr,trend_48_atr,streak,regime,alignment_score,outcomes,outcome_complete",
             f"symbol=eq.{quote(symbol, safe='')}",
             f"snapshot_interval=eq.{quote(snapshot_interval, safe='')}",
         ]
@@ -637,6 +637,108 @@ class SupabaseRepository:
             "refresh_autonomous_learning_state",
             {"p_symbol": symbol, "p_snapshot_interval": snapshot_interval},
         )
+
+    async def get_historical_research_state(self, symbol: str, snapshot_interval: str) -> dict[str, Any] | None:
+        rows = await self.select(
+            "historical_research_state",
+            "select=*&symbol=eq.{}&snapshot_interval=eq.{}&limit=1".format(
+                quote(symbol, safe=""), quote(snapshot_interval, safe="")
+            ),
+        )
+        return rows[0] if rows else None
+
+    async def upsert_historical_research_state(self, symbol: str, snapshot_interval: str, **changes: Any) -> None:
+        existing = await self.get_historical_research_state(symbol, snapshot_interval)
+        if existing:
+            await self.update(
+                "historical_research_state",
+                "symbol=eq.{}&snapshot_interval=eq.{}".format(
+                    quote(symbol, safe=""), quote(snapshot_interval, safe="")
+                ),
+                changes,
+            )
+            return
+        await self.insert(
+            "historical_research_state",
+            {"symbol": symbol, "snapshot_interval": snapshot_interval, **changes},
+        )
+
+    async def upsert_historical_research_jobs(self, rows: list[dict[str, Any]]) -> None:
+        # Ignore duplicate job keys. Never reset an already tested hypothesis back
+        # to queued when a later deterministic generation creates a collision.
+        for start in range(0, len(rows), 250):
+            await self._request(
+                "POST",
+                "historical_research_jobs?on_conflict=job_key",
+                json=rows[start:start + 250],
+                headers={"Prefer": "resolution=ignore-duplicates,return=minimal"},
+            )
+
+    async def claim_next_historical_research_job(self, worker_id: str) -> dict[str, Any] | None:
+        result = await self.rpc("claim_next_historical_research_job", {"p_worker_id": worker_id})
+        if isinstance(result, list) and result:
+            return result[0]
+        return None
+
+    async def complete_historical_research_job(self, job_id: str, result: dict[str, Any]) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        await self.update(
+            "historical_research_jobs",
+            f"id=eq.{quote(job_id, safe='')}",
+            {
+                "status": "complete",
+                "result_status": result.get("result_status"),
+                "rows_scanned": int(result.get("rows_scanned") or 0),
+                "sample_count": int(result.get("sample_count") or 0),
+                "effect_size": result.get("effect_size"),
+                "confidence_score": result.get("confidence_score"),
+                "stability_score": result.get("stability_score"),
+                "summary": result.get("summary"),
+                "evidence": result.get("evidence") or {},
+                "finished_at": now,
+                "heartbeat_at": now,
+                "error": None,
+            },
+        )
+
+    async def fail_historical_research_job(self, job_id: str, error: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        await self.update(
+            "historical_research_jobs",
+            f"id=eq.{quote(job_id, safe='')}",
+            {
+                "status": "failed",
+                "finished_at": now,
+                "heartbeat_at": now,
+                "error": str(error)[:4000],
+            },
+        )
+
+    async def reset_stale_historical_research_jobs(self, stale_minutes: int = 20) -> None:
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=stale_minutes)).isoformat()
+        await self.update(
+            "historical_research_jobs",
+            f"status=eq.running&or=(heartbeat_at.is.null,heartbeat_at.lt.{quote(cutoff, safe=':-TZ')})",
+            {
+                "status": "queued",
+                "worker_id": None,
+                "started_at": None,
+                "error": "Recovered automatically after Railway restart",
+            },
+        )
+
+    async def refresh_historical_research_state(self, symbol: str, snapshot_interval: str) -> None:
+        await self.rpc(
+            "refresh_historical_research_state",
+            {"p_symbol": symbol, "p_snapshot_interval": snapshot_interval},
+        )
+
+    async def historical_research_dashboard(self, symbol: str, snapshot_interval: str) -> dict[str, Any]:
+        result = await self.rpc(
+            "get_historical_research_dashboard",
+            {"p_symbol": symbol, "p_snapshot_interval": snapshot_interval},
+        )
+        return result or {}
 
     async def fail_interrupted_backtests(self) -> None:
         await self.update(

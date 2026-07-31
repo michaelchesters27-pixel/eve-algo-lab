@@ -39,13 +39,23 @@ class Settings(BaseSettings):
     exact_count_every_batches: int = Field(default=5, ge=1, le=50)
 
     # Autonomous learning defaults require no new Railway variables. They can be
-    # overridden later, but v1.6 is fully active with the existing deployment.
+    # overridden later, but autonomous learning is active with the existing deployment.
     autonomous_learning_enabled: bool = True
     autonomous_cycle_minutes: int = Field(default=15, ge=5, le=1440)
     autonomous_research_hours: int = Field(default=6, ge=1, le=168)
     autonomous_model_hours: int = Field(default=24, ge=6, le=720)
     autonomous_startup_delay_seconds: int = Field(default=120, ge=15, le=1800)
     autonomous_model_promotion_enabled: bool = True
+
+    # v1.7 dedicated historical research worker. Defaults are active so the
+    # existing Railway deployment needs no additional variables.
+    historical_research_enabled: bool = True
+    historical_research_startup_delay_seconds: int = Field(default=150, ge=15, le=1800)
+    historical_research_job_delay_seconds: float = Field(default=20.0, ge=2.0, le=600.0)
+    historical_research_idle_seconds: float = Field(default=30.0, ge=5.0, le=900.0)
+    historical_research_queue_floor: int = Field(default=60, ge=10, le=1000)
+    historical_research_seed_batch: int = Field(default=250, ge=25, le=1000)
+    historical_research_cache_minutes: int = Field(default=180, ge=15, le=1440)
 
     @field_validator("supabase_url", "twelve_data_base_url")
     @classmethod

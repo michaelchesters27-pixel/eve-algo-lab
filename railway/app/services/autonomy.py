@@ -903,6 +903,11 @@ class AutonomousLearningService:
         for question in questions:
             if question.get("status") == "archived":
                 continue
+            # v1.7 continuous-history questions have already completed their own
+            # chronological validation and locked test. Do not overwrite those
+            # results with the older generic v1.6 fallback evaluator.
+            if str(question.get("generated_by") or "").startswith("continuous-history-"):
+                continue
             result = test_named_question(question, rows)
             tested += 1
             await self.repo.update_research_question(

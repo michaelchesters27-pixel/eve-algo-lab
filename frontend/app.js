@@ -443,7 +443,7 @@ function renderResearchReport(reports = []) {
     $("#researchReportTitle").textContent = "Waiting for first cycle";
     $("#researchReportStatus").textContent = "WAITING";
     $("#researchReportStatus").className = "status-pill";
-    $("#researchReportSummary").textContent = "EVE will keep researching when the market is closed. No button press is required.";
+    $("#researchReportSummary").textContent = "Historical research runs continuously. Market hours do not control or pause it.";
     $("#reportQuestionsTested").textContent = "0";
     $("#reportQuestionsRejected").textContent = "0";
     $("#reportPromising").textContent = "0";
@@ -458,6 +458,35 @@ function renderResearchReport(reports = []) {
   $("#reportQuestionsRejected").textContent = formatNumber(report.questions_rejected);
   $("#reportPromising").textContent = formatNumber(report.discoveries_promising);
   $("#reportValidated").textContent = formatNumber(report.discoveries_validated);
+}
+
+function renderHistoricalResearch(payload = {}) {
+  const state = payload.state || {};
+  const current = payload.current_job || {};
+  const latest = payload.latest_job || {};
+  const heartbeatTime = state.heartbeat_at ? new Date(state.heartbeat_at).getTime() : 0;
+  const heartbeatFresh = heartbeatTime > 0 && (Date.now() - heartbeatTime) < 5 * 60 * 1000;
+  const rawStatus = String(state.status || "waiting");
+  const status = state.last_error ? "error" : (heartbeatFresh ? rawStatus : (heartbeatTime ? "waiting" : rawStatus));
+  const displayStatus = heartbeatFresh && ["active", "loading", "researching"].includes(rawStatus) ? "ACTIVE" : status.toUpperCase();
+
+  $("#historyResearchStatus").textContent = displayStatus;
+  $("#historyResearchStatus").className = `status-pill ${heartbeatFresh ? rawStatus : status}`;
+  $("#historyResearchHeartbeat").textContent = formatDate(state.heartbeat_at, true);
+  $("#historyResearchQueue").textContent = formatNumber(state.queue_count);
+  $("#historyResearchCompleted").textContent = formatNumber(state.completed_count);
+  $("#historyResearchRowsScanned").textContent = formatNumber(state.rows_scanned_total);
+  $("#historyResearchRejected").textContent = formatNumber(state.rejected_count);
+  $("#historyResearchPromising").textContent = formatNumber(state.promising_count);
+  $("#historyResearchValidated").textContent = formatNumber(state.validated_count);
+  $("#historyResearchGeneration").textContent = formatNumber(state.generator_generation);
+  $("#historyResearchCurrentQuestion").textContent = current.question || state.current_question || (heartbeatFresh
+    ? "Worker is refilling or claiming the next historical question"
+    : "Waiting for the Railway worker heartbeat");
+  $("#historyResearchMessage").textContent = state.last_error || (heartbeatFresh
+    ? "Dedicated historical research is running in parallel with live learning. It does not wait for the market to open or close."
+    : "The worker has not reported a recent heartbeat yet. Railway may still be starting after deployment.");
+  $("#historyResearchLastResult").textContent = state.last_result || latest.summary || "EVE will continuously generate, test and challenge historical questions.";
 }
 
 function renderLearning(data = {}) {
@@ -539,6 +568,7 @@ function renderLearning(data = {}) {
   renderResearchQuestions(data.questions || []);
   renderDiscoveries(data.discoveries || []);
   renderResearchReport(data.research_reports || []);
+  renderHistoricalResearch(data.historical_research || {});
 }
 
 async function refreshLearning(silent = false) {
