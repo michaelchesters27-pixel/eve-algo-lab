@@ -1,4 +1,4 @@
-# EVE Algo Lab v1.7
+# EVE Algo Lab v1.7.1
 
 ## Continuous Historical Research
 
@@ -26,3 +26,11 @@
 ### Deployment
 
 Run `SUPABASE_UPDATE_v1.7.sql` first, then replace the existing GitHub repository contents with this complete build. No variables need changed.
+
+## v1.7.1 — Historical worker startup repair
+
+- Grants the Railway service-role explicit REST access to the v1.7 historical research tables.
+- Replaces the failing stale-job REST PATCH with a security-definer Supabase RPC.
+- Reloads the PostgREST schema after migration.
+- Prevents a temporary startup initialisation error from permanently killing the 24/7 worker task.
+- Preserves all existing market, learning, research and backtest data.

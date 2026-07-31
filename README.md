@@ -2,7 +2,7 @@
 
 EVE Algo Lab is a private XAU/USD market-research platform deployed across Netlify, Railway and Supabase.
 
-Version 1.7 adds a dedicated **Continuous Historical Research Worker**. It runs in parallel with the existing autonomous learning engine and mines stored historical data whether XAU/USD is open or closed.
+Version 1.7.1 adds a dedicated **Continuous Historical Research Worker**. It runs in parallel with the existing autonomous learning engine and mines stored historical data whether XAU/USD is open or closed.
 
 ## What runs in parallel
 

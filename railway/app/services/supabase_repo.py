@@ -715,16 +715,13 @@ class SupabaseRepository:
         )
 
     async def reset_stale_historical_research_jobs(self, stale_minutes: int = 20) -> None:
-        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=stale_minutes)).isoformat()
-        await self.update(
-            "historical_research_jobs",
-            f"status=eq.running&or=(heartbeat_at.is.null,heartbeat_at.lt.{quote(cutoff, safe=':-TZ')})",
-            {
-                "status": "queued",
-                "worker_id": None,
-                "started_at": None,
-                "error": "Recovered automatically after Railway restart",
-            },
+        # Use a security-definer RPC rather than a direct PostgREST PATCH.
+        # Newly-created RLS tables can be absent from the REST schema cache for a
+        # short period after deployment; the RPC remains reliable and prevents
+        # the historical worker from dying during startup.
+        await self.rpc(
+            "reset_stale_historical_research_jobs",
+            {"p_stale_minutes": int(stale_minutes)},
         )
 
     async def refresh_historical_research_state(self, symbol: str, snapshot_interval: str) -> None:

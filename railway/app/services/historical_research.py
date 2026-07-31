@@ -365,16 +365,21 @@ class ContinuousHistoricalResearchService:
         if not self.settings.historical_research_enabled:
             logger.info("Continuous historical research is disabled")
             return
-        await self.repo.reset_stale_historical_research_jobs()
-        await self.repo.upsert_historical_research_state(
-            "XAU/USD",
-            SNAPSHOT_INTERVAL,
-            status="active",
-            worker_id=self.worker_id,
-            heartbeat_at=utc_now().isoformat(),
-            started_at=utc_now().isoformat(),
-            last_error=None,
-        )
+        try:
+            await self.repo.reset_stale_historical_research_jobs()
+            await self.repo.upsert_historical_research_state(
+                "XAU/USD",
+                SNAPSHOT_INTERVAL,
+                status="active",
+                worker_id=self.worker_id,
+                heartbeat_at=utc_now().isoformat(),
+                started_at=utc_now().isoformat(),
+                last_error=None,
+            )
+        except Exception:
+            # Do not allow a one-off Supabase schema-cache or startup race to kill
+            # the 24/7 worker task. The normal loop retries and records the error.
+            logger.exception("Historical research startup initialisation failed; worker will retry")
         logger.info("Continuous historical research worker %s started", self.worker_id)
         try:
             await asyncio.wait_for(self._stop.wait(), timeout=self.settings.historical_research_startup_delay_seconds)

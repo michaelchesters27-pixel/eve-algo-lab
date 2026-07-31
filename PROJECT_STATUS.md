@@ -1,4 +1,4 @@
-# Project status — v1.7
+# Project status — v1.7.1
 
 ## Permanent data foundation
 
@@ -44,3 +44,6 @@ v1.8: **Historical Pattern Match and Ask EVE** — compare the live six-timefram
 - Fully generated deployable strategies
 - Live paper trading
 - Live MT5 execution
+
+### v1.7.1 reliability repair
+The continuous historical research worker now uses an RPC for stale-job recovery and explicit service-role table grants, eliminating the REST 404 observed during Railway startup.

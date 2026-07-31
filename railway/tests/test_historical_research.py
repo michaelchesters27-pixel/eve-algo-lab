@@ -73,3 +73,24 @@ def test_locked_chronological_research_finds_stable_effect():
     assert result["effect_size"] > 30
     assert result["sample_count"] >= 100
     assert result["evidence"]["direction_consistent"] is True
+
+import pytest
+
+from app.services.supabase_repo import SupabaseRepository
+
+
+@pytest.mark.asyncio
+async def test_stale_historical_job_recovery_uses_rpc_not_direct_patch():
+    repo = SupabaseRepository.__new__(SupabaseRepository)
+    calls = []
+
+    async def fake_rpc(name, payload):
+        calls.append((name, payload))
+        return 0
+
+    repo.rpc = fake_rpc
+    await repo.reset_stale_historical_research_jobs(stale_minutes=37)
+
+    assert calls == [
+        ("reset_stale_historical_research_jobs", {"p_stale_minutes": 37})
+    ]
