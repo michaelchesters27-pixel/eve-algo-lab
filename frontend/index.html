@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#07110f">
-  <meta name="description" content="EVE Algo Lab — historical market memory, strategy backtesting and AI learning foundation.">
+  <meta name="description" content="EVE Algo Lab — permanent XAU/USD market memory and evidence-based bot backtesting.">
   <title>EVE Algo Lab</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -20,25 +20,18 @@
     <aside class="sidebar">
       <a class="brand" href="#overview" aria-label="EVE Algo Lab home">
         <span class="brand-mark">E</span>
-        <span>
-          <strong>EVE</strong>
-          <small>ALGO LAB</small>
-        </span>
+        <span><strong>EVE</strong><small>ALGO LAB</small></span>
       </a>
-
       <nav class="nav" aria-label="Main navigation">
         <a class="nav-link active" href="#overview"><span>01</span> Overview</a>
         <a class="nav-link" href="#memory"><span>02</span> Market memory</a>
-        <a class="nav-link" href="#pipeline"><span>03</span> Build pipeline</a>
-        <a class="nav-link" href="#activity"><span>04</span> Activity</a>
+        <a class="nav-link" href="#backtester"><span>03</span> Bot backtester</a>
+        <a class="nav-link" href="#pipeline"><span>04</span> Build pipeline</a>
+        <a class="nav-link" href="#activity"><span>05</span> Activity</a>
       </nav>
-
       <div class="side-status">
         <span class="pulse" id="servicePulse"></span>
-        <div>
-          <small>RAILWAY SERVICE</small>
-          <strong id="serviceStatus">Checking…</strong>
-        </div>
+        <div><small>RAILWAY SERVICE</small><strong id="serviceStatus">Checking…</strong></div>
       </div>
     </aside>
 
@@ -50,10 +43,7 @@
         </div>
         <div class="market-selector" aria-label="Selected market">
           <div class="metal-dot"></div>
-          <div>
-            <small>PRIMARY DATASET</small>
-            <strong>XAU / USD</strong>
-          </div>
+          <div><small>PRIMARY DATASET</small><strong>XAU / USD</strong></div>
           <span>M5</span>
         </div>
       </header>
@@ -61,20 +51,11 @@
       <section id="overview" class="hero-grid">
         <article class="panel progress-panel">
           <div class="panel-head">
-            <div>
-              <p class="label">HISTORICAL FOUNDATION</p>
-              <h2>Market Memory</h2>
-            </div>
+            <div><p class="label">HISTORICAL FOUNDATION</p><h2>Market Memory</h2></div>
             <span class="status-pill" id="statePill">NOT STARTED</span>
           </div>
-
           <div class="progress-layout">
-            <div class="ring" id="progressRing" style="--progress:0">
-              <div>
-                <strong id="progressValue">0%</strong>
-                <small>COMPLETE</small>
-              </div>
-            </div>
+            <div class="ring" id="progressRing" style="--progress:0"><div><strong id="progressValue">0%</strong><small>COMPLETE</small></div></div>
             <div class="progress-copy">
               <p id="jobMessage">Ready to download the complete available XAU/USD M5 history.</p>
               <div class="progress-track"><span id="progressBar"></span></div>
@@ -85,7 +66,6 @@
               </div>
             </div>
           </div>
-
           <div class="actions">
             <button class="button button-primary" id="startBackfill">Start historical download</button>
             <button class="button" id="pauseBackfill" hidden>Pause download</button>
@@ -96,10 +76,7 @@
 
         <article class="panel live-panel">
           <div class="panel-head">
-            <div>
-              <p class="label">LATEST VERIFIED BAR</p>
-              <h2>Live Data</h2>
-            </div>
+            <div><p class="label">LATEST VERIFIED BAR</p><h2>Live Data</h2></div>
             <span class="live-badge"><i></i> REST SYNC</span>
           </div>
           <div class="price" id="latestClose">—</div>
@@ -110,64 +87,115 @@
             <div><small>LOW</small><strong id="latestLow">—</strong></div>
             <div><small>CLOSE</small><strong id="latestCloseSmall">—</strong></div>
           </div>
-          <div class="quality-line">
-            <span>Automatic verification</span>
-            <strong>Every M5 close +22s</strong>
-          </div>
+          <div class="quality-line"><span>Automatic verification</span><strong>Every M5 close +22s</strong></div>
         </article>
       </section>
 
       <section id="memory" class="section-block">
         <div class="section-title">
-          <div>
-            <p class="eyebrow">DATA FOUNDATION</p>
-            <h2>Everything the future engine learns from</h2>
-          </div>
-          <p>History is downloaded once, cleaned, stored permanently in Supabase and continuously updated from Railway.</p>
+          <div><p class="eyebrow">DATA FOUNDATION</p><h2>Everything the engines learn from</h2></div>
+          <p>History is downloaded once, stored permanently in Supabase and continuously updated from Railway.</p>
+        </div>
+        <div class="stat-grid">
+          <article class="stat-card"><span>01</span><small>EARLIEST AVAILABLE</small><strong id="earliestDate">Unknown</strong><p>Read directly from Twelve Data.</p></article>
+          <article class="stat-card"><span>02</span><small>OLDEST STORED</small><strong id="oldestDate">None</strong><p>The first verified candle in Market Memory.</p></article>
+          <article class="stat-card"><span>03</span><small>LATEST STORED</small><strong id="latestDate">None</strong><p>The automatic synchroniser keeps this current.</p></article>
+          <article class="stat-card"><span>04</span><small>DATA STATUS</small><strong id="dataStatus">Waiting</strong><p>Duplicate timestamps merge safely.</p></article>
+        </div>
+      </section>
+
+      <section id="backtester" class="section-block">
+        <div class="section-title">
+          <div><p class="eyebrow">BOT BACKTESTER v1</p><h2>EVE Fixed Ladder v2.61</h2></div>
+          <p>The exact current MT5 rules are imported. This first run uses M5 candle-path replay and clearly records every ambiguous intrabar candle.</p>
         </div>
 
-        <div class="stat-grid">
-          <article class="stat-card"><span>01</span><small>EARLIEST AVAILABLE</small><strong id="earliestDate">Unknown</strong><p>Read directly from Twelve Data before backfill begins.</p></article>
-          <article class="stat-card"><span>02</span><small>OLDEST STORED</small><strong id="oldestDate">None</strong><p>The backward cursor resumes here after any interruption.</p></article>
-          <article class="stat-card"><span>03</span><small>LATEST STORED</small><strong id="latestDate">None</strong><p>The live synchroniser keeps this edge current.</p></article>
-          <article class="stat-card"><span>04</span><small>DATA STATUS</small><strong id="dataStatus">Waiting</strong><p>Duplicates merge safely through the database key.</p></article>
+        <div class="backtest-layout">
+          <article class="panel backtest-form-panel">
+            <div class="panel-head">
+              <div><p class="label">RUN CONFIGURATION</p><h2>Test the full history</h2></div>
+              <span class="status-pill complete">SOURCE VERIFIED</span>
+            </div>
+            <div class="strategy-source">
+              <strong>EVE_Twelve_Data_Fixed_Ladder_v2.61.mq5</strong>
+              <small>SHA-256 f033bc756b8a…d02da9</small>
+            </div>
+            <form id="backtestForm" class="form-grid">
+              <label><span>Starting balance ($)</span><input id="startingBalance" type="number" value="1000" min="1" step="0.01"></label>
+              <label><span>Fixed lot</span><input id="fixedLot" type="number" value="0.01" min="0.01" step="0.01"></label>
+              <label><span>Spread price</span><input id="spreadPrice" type="number" value="0.05" min="0" step="0.01"></label>
+              <label><span>Commission / 0.01 lot ($)</span><input id="commission" type="number" value="0.08" min="0" step="0.01"></label>
+              <label><span>Intrabar path</span><select id="pathMode"><option value="candle_direction">Candle direction heuristic</option><option value="open_high_low_close">Open → High → Low → Close</option><option value="open_low_high_close">Open → Low → High → Close</option></select></label>
+              <label><span>Profit target ($)</span><input id="profitTarget" type="number" value="5.00" min="0.01" step="0.01"></label>
+              <label><span>Peak activation ($)</span><input id="peakActivation" type="number" value="4.00" min="0.01" step="0.01"></label>
+              <label><span>Maximum giveback ($)</span><input id="peakGiveback" type="number" value="1.00" min="0.01" step="0.01"></label>
+            </form>
+            <div class="rule-strip">
+              <span>8 BUY STOP</span><span>8 SELL STOP</span><span>3.000 spacing</span><span>2.000 fallback</span><span>0.750 first cut</span><span>BE +0.150 at +1.500</span>
+            </div>
+            <div class="actions">
+              <button class="button button-primary" id="runBacktest">Run full backtest</button>
+              <button class="button" id="cancelBacktest" hidden>Cancel backtest</button>
+            </div>
+          </article>
+
+          <article class="panel backtest-status-panel">
+            <div class="panel-head">
+              <div><p class="label">LATEST RUN</p><h2 id="backtestTitle">Not started</h2></div>
+              <span class="status-pill" id="backtestStatus">WAITING</span>
+            </div>
+            <div class="backtest-progress"><div class="progress-track"><span id="backtestProgressBar"></span></div><strong id="backtestProgress">0%</strong></div>
+            <p class="backtest-message" id="backtestMessage">Market Memory is ready. Start the v2.61 replay when you are ready.</p>
+            <div class="result-grid">
+              <div><small>NET PROFIT</small><strong id="resultNet">—</strong></div>
+              <div><small>BASKET PROFIT FACTOR</small><strong id="resultPF">—</strong></div>
+              <div><small>MAX DRAWDOWN</small><strong id="resultDD">—</strong></div>
+              <div><small>BASKET WIN RATE</small><strong id="resultBasketWin">—</strong></div>
+              <div><small>POSITIONS</small><strong id="resultPositions">—</strong></div>
+              <div><small>BASKETS</small><strong id="resultBaskets">—</strong></div>
+              <div><small>ENDING BALANCE</small><strong id="resultBalance">—</strong></div>
+              <div><small>AMBIGUOUS M5 BARS</small><strong id="resultAmbiguous">—</strong></div>
+            </div>
+            <div class="accuracy-warning" id="accuracyWarning">This first backtest is an M5 approximation. M1 and tick replay will be added before any live approval.</div>
+          </article>
         </div>
+
+        <article class="panel report-panel">
+          <div class="panel-head">
+            <div><p class="label">BASKET REPORT</p><h2>Most recent completed baskets</h2></div>
+            <button class="text-button" id="refreshBacktest">Refresh ↗</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Opened</th><th>Side</th><th>Positions</th><th>Net P/L</th><th>Peak</th><th>Worst</th><th>Exit</th></tr></thead>
+              <tbody id="basketRows"><tr><td colspan="7">No completed backtest yet.</td></tr></tbody>
+            </table>
+          </div>
+        </article>
       </section>
 
       <section id="pipeline" class="section-block">
         <div class="section-title">
-          <div>
-            <p class="eyebrow">PROJECT ROADMAP</p>
-            <h2>From raw candles to approved bots</h2>
-          </div>
-          <p>This first release delivers the live infrastructure and database. Each next engine plugs into the same permanent market memory.</p>
+          <div><p class="eyebrow">PROJECT ROADMAP</p><h2>From raw candles to approved bots</h2></div>
+          <p>Every engine plugs into the same permanent Market Memory and every result stays available for comparison.</p>
         </div>
-
         <div class="pipeline">
-          <article class="pipeline-card current"><div class="stage">LIVE NOW</div><span>01</span><h3>Market Memory</h3><p>Historical batching, resume protection, candle upserts, live sync and gap detection.</p></article>
-          <article class="pipeline-card"><div class="stage">NEXT</div><span>02</span><h3>Bot Backtester</h3><p>Replay your momentum baskets and report profit factor, drawdown and every trade.</p></article>
-          <article class="pipeline-card"><div class="stage">PLANNED</div><span>03</span><h3>AI Pattern Brain</h3><p>Learn which market states historically produced continuation, reversal or no trade.</p></article>
-          <article class="pipeline-card"><div class="stage">PLANNED</div><span>04</span><h3>Strategy Factory</h3><p>Generate explainable strategy candidates and force them through unseen-data tests.</p></article>
+          <article class="pipeline-card current"><div class="stage">LIVE</div><span>01</span><h3>Market Memory</h3><p>Historical batching, resume protection, live sync and gap detection.</p></article>
+          <article class="pipeline-card current"><div class="stage">LIVE</div><span>02</span><h3>Bot Backtester</h3><p>Fixed Ladder v2.61 replay with profit factor, drawdown, positions and baskets.</p></article>
+          <article class="pipeline-card"><div class="stage">NEXT</div><span>03</span><h3>M1 Execution Replay</h3><p>Improve the order sequence inside each M5 candle before bot approval.</p></article>
+          <article class="pipeline-card"><div class="stage">PLANNED</div><span>04</span><h3>AI Pattern Brain</h3><p>Learn which market states improve or damage each bot strategy.</p></article>
         </div>
       </section>
 
       <section id="activity" class="section-block activity-block">
         <div class="section-title compact">
-          <div>
-            <p class="eyebrow">SYSTEM LOG</p>
-            <h2>Recent activity</h2>
-          </div>
+          <div><p class="eyebrow">SYSTEM LOG</p><h2>Recent activity</h2></div>
           <button class="text-button" id="refreshButton">Refresh now ↗</button>
         </div>
-        <div class="activity-list" id="activityList">
-          <div class="empty-state">Waiting for Supabase activity…</div>
-        </div>
+        <div class="activity-list" id="activityList"><div class="empty-state">Waiting for Supabase activity…</div></div>
       </section>
 
-      <footer>
-        <span>EVE ALGO LAB · MARKET MEMORY v1.1</span>
-        <span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span>
-      </footer>
+      <footer><span>EVE ALGO LAB · v1.2</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
     </main>
   </div>
 

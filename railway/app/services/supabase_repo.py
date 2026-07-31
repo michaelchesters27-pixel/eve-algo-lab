@@ -215,3 +215,150 @@ class SupabaseRepository:
                 rows[start : start + chunk_size],
                 "symbol,interval,candle_time",
             )
+
+    async def get_strategy_by_slug(self, slug: str) -> dict[str, Any] | None:
+        rows = await self.select("strategies", f"select=*&slug=eq.{quote(slug, safe='')}&limit=1")
+        return rows[0] if rows else None
+
+    async def create_strategy(self, name: str, slug: str, description: str) -> dict[str, Any]:
+        rows = await self.insert(
+            "strategies",
+            {"name": name, "slug": slug, "description": description, "status": "testing"},
+        )
+        return rows[0]
+
+    async def get_strategy_version(self, strategy_id: str, version: str) -> dict[str, Any] | None:
+        rows = await self.select(
+            "strategy_versions",
+            "select=*&strategy_id=eq.{}&version=eq.{}&limit=1".format(
+                quote(strategy_id, safe=""), quote(version, safe="")
+            ),
+        )
+        return rows[0] if rows else None
+
+    async def create_strategy_version(
+        self,
+        strategy_id: str,
+        version: str,
+        rules: dict[str, Any],
+        source_sha256: str,
+        notes: str,
+    ) -> dict[str, Any]:
+        rows = await self.insert(
+            "strategy_versions",
+            {
+                "strategy_id": strategy_id,
+                "version": version,
+                "rules": rules,
+                "source_sha256": source_sha256,
+                "notes": notes,
+            },
+        )
+        return rows[0]
+
+    async def create_backtest_run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        rows = await self.insert("backtest_runs", payload)
+        return rows[0]
+
+    async def update_backtest_run(self, run_id: str, **changes: Any) -> None:
+        await self.update("backtest_runs", f"id=eq.{quote(run_id, safe='')}", changes)
+
+    async def get_backtest_run(self, run_id: str) -> dict[str, Any] | None:
+        rows = await self.select("backtest_runs", f"select=*&id=eq.{quote(run_id, safe='')}&limit=1")
+        return rows[0] if rows else None
+
+    async def list_backtest_runs(self, limit: int = 20) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(100, int(limit)))
+        return await self.select("backtest_runs", f"select=*&order=created_at.desc&limit={safe_limit}")
+
+    async def has_active_backtest(self) -> bool:
+        rows = await self.select("backtest_runs", "select=id&status=in.(queued,running)&limit=1")
+        return bool(rows)
+
+    async def count_market_candles(
+        self,
+        symbol: str,
+        interval: str,
+        date_from: str | None = None,
+        date_to: str | None = None,
+    ) -> int:
+        filters = [
+            f"symbol=eq.{quote(symbol, safe='')}",
+            f"interval=eq.{quote(interval, safe='')}",
+        ]
+        if date_from:
+            filters.append(f"candle_time=gte.{quote(str(date_from), safe=':-TZ.')}")
+        if date_to:
+            filters.append(f"candle_time=lte.{quote(str(date_to), safe=':-TZ.')}")
+        response = await self._request(
+            "HEAD",
+            f"market_candles?select=candle_time&{'&'.join(filters)}",
+            headers={"Prefer": "count=exact"},
+        )
+        content_range = response.headers.get("content-range", "0-0/0")
+        try:
+            return int(content_range.rsplit("/", 1)[1])
+        except (IndexError, ValueError):
+            return 0
+
+    async def fetch_candles_page(
+        self,
+        symbol: str,
+        interval: str,
+        after: str | None = None,
+        date_from: str | None = None,
+        date_to: str | None = None,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(1000, int(limit)))
+        filters = [
+            "select=candle_time,open,high,low,close,volume",
+            f"symbol=eq.{quote(symbol, safe='')}",
+            f"interval=eq.{quote(interval, safe='')}",
+        ]
+        if after:
+            filters.append(f"candle_time=gt.{quote(str(after), safe=':-TZ.')}")
+        elif date_from:
+            filters.append(f"candle_time=gte.{quote(str(date_from), safe=':-TZ.')}")
+        if date_to:
+            filters.append(f"candle_time=lte.{quote(str(date_to), safe=':-TZ.')}")
+        filters.extend(["order=candle_time.asc", f"limit={safe_limit}"])
+        return await self.select("market_candles", "&".join(filters))
+
+    async def bulk_insert_backtest_trades(self, rows: list[dict[str, Any]], chunk_size: int = 500) -> None:
+        for start in range(0, len(rows), chunk_size):
+            await self.insert("backtest_trades", rows[start : start + chunk_size])
+
+    async def bulk_insert_backtest_baskets(self, rows: list[dict[str, Any]], chunk_size: int = 500) -> None:
+        for start in range(0, len(rows), chunk_size):
+            await self.insert("backtest_baskets", rows[start : start + chunk_size])
+
+    async def list_backtest_baskets(self, run_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(500, int(limit)))
+        return await self.select(
+            "backtest_baskets",
+            f"select=*&backtest_run_id=eq.{quote(run_id, safe='')}&order=opened_at.desc&limit={safe_limit}",
+        )
+
+    async def list_backtest_trades(self, run_id: str, limit: int = 100) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(500, int(limit)))
+        return await self.select(
+            "backtest_trades",
+            f"select=*&backtest_run_id=eq.{quote(run_id, safe='')}&order=opened_at.desc&limit={safe_limit}",
+        )
+
+    async def fail_interrupted_backtests(self) -> None:
+        await self.update(
+            "backtest_runs",
+            "status=in.(queued,running)",
+            {
+                "status": "failed",
+                "error": "Railway restarted before this backtest completed. Start a new run; saved historical data is unaffected.",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "reliability": {
+                    "progress_percent": 0,
+                    "message": "Interrupted by Railway restart",
+                    "accuracy": "M5 candle-path approximation",
+                },
+            },
+        )

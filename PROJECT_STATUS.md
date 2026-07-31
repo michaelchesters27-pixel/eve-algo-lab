@@ -1,38 +1,42 @@
 # Project status
 
-## Delivered — Market Memory v1.1
+## Delivered — Market Memory
 
-- [x] Supabase schema
+- [x] 477,000+ XAU/USD M5 candle foundation
 - [x] Historical Twelve Data downloader
-- [x] 5,000-candle backward batching
-- [x] Earliest timestamp discovery
-- [x] Resume cursor after restart
-- [x] Manual pause and resume
-- [x] Duplicate protection
-- [x] Railway background worker
-- [x] Latest-candle automatic sync
-- [x] Live sync no longer falsely marks history 100% complete
-- [x] Exact database counts during backfill
+- [x] Resume, duplicate protection and live sync
 - [x] Gap scan
-- [x] Netlify dashboard
-- [x] Secure Netlify-to-Railway proxy
-- [x] Clear warning when Netlify admin token is missing
-- [x] Backtest storage tables
-- [x] Profit factor and drawdown metric engine
-- [x] Unit tests
+- [x] Supabase, Railway and Netlify infrastructure
 
-## Next — Momentum backtester
+## Delivered — Fixed Ladder Backtester v1.2
 
-- [ ] Import exact current bot source
-- [ ] Reproduce pending-order and basket lifecycle
-- [ ] M1/tick intrabar resolver
-- [ ] Spread, commission and slippage model
-- [ ] Full backtest screen and reports
-- [ ] Compare old bot against current bot
+- [x] Import current v2.61 MT5 source
+- [x] Preserve source hash
+- [x] Reproduce fixed 16-order ladder
+- [x] Reproduce first-bullet quick cut
+- [x] Reproduce individual break-even protection
+- [x] Reproduce newest-unprotected-bullet basket closure
+- [x] Reproduce target and basket peak protection
+- [x] Reproduce emergency basket loss
+- [x] Configurable spread and commission
+- [x] Full background backtest
+- [x] Basket profit factor
+- [x] Balance and equity drawdown
+- [x] Position and basket result storage
+- [x] Dashboard progress and recent baskets
+- [x] Intrabar ambiguity count
+
+## Next
+
+- [ ] Download XAU/USD M1 history
+- [ ] M1 execution replay beneath the M5 strategy
+- [ ] Compare alternative path assumptions automatically
+- [ ] Version-to-version bot comparison
+- [ ] Parameter stress testing
 
 ## Later
 
-- [ ] AI pattern labels and feature store
+- [ ] AI market feature store
 - [ ] Bot plus AI filter testing
 - [ ] Explainable strategy factory
 - [ ] Live paper trading

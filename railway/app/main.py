@@ -10,7 +10,14 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.backtesting.metrics import calculate_metrics
-from app.models.schemas import ApiEnvelope, JobRequest, JobResponse, MetricsPreviewRequest
+from app.models.schemas import (
+    ApiEnvelope,
+    FixedLadderBacktestRequest,
+    JobRequest,
+    JobResponse,
+    MetricsPreviewRequest,
+)
+from app.services.backtests import BacktestService
 from app.services.ingestion import IngestionService, historical_backfill_complete
 from app.services.supabase_repo import SupabaseRepository
 from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
@@ -31,12 +38,14 @@ twelve = TwelveDataClient(
     settings.max_http_retries,
 )
 ingestion = IngestionService(settings, repo, twelve)
+backtests = BacktestService(repo)
 background_tasks: list[asyncio.Task[Any]] = []
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    await repo.log_event("info", "railway", "EVE Algo Lab Railway service started", {"version": "1.1.0"})
+    await repo.fail_interrupted_backtests()
+    await repo.log_event("info", "railway", "EVE Algo Lab Railway service started", {"version": "1.2.0"})
     background_tasks.extend(
         [
             asyncio.create_task(ingestion.worker_loop(), name="ingestion-worker"),
@@ -47,15 +56,17 @@ async def lifespan(_: FastAPI):
     await ingestion.stop()
     for task in background_tasks:
         task.cancel()
-    await asyncio.gather(*background_tasks, return_exceptions=True)
+    for task in list(backtests.tasks.values()):
+        task.cancel()
+    await asyncio.gather(*background_tasks, *list(backtests.tasks.values()), return_exceptions=True)
     await twelve.close()
     await repo.close()
 
 
 app = FastAPI(
     title="EVE Algo Lab API",
-    version="1.1.0",
-    description="Resumable historical market memory, data-quality controls and backtest metrics.",
+    version="1.2.0",
+    description="Permanent market memory and an exact-rule M5 backtester for EVE Fixed Ladder v2.61.",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -79,7 +90,7 @@ def state_is_historically_ready(state: dict[str, Any] | None, interval: str) -> 
 
 @app.get("/")
 async def root() -> dict[str, Any]:
-    return {"name": settings.app_name, "status": "online", "version": "1.1.0"}
+    return {"name": settings.app_name, "status": "online", "version": "1.2.0"}
 
 
 @app.get("/health")
@@ -87,7 +98,7 @@ async def health() -> dict[str, Any]:
     return {
         "status": "healthy",
         "service": settings.app_name,
-        "version": "1.1.0",
+        "version": "1.2.0",
         "time": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -116,7 +127,6 @@ async def market_status(
         display_status = state["status"]
         historical_progress = float(state.get("progress_percent") or 0)
     else:
-        # Repair the misleading v1 state where a live sync set progress to 100% before history existed.
         display_status = "not_started"
         historical_progress = 0.0
 
@@ -130,7 +140,8 @@ async def market_status(
     dashboard["service"] = "online"
     dashboard["symbol"] = symbol
     dashboard["interval"] = interval
-    dashboard["version"] = "1.1.0"
+    dashboard["version"] = "1.2.0"
+    dashboard["latest_backtest"] = (await repo.list_backtest_runs(limit=1) or [{}])[0]
     return ApiEnvelope(data=dashboard)
 
 
@@ -189,6 +200,64 @@ async def cancel_job(job_id: str) -> ApiEnvelope:
     if not job:
         raise HTTPException(status_code=409, detail="Job is no longer queued or running")
     return ApiEnvelope(data=job, message="Pause requested. The saved cursor will be used when you resume.")
+
+
+@app.post("/api/backtests/fixed-ladder-v2-61", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])
+async def start_fixed_ladder_backtest(request: FixedLadderBacktestRequest) -> ApiEnvelope:
+    state = await repo.get_state(request.symbol, request.interval)
+    if not state_is_historically_ready(state, request.interval):
+        raise HTTPException(status_code=409, detail="Market Memory must be complete before backtesting")
+    if await repo.has_active_backtest():
+        raise HTTPException(status_code=409, detail="Another backtest is already running")
+
+    strategy_version_id = await backtests.ensure_strategy_version()
+    settings_payload = request.model_dump(mode="json")
+    run = await repo.create_backtest_run(
+        {
+            "strategy_version_id": strategy_version_id,
+            "name": request.name,
+            "symbol": request.symbol,
+            "interval": request.interval,
+            "resolution": "candle",
+            "status": "queued",
+            "date_from": request.date_from.isoformat() if request.date_from else state.get("oldest_stored"),
+            "date_to": request.date_to.isoformat() if request.date_to else state.get("latest_stored"),
+            "starting_balance": request.starting_balance,
+            "settings": settings_payload,
+            "reliability": {
+                "progress_percent": 0,
+                "message": "Queued for Railway",
+                "accuracy": "M5 candle-path approximation",
+            },
+        }
+    )
+    run_id = str(run["id"])
+    await backtests.start(run_id, settings_payload)
+    return ApiEnvelope(data={"id": run_id, "status": "queued"}, message="Fixed Ladder v2.61 backtest started")
+
+
+@app.get("/api/backtests", response_model=ApiEnvelope)
+async def list_backtests(limit: int = Query(default=20, ge=1, le=100)) -> ApiEnvelope:
+    return ApiEnvelope(data=await repo.list_backtest_runs(limit))
+
+
+@app.get("/api/backtests/{run_id}", response_model=ApiEnvelope)
+async def get_backtest(run_id: str) -> ApiEnvelope:
+    run = await repo.get_backtest_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Backtest not found")
+    baskets = await repo.list_backtest_baskets(run_id, 100) if run.get("status") == "complete" else []
+    trades = await repo.list_backtest_trades(run_id, 100) if run.get("status") == "complete" else []
+    return ApiEnvelope(data={"run": run, "baskets": baskets, "trades": trades})
+
+
+@app.post("/api/backtests/{run_id}/cancel", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])
+async def cancel_backtest(run_id: str) -> ApiEnvelope:
+    run = await repo.get_backtest_run(run_id)
+    if not run or run.get("status") not in {"queued", "running"}:
+        raise HTTPException(status_code=409, detail="Backtest is no longer running")
+    await backtests.cancel(run_id)
+    return ApiEnvelope(data={"id": run_id, "status": "cancelled"}, message="Backtest cancellation requested")
 
 
 @app.post("/api/backtests/metrics-preview", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])

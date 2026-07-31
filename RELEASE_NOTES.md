@@ -1,29 +1,40 @@
-# EVE Algo Lab v1.1.0 — Market Memory
+# EVE Algo Lab v1.2.0 — Fixed Ladder Backtester
 
-## Fixed
+## Imported
 
-- Automatic latest-candle sync no longer marks the full historical database 100% complete.
-- A previously misleading v1 state is repaired automatically by the status API and next live sync.
-- Railway restarts immediately return an interrupted running backfill to the queue.
-- A forming M5 candle removed from the first provider batch no longer causes a false end-of-history result.
-- A gap-scan failure cannot undo a successfully completed historical download.
-- Backfill completion now requires verified historical boundaries.
-- Netlify gives a precise message when `EVE_ADMIN_TOKEN` is missing.
+- Exact current source: `EVE_Twelve_Data_Fixed_Ladder_v2.61.mq5`
+- Source SHA-256: `f033bc756b8a066b8fdfe780ca36fe82363b3b70c2e4dd4a15e7d57546d02da9`
 
 ## Added
 
-- Manual Pause button.
-- Resume from the exact saved cursor.
-- Exact Supabase candle counts every five batches.
-- Dedicated backfill-job status on the dashboard.
-- Defensive duplicate removal within provider responses.
-- Improved Twelve Data response validation and permanent-error handling.
-- Version-controlled Supabase migrations.
+- Railway background backtest service
+- Exact v2.61 fixed-ladder rule model
+- Full-history XAU/USD M5 replay
+- Bid/ask modelling from configurable spread
+- Configurable commission and starting balance
+- Three deterministic intrabar path modes
+- Position and basket result storage
+- Basket-level profit factor and drawdown reporting
+- Separate position-level metrics
+- Recent basket table in Netlify
+- Backtest progress and cancellation
+- Ambiguous M5 candle count and accuracy warning
+- Interrupted-run handling after Railway restart
+- `backtest_baskets` Supabase migration
+- Imported strategy source stored in the repository
+
+## Preserved
+
+- Existing Market Memory
+- Historical downloader
+- Automatic M5 synchronisation
+- Gap scan
+- Existing Railway and Netlify variables
 
 ## Tested
 
 - Python compilation
-- Seven automated unit tests
+- Ten automated unit tests
+- Fixed-ladder synthetic event tests
 - Frontend JavaScript syntax
-- Netlify function JavaScript syntax
-- FastAPI application import with production-style environment variables
+- Netlify proxy JavaScript syntax

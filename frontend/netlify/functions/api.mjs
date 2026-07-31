@@ -4,6 +4,10 @@ const ALLOWED = [
   /^jobs\/[0-9a-f-]+$/i,
   /^jobs\/[0-9a-f-]+\/cancel$/i,
   /^jobs\/(backfill|sync|gap-scan)$/,
+  /^backtests$/,
+  /^backtests\/[0-9a-f-]+$/i,
+  /^backtests\/[0-9a-f-]+\/cancel$/i,
+  /^backtests\/fixed-ladder-v2-61$/,
   /^backtests\/metrics-preview$/,
 ];
 
@@ -61,7 +65,7 @@ export default async (request) => {
     const response = await fetch(target, {
       method: request.method,
       headers,
-      body: request.method === "GET" ? undefined : await request.text(),
+      body: request.method === "GET" || request.method === "HEAD" ? undefined : await request.text(),
     });
     const body = await response.text();
     return new Response(body, {
@@ -73,7 +77,7 @@ export default async (request) => {
     });
   } catch (error) {
     return Response.json(
-      { ok: false, message: `Could not reach Railway: ${error.message}` },
+      { ok: false, message: `Railway connection failed: ${error.message}` },
       { status: 502 },
     );
   }
