@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     twelve_data_api_key: str = Field(min_length=8)
     twelve_data_base_url: str = "https://api.twelvedata.com"
-    twelve_data_request_delay_seconds: float = Field(default=8.0, ge=0.25, le=120)
+    twelve_data_request_delay_seconds: float = Field(default=2.0, ge=0.5, le=120)
     twelve_data_batch_size: int = Field(default=5000, ge=1, le=5000)
 
     supabase_url: str = Field(min_length=10)
@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     worker_poll_seconds: float = Field(default=4.0, ge=1, le=60)
     request_timeout_seconds: float = Field(default=45.0, ge=5, le=180)
     max_http_retries: int = Field(default=6, ge=1, le=12)
+    exact_count_every_batches: int = Field(default=5, ge=1, le=50)
 
     @field_validator("supabase_url", "twelve_data_base_url")
     @classmethod

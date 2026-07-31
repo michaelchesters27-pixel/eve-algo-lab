@@ -13,6 +13,7 @@ const formatDate = (value, includeTime = false) => {
 
 let refreshTimer;
 let toastTimer;
+let activeBackfillJobId = null;
 
 function showToast(message, isError = false) {
   const toast = $("#toast");
@@ -20,7 +21,7 @@ function showToast(message, isError = false) {
   toast.classList.toggle("error", isError);
   toast.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toast.classList.remove("show"), 4200);
+  toastTimer = setTimeout(() => toast.classList.remove("show"), 5200);
 }
 
 async function api(path, options = {}) {
@@ -65,13 +66,25 @@ function escapeHtml(value) {
   return node.innerHTML;
 }
 
+function defaultJobMessage(status, rows) {
+  if (status === "paused") return "Download paused safely. Press Resume to continue from the saved point.";
+  if (status === "error") return "The last download stopped with an error. Press Resume after checking the activity log.";
+  if (rows > 0) return "Live M5 candles are being stored. The multi-year historical download has not started yet.";
+  return "Ready to download the complete available XAU/USD M5 history.";
+}
+
 function renderDashboard(data) {
   const state = data.state || {};
-  const job = data.latest_job || {};
+  const job = data.backfill_job || {};
   const candle = data.latest_candle || {};
   const gaps = data.gaps || {};
   const status = state.status || "not_started";
-  const progress = Number(state.progress_percent || job.progress_percent || 0);
+  const historicalReady = Boolean(data.historical_ready || state.historical_complete);
+  const progress = Number(data.historical_progress_percent ?? state.progress_percent ?? 0);
+  const rows = Number(state.rows_in_database || state.rows_processed || 0);
+  const active = ["queued", "running"].includes(job.status);
+
+  activeBackfillJobId = active ? job.id : null;
 
   setService(true, "Online");
   $("#statePill").textContent = status.replaceAll("_", " ").toUpperCase();
@@ -79,15 +92,15 @@ function renderDashboard(data) {
   $("#progressValue").textContent = `${Math.min(100, progress).toFixed(progress > 0 && progress < 10 ? 1 : 0)}%`;
   $("#progressRing").style.setProperty("--progress", Math.min(100, progress));
   $("#progressBar").style.width = `${Math.min(100, progress)}%`;
-  $("#jobMessage").textContent = job.message || state.last_error || "Ready to download the complete available XAU/USD M5 history.";
-  $("#candleCount").textContent = formatNumber(state.rows_in_database || state.rows_processed);
+  $("#jobMessage").textContent = job.message || state.last_error || defaultJobMessage(status, rows);
+  $("#candleCount").textContent = formatNumber(rows);
   $("#batchCount").textContent = formatNumber(state.batches_completed);
   $("#gapCount").textContent = formatNumber(gaps.review);
 
   $("#earliestDate").textContent = formatDate(state.earliest_available);
   $("#oldestDate").textContent = formatDate(state.oldest_stored);
   $("#latestDate").textContent = formatDate(state.latest_stored);
-  $("#dataStatus").textContent = status === "complete" ? "Ready" : status.replaceAll("_", " ");
+  $("#dataStatus").textContent = historicalReady ? "Historical ready" : rows > 0 ? "Live sync only" : status.replaceAll("_", " ");
 
   $("#latestClose").textContent = formatPrice(candle.close);
   $("#latestTime").textContent = candle.candle_time ? formatDate(candle.candle_time, true) : "No candle stored yet";
@@ -96,9 +109,19 @@ function renderDashboard(data) {
   $("#latestLow").textContent = formatPrice(candle.low);
   $("#latestCloseSmall").textContent = formatPrice(candle.close);
 
-  const active = ["queued", "downloading", "syncing"].includes(status) || ["queued", "running"].includes(job.status);
-  $("#startBackfill").disabled = active || status === "complete";
-  $("#startBackfill").textContent = status === "complete" ? "Historical database ready" : active ? "Download in progress…" : "Start historical download";
+  const start = $("#startBackfill");
+  start.disabled = active || historicalReady;
+  if (historicalReady) start.textContent = "Historical database ready";
+  else if (active) start.textContent = "Download in progress…";
+  else if (["paused", "error"].includes(status) || Number(state.batches_completed || 0) > 0) start.textContent = "Resume historical download";
+  else start.textContent = "Start historical download";
+
+  const pause = $("#pauseBackfill");
+  pause.hidden = !active;
+  pause.disabled = !active;
+
+  $("#syncLatest").disabled = active;
+  $("#scanGaps").disabled = active || rows < 2;
 
   renderEvents(data.events || []);
 }
@@ -133,7 +156,23 @@ async function queueJob(endpoint, button, successText) {
   }
 }
 
+async function pauseBackfill(button) {
+  if (!activeBackfillJobId) return;
+  button.disabled = true;
+  button.textContent = "Pausing…";
+  try {
+    const payload = await api(`jobs/${activeBackfillJobId}/cancel`, { method: "POST", body: "{}" });
+    showToast(payload.message || "Pause requested");
+    await refreshDashboard(true);
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    button.textContent = "Pause download";
+  }
+}
+
 $("#startBackfill").addEventListener("click", (event) => queueJob("backfill", event.currentTarget, "Historical download queued"));
+$("#pauseBackfill").addEventListener("click", (event) => pauseBackfill(event.currentTarget));
 $("#syncLatest").addEventListener("click", (event) => queueJob("sync", event.currentTarget, "Latest sync queued"));
 $("#scanGaps").addEventListener("click", (event) => queueJob("gap-scan", event.currentTarget, "Gap scan queued"));
 $("#refreshButton").addEventListener("click", () => refreshDashboard());

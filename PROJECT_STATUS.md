@@ -1,18 +1,22 @@
 # Project status
 
-## Delivered — Foundation v1
+## Delivered — Market Memory v1.1
 
 - [x] Supabase schema
 - [x] Historical Twelve Data downloader
-- [x] 5,000-candle batch support
+- [x] 5,000-candle backward batching
 - [x] Earliest timestamp discovery
-- [x] Resume cursor
+- [x] Resume cursor after restart
+- [x] Manual pause and resume
 - [x] Duplicate protection
 - [x] Railway background worker
-- [x] Latest-candle auto sync
+- [x] Latest-candle automatic sync
+- [x] Live sync no longer falsely marks history 100% complete
+- [x] Exact database counts during backfill
 - [x] Gap scan
 - [x] Netlify dashboard
 - [x] Secure Netlify-to-Railway proxy
+- [x] Clear warning when Netlify admin token is missing
 - [x] Backtest storage tables
 - [x] Profit factor and drawdown metric engine
 - [x] Unit tests

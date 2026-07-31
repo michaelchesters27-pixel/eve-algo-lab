@@ -8,13 +8,13 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.services.supabase_repo import SupabaseRepository
-from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
+from app.services.twelve_data import INTERVAL_SECONDS, Candle, TwelveDataClient
 from app.settings import Settings
 
 logger = logging.getLogger(__name__)
 
 
-def _as_datetime(value: str | None) -> datetime | None:
+def as_utc_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
     parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
@@ -24,7 +24,7 @@ def _as_datetime(value: str | None) -> datetime | None:
 
 
 def estimate_market_bars(earliest: datetime, latest: datetime, interval_seconds: int) -> int:
-    """Approximate 24/5 bars. Exact database count replaces this at completion."""
+    """Approximate 24/5 bars. The exact database count replaces this at completion."""
     if latest <= earliest:
         return 0
     full_days = (latest.date() - earliest.date()).days + 1
@@ -35,10 +35,41 @@ def estimate_market_bars(earliest: datetime, latest: datetime, interval_seconds:
     return business_days * bars_per_day
 
 
-def completed_only(candles: list[Any], interval_seconds: int, now: datetime | None = None) -> list[Any]:
-    """Exclude the currently forming bar; the database stores completed candles as source-of-truth."""
+def completed_only(candles: list[Candle], interval_seconds: int, now: datetime | None = None) -> list[Candle]:
+    """Exclude the currently forming bar; only completed candles become source-of-truth."""
     reference = now or datetime.now(timezone.utc)
     return [candle for candle in candles if candle.timestamp + timedelta(seconds=interval_seconds) <= reference]
+
+
+def deduplicate_candles(candles: list[Candle]) -> list[Candle]:
+    """Defensively remove duplicate timestamps from a provider response."""
+    by_time = {candle.timestamp: candle for candle in candles}
+    return sorted(by_time.values(), key=lambda candle: candle.timestamp, reverse=True)
+
+
+def historical_backfill_complete(state: dict[str, Any] | None, interval_seconds: int) -> bool:
+    """Return True only when the stored oldest candle reaches Twelve Data's earliest boundary.
+
+    Earlier releases incorrectly marked the whole historical dataset complete after a latest-candle
+    sync. Requiring both boundaries prevents that state from disabling the real backfill button.
+    """
+    if not state:
+        return False
+    earliest = as_utc_datetime(state.get("earliest_available"))
+    oldest = as_utc_datetime(state.get("oldest_stored"))
+    rows = int(state.get("rows_in_database") or 0)
+    if not earliest or not oldest or rows <= 0:
+        return False
+    strict_tolerance = timedelta(seconds=max(interval_seconds * 2, 120))
+    if oldest <= earliest + strict_tolerance:
+        return True
+
+    # Some instruments publish an earliest boundary during a market closure rather than the
+    # timestamp of the first actual bar. A completed job with no remaining cursor may therefore
+    # finish a few days after that boundary (for example, over a weekend).
+    status = str(state.get("status") or "")
+    no_remaining_cursor = not state.get("next_end_time")
+    return status == "complete" and no_remaining_cursor and oldest <= earliest + timedelta(days=7)
 
 
 class IngestionService:
@@ -59,7 +90,7 @@ class IngestionService:
 
     async def worker_loop(self) -> None:
         logger.info("Ingestion worker %s started", self.worker_id)
-        await self.repo.reset_stale_jobs()
+        await self.repo.reset_stale_jobs(stale_minutes=0)
         while not self._stop.is_set():
             try:
                 job = await self.repo.claim_next_job(self.worker_id)
@@ -99,7 +130,12 @@ class IngestionService:
                 finished_at=datetime.now(timezone.utc).isoformat(),
             )
             await self.repo.upsert_state(symbol, interval, status="error", last_error=str(exc)[:4000])
-            await self.repo.log_event("error", "ingestion", f"{job_type} failed for {symbol} {interval}", {"error": str(exc)})
+            await self.repo.log_event(
+                "error",
+                "ingestion",
+                f"{job_type} failed for {symbol} {interval}",
+                {"error": str(exc)},
+            )
 
     async def backfill(self, job_id: str, symbol: str, interval: str, parameters: dict[str, Any]) -> None:
         interval_seconds = INTERVAL_SECONDS[interval]
@@ -111,14 +147,14 @@ class IngestionService:
             rows_processed = 0
             batches = 0
         else:
-            cursor = _as_datetime(state.get("next_end_time")) or datetime.now(timezone.utc)
+            cursor = as_utc_datetime(state.get("next_end_time")) or datetime.now(timezone.utc)
             rows_processed = int(state.get("rows_processed") or 0)
             batches = int(state.get("batches_completed") or 0)
 
-        latest_seen = _as_datetime(state.get("latest_stored"))
-        earliest = _as_datetime(state.get("earliest_available"))
+        latest_seen = as_utc_datetime(state.get("latest_stored"))
+        earliest = as_utc_datetime(state.get("earliest_available"))
         if earliest is None or force_restart:
-            await self.repo.update_job(job_id, message="Finding earliest available Twelve Data candle")
+            await self.repo.update_job(job_id, message="Finding the earliest available Twelve Data candle")
             earliest = await self.twelve.earliest_timestamp(symbol, interval)
 
         estimated_total = estimate_market_bars(earliest, datetime.now(timezone.utc), interval_seconds)
@@ -131,14 +167,26 @@ class IngestionService:
             estimated_total=estimated_total,
             last_error=None,
         )
-        await self.repo.log_event("info", "ingestion", f"Historical download started for {symbol} {interval}")
+        await self.repo.log_event(
+            "info",
+            "ingestion",
+            f"Historical download started for {symbol} {interval}",
+            {"resume_cursor": cursor.isoformat(), "estimated_total": estimated_total},
+        )
 
         previous_oldest: datetime | None = None
+        reached_start = False
+
         while cursor >= earliest and not self._stop.is_set():
             current_job = await self.repo.get_job(job_id)
             if current_job and current_job.get("status") == "cancelled":
                 await self.repo.upsert_state(symbol, interval, status="paused")
-                await self.repo.update_job(job_id, finished_at=datetime.now(timezone.utc).isoformat(), message="Download cancelled")
+                await self.repo.update_job(
+                    job_id,
+                    finished_at=datetime.now(timezone.utc).isoformat(),
+                    message="Historical download paused. Press Resume to continue from the saved cursor.",
+                )
+                await self.repo.log_event("warning", "ingestion", f"Historical download paused for {symbol} {interval}")
                 return
 
             candles = await self.twelve.time_series(
@@ -147,12 +195,15 @@ class IngestionService:
                 outputsize=self.settings.twelve_data_batch_size,
                 end_date=cursor,
             )
-            candles = completed_only(candles, interval_seconds)
+            provider_row_count = len(candles)
+            candles = deduplicate_candles(completed_only(candles, interval_seconds))
             if not candles:
-                raise RuntimeError(f"Twelve Data returned no candles before {cursor.isoformat()}")
+                raise RuntimeError(f"Twelve Data returned no completed candles before {cursor.isoformat()}")
 
             oldest = min(candle.timestamp for candle in candles)
             newest = max(candle.timestamp for candle in candles)
+            if newest > cursor + timedelta(seconds=interval_seconds):
+                raise RuntimeError("Twelve Data returned candles newer than the requested historical cursor")
             if previous_oldest is not None and oldest >= previous_oldest:
                 raise RuntimeError("Historical cursor did not move backwards; stopped to prevent an infinite loop")
 
@@ -178,18 +229,60 @@ class IngestionService:
                 batches_completed=batches,
                 progress_percent=round(progress, 3),
                 last_success_at=datetime.now(timezone.utc).isoformat(),
+                last_error=None,
             )
+
+            if batches % self.settings.exact_count_every_batches == 0:
+                await self.repo.refresh_state(symbol, interval)
+
             await self.repo.update_job(
                 job_id,
                 progress_percent=round(progress, 3),
-                message=f"Batch {batches}: processed {rows_processed:,} candles; oldest {oldest:%Y-%m-%d %H:%M UTC}",
+                message=(
+                    f"Batch {batches}: processed {rows_processed:,} candles; "
+                    f"oldest {oldest:%Y-%m-%d %H:%M UTC}"
+                ),
             )
 
-            if oldest <= earliest + timedelta(seconds=interval_seconds):
+            near_published_start = oldest <= earliest + timedelta(days=7)
+            reached_start = (
+                oldest <= earliest + timedelta(seconds=interval_seconds * 2)
+                or (provider_row_count < self.settings.twelve_data_batch_size and near_published_start)
+            )
+            if reached_start:
                 break
+
             await asyncio.sleep(self.settings.twelve_data_request_delay_seconds)
 
+        if self._stop.is_set() and not reached_start:
+            await self.repo.upsert_state(symbol, interval, status="paused")
+            return
+
         await self.repo.refresh_state(symbol, interval)
+        final_state = await self.repo.get_state(symbol, interval) or {}
+        if not historical_backfill_complete(final_state, interval_seconds):
+            # A short final provider batch can legitimately finish just after the published earliest
+            # timestamp. If not, keep the saved cursor and require a resume rather than falsely claiming 100%.
+            oldest_stored = as_utc_datetime(final_state.get("oldest_stored"))
+            if oldest_stored and reached_start and oldest_stored <= earliest + timedelta(days=7):
+                pass
+            else:
+                await self.repo.upsert_state(
+                    symbol,
+                    interval,
+                    status="paused",
+                    progress_percent=min(99.9, float(final_state.get("progress_percent") or 0)),
+                    last_error="Historical boundary was not verified. Resume the download to continue.",
+                )
+                await self.repo.update_job(
+                    job_id,
+                    status="failed",
+                    message="Historical boundary was not verified; the saved cursor is safe to resume.",
+                    error="Backfill stopped before the verified earliest boundary.",
+                    finished_at=datetime.now(timezone.utc).isoformat(),
+                )
+                return
+
         await self.repo.upsert_state(
             symbol,
             interval,
@@ -199,34 +292,75 @@ class IngestionService:
             last_success_at=datetime.now(timezone.utc).isoformat(),
             last_error=None,
         )
-        gaps = await self.repo.scan_gaps(symbol, interval, interval_seconds)
+
+        gaps: dict[str, Any] = {"total": 0, "review": 0}
+        try:
+            gaps = await self.repo.scan_gaps(symbol, interval, interval_seconds)
+        except Exception as exc:
+            logger.exception("Post-backfill gap scan failed")
+            await self.repo.log_event(
+                "warning",
+                "data_quality",
+                "Historical download completed, but the automatic gap scan needs to be run again",
+                {"error": str(exc)},
+            )
+
+        exact_state = await self.repo.get_state(symbol, interval) or {}
+        exact_rows = int(exact_state.get("rows_in_database") or 0)
         await self.repo.update_job(
             job_id,
             status="complete",
             progress_percent=100,
-            message=f"Historical database ready. Gap review items: {gaps.get('review', 0)}",
+            message=f"Historical database ready: {exact_rows:,} candles stored. Gap review items: {gaps.get('review', 0)}",
             finished_at=datetime.now(timezone.utc).isoformat(),
         )
-        await self.repo.log_event("success", "ingestion", f"Historical download completed for {symbol} {interval}", {"rows_processed": rows_processed, "gaps": gaps})
+        await self.repo.log_event(
+            "success",
+            "ingestion",
+            f"Historical download completed for {symbol} {interval}",
+            {"rows_in_database": exact_rows, "batches": batches, "gaps": gaps},
+        )
 
     async def sync_latest(self, job_id: str | None, symbol: str, interval: str) -> None:
+        interval_seconds = INTERVAL_SECONDS[interval]
+        original_state = await self.repo.get_state(symbol, interval) or {}
+        original_status = original_state.get("status") or "not_started"
+
         if job_id:
-            await self.repo.update_job(job_id, message="Fetching latest completed candles")
-        await self.repo.upsert_state(symbol, interval, status="syncing", last_error=None)
+            await self.repo.update_job(job_id, message="Fetching the latest completed candles")
+
         candles = await self.twelve.time_series(symbol, interval, outputsize=50)
-        candles = completed_only(candles, INTERVAL_SECONDS[interval])
+        candles = deduplicate_candles(completed_only(candles, interval_seconds))
         if not candles:
-            raise RuntimeError("No recent candles returned")
+            raise RuntimeError("No recent completed candles returned")
+
         await self.repo.bulk_upsert_candles([candle.to_row(symbol, interval) for candle in candles])
+        await self.repo.refresh_state(symbol, interval)
+        refreshed = await self.repo.get_state(symbol, interval) or {}
         latest = max(candle.timestamp for candle in candles)
+
+        # Live synchronisation must never pretend that the multi-year historical backfill is complete.
+        if historical_backfill_complete(refreshed, interval_seconds):
+            preserved_status = "complete"
+            preserved_progress = 100
+        elif original_status in {"queued", "downloading", "paused", "error"}:
+            preserved_status = original_status
+            preserved_progress = float(original_state.get("progress_percent") or 0)
+        else:
+            preserved_status = "not_started"
+            preserved_progress = 0
+
+        preserved_error = original_state.get("last_error") if preserved_status == "error" else None
         await self.repo.upsert_state(
             symbol,
             interval,
-            status="complete",
-            progress_percent=100,
+            status=preserved_status,
+            progress_percent=preserved_progress,
             latest_stored=latest.isoformat(),
             last_success_at=datetime.now(timezone.utc).isoformat(),
+            last_error=preserved_error,
         )
+
         if job_id:
             await self.repo.update_job(
                 job_id,
@@ -235,7 +369,12 @@ class IngestionService:
                 message=f"Latest candles synchronised through {latest:%Y-%m-%d %H:%M UTC}",
                 finished_at=datetime.now(timezone.utc).isoformat(),
             )
-        await self.repo.log_event("success", "live_sync", f"Latest {symbol} {interval} candles synchronised", {"latest": latest.isoformat()})
+            await self.repo.log_event(
+                "success",
+                "live_sync",
+                f"Latest {symbol} {interval} candles synchronised",
+                {"latest": latest.isoformat()},
+            )
 
     async def gap_scan(self, job_id: str | None, symbol: str, interval: str) -> dict[str, Any]:
         if job_id:
@@ -264,7 +403,9 @@ class IngestionService:
         while not self._stop.is_set():
             now = datetime.now(timezone.utc)
             next_boundary_epoch = ((int(now.timestamp()) // seconds) + 1) * seconds
-            run_at = datetime.fromtimestamp(next_boundary_epoch, tz=timezone.utc) + timedelta(seconds=self.settings.auto_sync_offset_seconds)
+            run_at = datetime.fromtimestamp(next_boundary_epoch, tz=timezone.utc) + timedelta(
+                seconds=self.settings.auto_sync_offset_seconds
+            )
             wait_seconds = max(1, (run_at - now).total_seconds())
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=wait_seconds)
@@ -274,7 +415,7 @@ class IngestionService:
 
             try:
                 state = await self.repo.get_state(self.settings.default_symbol, interval)
-                if state and state.get("status") == "downloading":
+                if state and state.get("status") in {"queued", "downloading"}:
                     continue
                 await self.sync_latest(None, self.settings.default_symbol, interval)
             except Exception as exc:

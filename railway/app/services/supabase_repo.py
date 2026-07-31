@@ -123,6 +123,36 @@ class SupabaseRepository:
         rows = await self.select("ingestion_jobs", f"select=*&id=eq.{quote(job_id, safe='')}&limit=1")
         return rows[0] if rows else None
 
+    async def get_latest_job(
+        self,
+        symbol: str,
+        interval: str,
+        job_type: str | None = None,
+    ) -> dict[str, Any] | None:
+        filters = [
+            "select=*",
+            f"symbol=eq.{quote(symbol, safe='')}",
+            f"interval=eq.{quote(interval, safe='')}",
+        ]
+        if job_type:
+            filters.append(f"job_type=eq.{quote(job_type, safe='')}")
+        filters.extend(["order=requested_at.desc", "limit=1"])
+        rows = await self.select("ingestion_jobs", "&".join(filters))
+        return rows[0] if rows else None
+
+    async def cancel_job(self, job_id: str) -> dict[str, Any] | None:
+        rows = await self.update(
+            "ingestion_jobs",
+            f"id=eq.{quote(job_id, safe='')}&status=in.(queued,running)",
+            {
+                "status": "cancelled",
+                "message": "Cancellation requested",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+            },
+            return_representation=True,
+        )
+        return rows[0] if rows else None
+
     async def claim_next_job(self, worker_id: str) -> dict[str, Any] | None:
         result = await self.rpc("claim_next_ingestion_job", {"p_worker_id": worker_id})
         if isinstance(result, list) and result:

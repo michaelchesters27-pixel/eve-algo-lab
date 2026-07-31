@@ -1,205 +1,146 @@
-# EVE Algo Lab — deployment guide
+# EVE Algo Lab v1.1 — deployment and upgrade guide
 
-Follow these steps in order. Do not add any secret key directly to the GitHub files.
+## Your current deployed project
 
----
+You already have:
 
-## Part 1 — Create the Supabase database
+- GitHub repository: `eve-algo-lab`
+- Railway public service
+- Netlify dashboard
+- Supabase database
 
-1. Open your Supabase project.
-2. Press **SQL Editor** in the left menu.
-3. Press **New query**.
-4. Open `supabase/schema.sql` from this project.
-5. Copy the entire file and paste it into the Supabase query.
-6. Press **Run**.
-7. Wait for **Success. No rows returned**.
-
-You need these two values later:
-
-- **Project URL**: Supabase → Project Settings → API
-- **service_role key**: Supabase → Project Settings → API → Legacy API keys or service role
-
-The service-role key is private. It goes only into Railway.
+For this upgrade, replace the repository contents with this complete version. Railway and Netlify will redeploy automatically from GitHub.
 
 ---
 
-## Part 2 — Put the project in GitHub
+## Step 1 — Replace GitHub contents
 
-Create a new GitHub repository called:
+1. Unzip `EVE-ALGO-LAB-v1.1-GITHUB-READY.zip`.
+2. Open the inner `eve-algo-lab` folder.
+3. Replace the contents of the GitHub repository with everything inside that folder.
+4. Commit the update to `main`.
 
-```text
-eve-algo-lab
-```
+Do not upload the ZIP itself into the repository.
 
-Upload the **contents** of this folder to that repository. The repository homepage should show `frontend`, `railway`, `supabase`, `README.md` and `netlify.toml`.
-
-Do not upload a second ZIP inside the repository.
+Railway and Netlify should each start a new deployment automatically.
 
 ---
 
-## Part 3 — Deploy the Railway service
+## Step 2 — Check Railway variables
 
-1. Open Railway.
-2. Press **New Project**.
-3. Choose **Deploy from GitHub repo**.
-4. Select `eve-algo-lab`.
-5. Open the new Railway service.
-6. Go to **Settings**.
-7. Set **Root Directory** to:
+The Railway service requires:
 
 ```text
-/railway
-```
-
-8. Railway should detect the Dockerfile and redeploy.
-9. Open **Variables** and add the following.
-
-### Required Railway variables
-
-```text
-TWELVE_DATA_API_KEY=your real Twelve Data key
-SUPABASE_URL=your Supabase project URL
-SUPABASE_SERVICE_ROLE_KEY=your private Supabase service_role key
-ADMIN_TOKEN=create one long private random password
+TWELVE_DATA_API_KEY=your private Twelve Data key
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your private service_role key
+ADMIN_TOKEN=your private token of at least 12 characters
 CORS_ORIGINS=*
 DEFAULT_SYMBOL=XAU/USD
 DEFAULT_INTERVAL=5min
-TWELVE_DATA_REQUEST_DELAY_SECONDS=8
+TWELVE_DATA_REQUEST_DELAY_SECONDS=2
 TWELVE_DATA_BATCH_SIZE=5000
+EXACT_COUNT_EVERY_BATCHES=5
 AUTO_SYNC_ENABLED=true
 AUTO_SYNC_OFFSET_SECONDS=22
 LOG_LEVEL=INFO
 ```
 
-Use the same `ADMIN_TOKEN` later in Netlify.
-
-10. Open Railway **Settings → Networking**.
-11. Press **Generate Domain**.
-12. Copy the full Railway URL. It will look similar to:
+Railway root directory remains:
 
 ```text
-https://eve-algo-lab-production.up.railway.app
+/railway
 ```
 
-13. Open that URL. You should see:
+The public domain remains the URL already generated in Railway.
+
+After deployment, opening the Railway URL should return a response containing:
 
 ```json
-{"name":"EVE Algo Lab","status":"online","version":"1.0.0"}
+{"name":"EVE Algo Lab","status":"online","version":"1.1.0"}
 ```
-
-Do not start the historical download until the Netlify dashboard is deployed.
 
 ---
 
-## Part 4 — Deploy the Netlify dashboard
+## Step 3 — Add the missing Netlify admin token
 
-1. Open Netlify.
-2. Press **Add new site**.
-3. Choose **Import an existing project**.
-4. Select GitHub and choose `eve-algo-lab`.
-5. Netlify reads the root `netlify.toml` automatically.
-6. Before deploying, open **Environment variables** and add:
+Your Netlify site already has:
 
 ```text
-RAILWAY_API_URL=the Railway URL copied above
-EVE_ADMIN_TOKEN=the exact same ADMIN_TOKEN used on Railway
+RAILWAY_API_URL=https://eve-algo-lab-production.up.railway.app
 ```
 
-7. Press **Deploy**.
-8. Open the Netlify site.
-9. The left status should change to **Online**.
+It must also have:
 
-The Netlify function securely adds the admin token. It is never stored in browser JavaScript.
+```text
+EVE_ADMIN_TOKEN=the exact same value used for Railway ADMIN_TOKEN
+```
+
+Path in Netlify:
+
+**Site configuration → Environment variables → Add variable**
+
+After adding it, trigger a new Netlify deployment. The browser never receives this token; the Netlify server function uses it when sending control commands to Railway.
 
 ---
 
-## Part 5 — Start the historical download
+## Step 4 — Supabase
+
+If the original `supabase/schema.sql` was already run successfully, no new table is required for v1.1.
+
+The full `supabase/schema.sql` remains idempotent and may be run again safely. An optional repair migration is included at:
+
+```text
+supabase/migrations/20260731112000_market_memory_v1_1_repair.sql
+```
+
+That migration resets the misleading v1 state where a latest-candle sync showed 100% before the historical download had started. The v1.1 backend also repairs this automatically, so running the repair migration is optional.
+
+---
+
+## Step 5 — Start Market Memory
+
+After both deployments show success:
 
 1. Open the Netlify dashboard.
-2. Check the top left shows **Railway service — Online**.
-3. Press **Start historical download**.
-4. The job changes from `QUEUED` to `DOWNLOADING`.
-5. Leave it running. You may close your browser or turn off your laptop. Railway continues the job.
-6. The dashboard automatically refreshes every 10 seconds.
+2. Confirm **Railway service — Online**.
+3. The historical progress should show **0%**, even though recent live candles may already be stored.
+4. Press **Start historical download**.
 
-The downloader:
+The job will:
 
-- asks Twelve Data for the earliest XAU/USD M5 timestamp;
-- requests history in backward batches;
-- stores it in Supabase;
-- saves the next cursor after every batch;
-- resumes from that cursor after a restart;
-- merges duplicate candles safely;
-- runs a gap scan when completed.
+- ask Twelve Data for the earliest available XAU/USD M5 timestamp;
+- download backwards in batches of up to 5,000 candles;
+- upsert candles into Supabase without duplicates;
+- save its cursor after every batch;
+- update exact database counts every five batches;
+- continue if the browser or laptop is closed;
+- resume after a Railway restart;
+- run a chronological gap scan after completion.
 
-The default eight-second request delay is deliberately cautious. It can be changed in Railway later to match the API plan.
-
----
-
-## Dashboard buttons
-
-### Start historical download
-Downloads the full available XAU/USD M5 history. It cannot start a duplicate job while one is active.
-
-### Sync latest candles
-Requests the newest 50 candles and safely merges them into Supabase.
-
-### Scan gaps
-Checks chronological candle spacing. Long market closures are marked separately. Short gaps are placed in the review count.
+The button changes to **Pause download** while the job is active. Pausing does not delete any candles. Press **Resume historical download** later to continue from the saved cursor.
 
 ---
 
-## Automatic operation
+## What v1.1 fixes
 
-After the historical database is complete, Railway synchronises recent candles automatically after each M5 boundary plus 22 seconds.
+The first release allowed automatic latest-candle sync to set the historical state to `complete`, which produced the misleading screen showing 100% with almost no history stored. v1.1 separates those concepts:
 
-The REST candle is used as the verified record. A live Twelve Data WebSocket layer is planned for the later real-time prediction and paper-trading release.
-
----
-
-## How to check the database
-
-In Supabase:
-
-1. Press **Table Editor**.
-2. Open `market_candles`.
-3. Filter:
-   - `symbol` equals `XAU/USD`
-   - `interval` equals `5min`
-4. Sort `candle_time` descending.
-
-Other useful tables:
-
-- `ingestion_state` — current download cursor and progress
-- `ingestion_jobs` — every manual job
-- `data_gaps` — missing-period review
-- `system_events` — dashboard activity
-- `backtest_runs` — future backtest summaries
-- `backtest_trades` — future position-by-position results
+- live sync keeps recent M5 candles current;
+- historical completion is only true when the oldest stored candle reaches the verified earliest Twelve Data boundary.
 
 ---
 
-## What not to do
+## Expected duration
 
-- Do not paste keys into source files.
+The exact duration depends on Twelve Data response time and Supabase insert speed. With 5,000-candle batches and the default two-second safety delay, the M5 download should normally require roughly 110–120 Twelve Data requests for an estimated 500,000–600,000 candles.
+
+---
+
+## Do not do these
+
 - Do not expose the Supabase service-role key in Netlify.
-- Do not press force restart unless you intentionally want the cursor reset.
+- Do not put the Twelve Data key in GitHub.
+- Do not set a different Netlify `EVE_ADMIN_TOKEN` from Railway `ADMIN_TOKEN`.
 - Do not delete `ingestion_state` during a download.
 - Do not connect this foundation directly to a live MT5 account.
-
----
-
-## Next development stage
-
-Provide the complete current momentum-basket bot file/ZIP. It will be imported as the first strategy adapter and tested against this database. The result report will include:
-
-- gross profit and gross loss;
-- net profit;
-- profit factor;
-- balance and equity drawdown;
-- position and basket win rates;
-- average win and loss;
-- expectancy;
-- recovery factor;
-- session and hour breakdown;
-- complete trade and basket history.

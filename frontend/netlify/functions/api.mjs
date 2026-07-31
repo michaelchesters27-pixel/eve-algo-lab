@@ -2,11 +2,12 @@ const ALLOWED = [
   /^health$/,
   /^status$/,
   /^jobs\/[0-9a-f-]+$/i,
+  /^jobs\/[0-9a-f-]+\/cancel$/i,
   /^jobs\/(backfill|sync|gap-scan)$/,
   /^backtests\/metrics-preview$/,
 ];
 
-export default async (request, context) => {
+export default async (request) => {
   if (request.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
@@ -28,6 +29,13 @@ export default async (request, context) => {
     );
   }
 
+  if (request.method !== "GET" && !adminToken) {
+    return Response.json(
+      { ok: false, message: "Netlify variable EVE_ADMIN_TOKEN is missing. Set it to the same value as Railway ADMIN_TOKEN." },
+      { status: 503 },
+    );
+  }
+
   const url = new URL(request.url);
   let path = url.pathname
     .replace(/^\/\.netlify\/functions\/api\/?/, "")
@@ -40,9 +48,7 @@ export default async (request, context) => {
   }
 
   const target = new URL(`${railwayUrl}/api/${path}`);
-  if (path === "health") {
-    target.pathname = "/health";
-  }
+  if (path === "health") target.pathname = "/health";
   url.searchParams.forEach((value, key) => target.searchParams.set(key, value));
 
   const headers = { Accept: "application/json" };

@@ -98,9 +98,13 @@ class TwelveDataClient:
         for attempt in range(self.max_retries):
             try:
                 response = await self.client.get(f"{self.base_url}/{endpoint.lstrip('/')}", params=request_params)
-                payload = response.json()
+                try:
+                    payload = response.json()
+                except ValueError as exc:
+                    raise TwelveDataError(f"Twelve Data returned non-JSON HTTP {response.status_code}") from exc
 
-                if response.status_code == 429 or payload.get("code") == 429:
+                provider_code = payload.get("code") if isinstance(payload, dict) else None
+                if response.status_code == 429 or provider_code == 429:
                     delay = min(90, 5 * (2**attempt))
                     await asyncio.sleep(delay)
                     continue
@@ -108,14 +112,18 @@ class TwelveDataClient:
                 if response.status_code >= 500:
                     raise TwelveDataError(f"Twelve Data server error {response.status_code}")
 
-                if response.status_code >= 400 or payload.get("status") == "error":
-                    raise TwelveDataError(payload.get("message") or f"Twelve Data HTTP {response.status_code}")
+                if response.status_code >= 400 or (isinstance(payload, dict) and payload.get("status") == "error"):
+                    message = payload.get("message") if isinstance(payload, dict) else None
+                    # Authentication, symbol and parameter errors will not improve by retrying.
+                    raise ValueError(message or f"Twelve Data HTTP {response.status_code}")
 
+                if not isinstance(payload, dict):
+                    raise TwelveDataError("Twelve Data returned an unexpected response shape")
                 return payload
-            except (httpx.HTTPError, ValueError, TwelveDataError) as exc:
+            except ValueError as exc:
+                raise TwelveDataError(str(exc)) from exc
+            except (httpx.HTTPError, TwelveDataError) as exc:
                 last_error = exc
-                if isinstance(exc, TwelveDataError) and "Invalid" in str(exc):
-                    raise
                 if attempt + 1 >= self.max_retries:
                     break
                 await asyncio.sleep(min(60, 2**attempt))
@@ -148,12 +156,14 @@ class TwelveDataClient:
             "timezone": "UTC",
         }
         if end_date is not None:
-            params["end_date"] = end_date.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+            params["end_date"] = end_date.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
         payload = await self._get("time_series", params)
         values = payload.get("values") or []
-        candles: list[Candle] = []
+        if not isinstance(values, list):
+            raise TwelveDataError("Twelve Data time_series response did not contain a values list")
 
+        candles: list[Candle] = []
         for item in values:
             volume_raw = item.get("volume")
             volume = None if volume_raw in (None, "", "null") else _decimal(volume_raw, "volume")
@@ -165,8 +175,10 @@ class TwelveDataClient:
                 close=_decimal(item["close"], "close"),
                 volume=volume,
             )
-            if candle.high < max(candle.open, candle.close, candle.low) or candle.low > min(candle.open, candle.close, candle.high):
-                raise TwelveDataError(f"Invalid OHLC relationship at {candle.timestamp.isoformat()}")
+            if candle.high < max(candle.open, candle.close, candle.low):
+                raise TwelveDataError(f"Invalid high relationship at {candle.timestamp.isoformat()}")
+            if candle.low > min(candle.open, candle.close, candle.high):
+                raise TwelveDataError(f"Invalid low relationship at {candle.timestamp.isoformat()}")
             candles.append(candle)
 
         candles.sort(key=lambda item: item.timestamp, reverse=True)
