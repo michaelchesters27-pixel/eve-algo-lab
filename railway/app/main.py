@@ -18,6 +18,7 @@ from app.models.schemas import (
     LearningBuildRequest,
     MetricsPreviewRequest,
 )
+from app.services.autonomy import AutonomousLearningService
 from app.services.backtests import BacktestService
 from app.services.ingestion import IngestionService, historical_backfill_complete
 from app.services.learning import LearningService, SNAPSHOT_INTERVAL
@@ -25,7 +26,7 @@ from app.services.supabase_repo import SupabaseRepository
 from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
 from app.settings import Settings, get_settings
 
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.6.0"
 
 settings = get_settings()
 logging.basicConfig(
@@ -44,6 +45,7 @@ twelve = TwelveDataClient(
 ingestion = IngestionService(settings, repo, twelve)
 backtests = BacktestService(repo)
 learning = LearningService(repo)
+autonomy = AutonomousLearningService(settings, repo)
 background_tasks: list[asyncio.Task[Any]] = []
 
 
@@ -53,7 +55,7 @@ async def lifespan(_: FastAPI):
     await repo.log_event("info", "railway", "EVE Algo Lab Railway service started", {"version": APP_VERSION})
     background_tasks.append(asyncio.create_task(ingestion.worker_loop(), name="ingestion-worker"))
     background_tasks.append(asyncio.create_task(learning.worker_loop(), name="learning-worker"))
-    background_tasks.append(asyncio.create_task(learning.auto_update_loop(), name="automatic-learning-update"))
+    background_tasks.append(asyncio.create_task(autonomy.loop(), name="autonomous-learning-engine"))
     for sync_index, interval in enumerate(settings.auto_sync_interval_list):
         if interval not in INTERVAL_SECONDS:
             logger.warning("Skipping unsupported AUTO_SYNC_INTERVALS value: %s", interval)
@@ -64,6 +66,7 @@ async def lifespan(_: FastAPI):
     yield
     await ingestion.stop()
     await learning.stop()
+    await autonomy.stop()
     for task in background_tasks:
         task.cancel()
     for task in list(backtests.tasks.values()):
@@ -76,7 +79,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="EVE Algo Lab API",
     version=APP_VERSION,
-    description="Permanent multi-timeframe XAU/USD market memory, a resumable learning foundation and high-resolution research backtesting.",
+    description="Permanent multi-timeframe XAU/USD memory with autonomous learning, research, challenger training and high-resolution backtesting.",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -268,6 +271,15 @@ async def cancel_learning_run(run_id: str) -> ApiEnvelope:
     if not run:
         raise HTTPException(status_code=409, detail="Learning build is no longer queued or running")
     return ApiEnvelope(data=run, message="Learning build cancellation requested")
+
+
+@app.post("/api/autonomy/run", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])
+async def run_autonomous_cycle() -> ApiEnvelope:
+    await autonomy.request_cycle()
+    return ApiEnvelope(
+        data={"status": "requested"},
+        message="Autonomous learning cycle requested. Railway will run it in the background.",
+    )
 
 
 @app.post("/api/backtests/fixed-ladder-v2-61", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])

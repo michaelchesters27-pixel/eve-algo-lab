@@ -1,55 +1,54 @@
-# EVE Algo Lab v1.5 — deployment guide
+# EVE Algo Lab v1.6 — deployment guide
 
 Use the existing **eve-algo-lab** GitHub repository. Do not upload this package to the separate trading-bot repository.
 
-## Step 1 — run the one Supabase update
+## Step 1 — run the Supabase update
 
 1. Open the existing EVE Algo Lab project in Supabase.
-2. Open **SQL Editor**.
-3. Click **New query**.
-4. Open `SUPABASE_UPDATE_v1.5.sql` from this package.
-5. Copy the entire file and paste it into Supabase.
-6. Click **Run**.
-7. The expected result is **Success. No rows returned**.
+2. Open **SQL Editor** and click **New query**.
+3. Open `SUPABASE_UPDATE_v1.6.sql` from this package.
+4. Copy the entire file into Supabase and click **Run**.
+5. The expected result is **Success. No rows returned**.
 
-This preserves every candle, ingestion job and backtest result. It adds the learning runs, learning state, research snapshots, calendar statistics, prediction ledger, questions, discoveries and model registry.
+The update preserves all existing data. It adds autonomous status fields, model artifacts, cycle audit records, research reports and prediction deduplication.
 
 ## Step 2 — replace the GitHub repository contents
 
-1. Unzip `EVE-ALGO-LAB-v1.5-GITHUB-READY.zip`.
+1. Unzip `EVE-ALGO-LAB-v1.6-GITHUB-READY.zip`.
 2. Open the inner `eve-algo-lab` folder.
 3. Replace the contents of the existing **eve-algo-lab** GitHub repository with everything inside that folder.
 4. Commit the replacement to `main`.
 5. Wait for Railway and Netlify to redeploy automatically.
 
-## Step 3 — leave the variables alone
+## Step 3 — do not change variables
 
-**No new Railway or Netlify variables are required for v1.5.**
+**No new Railway or Netlify variables are required.**
 
-Keep every current variable exactly as it is. Do not add or change anything for this build.
+The v1.6 defaults are built into the code:
 
-## Step 4 — start the first learning build
+- autonomous check every 15 minutes;
+- research cycle every 6 hours;
+- challenger training check every 24 hours;
+- autonomous model promotion enabled only when locked thresholds pass.
 
-After both deployments are complete:
+Leave the current variables exactly as they are.
 
-1. Open EVE Algo Lab.
-2. Go to **Learning centre**.
-3. Press **Build learning foundation** once.
-4. Leave it running. The browser can be closed because Railway performs the work.
-5. Do not repeatedly press the button.
+## Step 4 — confirm autonomy
 
-The build is resumable. It creates 15-minute research anchors from M5 history rather than duplicating every raw candle, which keeps the research database compact.
+Because the v1.5 Learning Foundation is already complete, do not press **Build learning foundation** again.
 
-## Step 5 — confirm completion
+After Railway has been online for about two minutes:
 
-The Learning centre should show:
+1. Open **Learning centre**.
+2. Confirm **AUTO LEARNING — ACTIVE**.
+3. Confirm **LAST CYCLE** and **NEXT CYCLE** are populated.
+4. The first research and challenger cycle can take time because it reads the full learning history.
 
-- Status **READY**.
-- Progress **100%**.
-- Research snapshots greater than zero.
-- Outcomes labelled greater than snapshots because each snapshot can have five horizons.
-- Calendar intelligence populated.
-- Research questions populated.
-- At least one approved foundation model.
+The optional **Run diagnostic cycle now** button only wakes the background worker immediately. It is not part of the normal routine.
 
-After the first successful build, automatic incremental updates are enabled. EVE checks for new experience every six hours and queues an update only when newer M5 candles exist.
+## Expected normal behaviour
+
+- Market open: new candles are synced and learned automatically.
+- Market closed: no fake candles are created; due research and model checks can continue.
+- Laptop off: Railway and Supabase continue operating.
+- Railway restart: existing learning and candle data remain preserved.

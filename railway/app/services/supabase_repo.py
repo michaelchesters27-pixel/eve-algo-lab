@@ -501,6 +501,143 @@ class SupabaseRepository:
             discovery_count=0,
         )
 
+    async def fetch_learning_snapshots_page(
+        self,
+        symbol: str,
+        snapshot_interval: str,
+        after: str | None = None,
+        complete_only: bool = False,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(1000, int(limit)))
+        filters = [
+            "select=symbol,snapshot_interval,candle_time,weekday,month,quarter,hour_utc,session,direction,compression_ratio,trend_12_atr,trend_48_atr,streak,regime,alignment_score,outcomes,outcome_complete",
+            f"symbol=eq.{quote(symbol, safe='')}",
+            f"snapshot_interval=eq.{quote(snapshot_interval, safe='')}",
+        ]
+        if after:
+            filters.append(f"candle_time=gt.{quote(str(after), safe=':-TZ.')}")
+        if complete_only:
+            filters.append("outcome_complete=eq.true")
+        filters.extend(["order=candle_time.asc", f"limit={safe_limit}"])
+        return await self.select("market_learning_snapshots", "&".join(filters))
+
+    async def get_latest_learning_snapshot(self, symbol: str, snapshot_interval: str) -> dict[str, Any] | None:
+        rows = await self.select(
+            "market_learning_snapshots",
+            "select=*&symbol=eq.{}&snapshot_interval=eq.{}&order=candle_time.desc&limit=1".format(
+                quote(symbol, safe=""), quote(snapshot_interval, safe="")
+            ),
+        )
+        return rows[0] if rows else None
+
+    async def get_learning_snapshot(self, symbol: str, snapshot_interval: str, candle_time: str) -> dict[str, Any] | None:
+        rows = await self.select(
+            "market_learning_snapshots",
+            "select=*&symbol=eq.{}&snapshot_interval=eq.{}&candle_time=eq.{}&limit=1".format(
+                quote(symbol, safe=""),
+                quote(snapshot_interval, safe=""),
+                quote(str(candle_time), safe=":-TZ."),
+            ),
+        )
+        return rows[0] if rows else None
+
+    async def list_research_questions(self, symbol: str, limit: int = 100) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(500, int(limit)))
+        return await self.select(
+            "research_questions",
+            f"select=*&symbol=eq.{quote(symbol, safe='')}&status=neq.archived&order=priority.desc,generated_at.asc&limit={safe_limit}",
+        )
+
+    async def update_research_question(self, question_id: str, **changes: Any) -> None:
+        await self.update("research_questions", f"id=eq.{quote(question_id, safe='')}", changes)
+
+    async def upsert_model(self, payload: dict[str, Any]) -> None:
+        await self.upsert("model_registry", payload, "model_key")
+
+    async def get_model(self, model_key: str) -> dict[str, Any] | None:
+        rows = await self.select(
+            "model_registry",
+            f"select=*&model_key=eq.{quote(model_key, safe='')}&limit=1",
+        )
+        return rows[0] if rows else None
+
+    async def promote_model(
+        self,
+        symbol: str,
+        snapshot_interval: str,
+        new_model_key: str,
+        previous_model_key: str | None,
+    ) -> None:
+        if previous_model_key and previous_model_key != new_model_key:
+            await self.update(
+                "model_registry",
+                f"model_key=eq.{quote(previous_model_key, safe='')}",
+                {"role": "retired", "status": "retired"},
+            )
+        await self.update(
+            "model_registry",
+            f"model_key=eq.{quote(new_model_key, safe='')}",
+            {
+                "role": "approved",
+                "status": "ready",
+                "promoted_at": datetime.now(timezone.utc).isoformat(),
+            },
+        )
+        await self.upsert_learning_state(
+            symbol,
+            snapshot_interval,
+            approved_model_key=new_model_key,
+            challenger_model_key=None,
+            model_promotions_count=int((await self.get_learning_state(symbol, snapshot_interval) or {}).get("model_promotions_count") or 0) + 1,
+        )
+
+    async def upsert_prediction(self, payload: dict[str, Any]) -> bool:
+        existing = await self.select(
+            "prediction_ledger",
+            "select=id&symbol=eq.{}&model_key=eq.{}&snapshot_time=eq.{}&horizon_minutes=eq.{}&limit=1".format(
+                quote(str(payload["symbol"]), safe=""),
+                quote(str(payload["model_key"]), safe=""),
+                quote(str(payload["snapshot_time"]), safe=":-TZ."),
+                int(payload["horizon_minutes"]),
+            ),
+        )
+        if existing:
+            return False
+        await self.insert("prediction_ledger", payload)
+        return True
+
+    async def list_pending_predictions(self, symbol: str, limit: int = 300) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(1000, int(limit)))
+        return await self.select(
+            "prediction_ledger",
+            f"select=*&symbol=eq.{quote(symbol, safe='')}&status=eq.pending&order=snapshot_time.asc&limit={safe_limit}",
+        )
+
+    async def grade_prediction(self, prediction_id: str, **changes: Any) -> None:
+        changes.update({
+            "status": "graded",
+            "graded_at": datetime.now(timezone.utc).isoformat(),
+        })
+        await self.update("prediction_ledger", f"id=eq.{quote(prediction_id, safe='')}", changes)
+
+    async def create_autonomous_run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        rows = await self.insert("autonomous_runs", payload)
+        return rows[0]
+
+    async def update_autonomous_run(self, run_id: str, **changes: Any) -> None:
+        changes["heartbeat_at"] = datetime.now(timezone.utc).isoformat()
+        await self.update("autonomous_runs", f"id=eq.{quote(run_id, safe='')}", changes)
+
+    async def upsert_research_report(self, payload: dict[str, Any]) -> None:
+        await self.upsert("autonomous_research_reports", payload, "symbol,report_date")
+
+    async def refresh_autonomous_learning_state(self, symbol: str, snapshot_interval: str) -> None:
+        await self.rpc(
+            "refresh_autonomous_learning_state",
+            {"p_symbol": symbol, "p_snapshot_interval": snapshot_interval},
+        )
+
     async def fail_interrupted_backtests(self) -> None:
         await self.update(
             "backtest_runs",

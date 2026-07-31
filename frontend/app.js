@@ -396,13 +396,18 @@ function renderResearchQuestions(questions = []) {
     host.innerHTML = '<div class="empty-state">Questions will appear after the first learning build.</div>';
     return;
   }
-  host.innerHTML = questions.map((question) => `
-    <div class="research-item">
-      <div class="research-item-head"><small>${escapeHtml(String(question.category || "research").toUpperCase())}</small><span class="score">PRIORITY ${formatNumber(question.priority)}</span></div>
-      <strong>${escapeHtml(question.question || "Untitled research question")}</strong>
-      <p>${escapeHtml(question.rationale || "Waiting for formal testing.")}</p>
-    </div>
-  `).join("");
+  host.innerHTML = questions.map((question) => {
+    const status = String(question.status || "queued").toUpperCase();
+    const evidence = question.sample_count == null
+      ? `PRIORITY ${formatNumber(question.priority)}`
+      : `${formatNumber(question.sample_count)} TEST · ${question.confidence_score == null ? "UNSCORED" : `${Number(question.confidence_score).toFixed(0)}%`}`;
+    return `
+      <div class="research-item">
+        <div class="research-item-head"><small>${escapeHtml(status)} · ${escapeHtml(String(question.category || "research").toUpperCase())}</small><span class="score">${escapeHtml(evidence)}</span></div>
+        <strong>${escapeHtml(question.question || "Untitled research question")}</strong>
+        <p>${escapeHtml(question.rationale || "Waiting for formal testing.")}</p>
+      </div>`;
+  }).join("");
 }
 
 function renderDiscoveries(discoveries = []) {
@@ -413,7 +418,7 @@ function renderDiscoveries(discoveries = []) {
     return;
   }
   host.innerHTML = discoveries.map((item) => `
-    <div class="research-item">
+    <div class="research-item ${escapeHtml(String(item.status || "exploratory"))}">
       <div class="research-item-head"><small>${escapeHtml(String(item.status || "exploratory").toUpperCase())}</small><span class="score">${item.confidence_score == null ? "UNSCORED" : `${Number(item.confidence_score).toFixed(0)}% CONFIDENCE`}</span></div>
       <strong>${escapeHtml(item.title || "Untitled observation")}</strong>
       <p>${escapeHtml(item.summary || "Awaiting validation.")}</p>
@@ -432,43 +437,83 @@ function setCalendarInsight(nameId, metaId, row, metric, suffix) {
   $(metaId).textContent = `${value.toFixed(metric === "directional_day_rate" ? 1 : 2)}${suffix} · ${formatNumber(row.sample_count)} days`;
 }
 
+function renderResearchReport(reports = []) {
+  const report = reports[0] || null;
+  if (!report) {
+    $("#researchReportTitle").textContent = "Waiting for first cycle";
+    $("#researchReportStatus").textContent = "WAITING";
+    $("#researchReportStatus").className = "status-pill";
+    $("#researchReportSummary").textContent = "EVE will keep researching when the market is closed. No button press is required.";
+    $("#reportQuestionsTested").textContent = "0";
+    $("#reportQuestionsRejected").textContent = "0";
+    $("#reportPromising").textContent = "0";
+    $("#reportValidated").textContent = "0";
+    return;
+  }
+  $("#researchReportTitle").textContent = `Research report · ${formatDate(report.report_date)}`;
+  $("#researchReportStatus").textContent = "COMPLETE";
+  $("#researchReportStatus").className = "status-pill complete";
+  $("#researchReportSummary").textContent = report.summary || "Autonomous research cycle complete.";
+  $("#reportQuestionsTested").textContent = formatNumber(report.questions_tested);
+  $("#reportQuestionsRejected").textContent = formatNumber(report.questions_rejected);
+  $("#reportPromising").textContent = formatNumber(report.discoveries_promising);
+  $("#reportValidated").textContent = formatNumber(report.discoveries_validated);
+}
+
 function renderLearning(data = {}) {
   learningDashboard = data;
   const state = data.state || {};
   const run = data.latest_run || {};
-  const active = ["queued", "running"].includes(run.status);
-  activeLearningRunId = active ? run.id : null;
-  const status = active ? run.status : (state.status || "not_started");
-  const progress = Number(active ? run.progress_percent || 0 : (state.initial_build_complete ? 100 : 0));
-  const stage = active ? run.stage || "queued" : (state.initial_build_complete ? "ready" : "not built");
+  const autonomousRun = data.latest_autonomous_run || {};
+  const activeBuild = ["queued", "running"].includes(run.status);
+  activeLearningRunId = activeBuild ? run.id : null;
+  const autonomousEnabled = state.autonomous_learning_enabled !== false && state.initial_build_complete;
+  const status = activeBuild ? run.status : (autonomousEnabled ? (state.autonomous_status || "active") : (state.status || "not_started"));
+  const progress = Number(activeBuild ? run.progress_percent || 0 : (state.initial_build_complete ? 100 : 0));
+  const stage = activeBuild ? run.stage || "queued" : (autonomousEnabled ? "autonomous learning" : (state.initial_build_complete ? "ready" : "not built"));
 
   $("#learningTitle").textContent = stage.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
   $("#learningStatus").textContent = status.replaceAll("_", " ").toUpperCase();
   $("#learningStatus").className = `status-pill ${status}`;
   $("#learningProgress").textContent = `${Math.min(100, progress).toFixed(progress > 0 && progress < 10 ? 1 : 0)}%`;
   $("#learningProgressBar").style.width = `${Math.min(100, progress)}%`;
-  $("#learningMessage").textContent = run.error || run.message || state.last_error || (state.initial_build_complete
-    ? "Learning foundation ready. EVE will add new completed candles automatically."
-    : "Build the foundation once. Railway will then keep it updated as new candles arrive.");
+  $("#learningMessage").textContent = run.error || (activeBuild ? run.message : null) || state.last_auto_error || state.last_auto_message || state.last_error || (autonomousEnabled
+    ? "Autonomous learning is active on Railway. No button press is required."
+    : "Build the foundation once. Railway will then take over automatically.");
 
   $("#learningSnapshots").textContent = formatNumber(state.snapshots_count);
   $("#learningOutcomes").textContent = formatNumber(state.outcome_labels_count);
-  $("#learningQuestions").textContent = formatNumber(state.question_count);
-  $("#learningDiscoveries").textContent = formatNumber(state.discovery_count);
-  $("#learningLatest").textContent = formatDate(state.last_snapshot_time);
-  $("#learningAutoUpdate").textContent = state.initial_build_complete && state.auto_update_enabled !== false ? "Enabled" : "After first build";
+  $("#learningPendingOutcomes").textContent = formatNumber(state.pending_outcomes_count);
+  $("#learningPredictionsGraded").textContent = formatNumber(state.graded_prediction_count);
+  $("#learningQuestionsTested").textContent = formatNumber(state.questions_tested_total);
+  $("#learningValidatedDiscoveries").textContent = formatNumber(state.discoveries_validated_count);
+  $("#learningLatest").textContent = formatDate(state.last_snapshot_time, true);
+  $("#learningAutoUpdate").textContent = autonomousEnabled ? "ACTIVE" : "After first build";
+
+  $("#autonomyStatus").textContent = autonomousEnabled ? String(state.autonomous_status || "active").replaceAll("_", " ").toUpperCase() : "WAITING";
+  $("#autonomyLastCycle").textContent = formatDate(state.last_auto_cycle_at || autonomousRun.started_at, true);
+  $("#autonomyNextCycle").textContent = formatDate(state.next_auto_cycle_at, true);
+  $("#autonomyLastResearch").textContent = formatDate(state.last_research_cycle_at, true);
 
   const foundationReady = TIMEFRAMES.every((item) => historicalReady[item.interval]);
   const build = $("#buildLearning");
-  build.disabled = active || !foundationReady;
-  if (!foundationReady) build.textContent = "Finish data foundation first";
-  else if (active) build.textContent = "Learning build in progress…";
-  else if (state.initial_build_complete) build.textContent = "Update learning with new candles";
-  else build.textContent = "Build learning foundation";
+  if (state.initial_build_complete) {
+    build.hidden = true;
+  } else {
+    build.hidden = false;
+    build.disabled = activeBuild || !foundationReady;
+    if (!foundationReady) build.textContent = "Finish data foundation first";
+    else if (activeBuild) build.textContent = "Learning build in progress…";
+    else build.textContent = "Build initial learning foundation";
+  }
+
+  const runNow = $("#runAutonomyNow");
+  runNow.disabled = !autonomousEnabled || autonomousRun.status === "running";
+  runNow.textContent = autonomousRun.status === "running" ? "Autonomous cycle running…" : "Run diagnostic cycle now";
 
   const cancel = $("#cancelLearning");
-  cancel.hidden = !active;
-  cancel.disabled = !active;
+  cancel.hidden = !activeBuild;
+  cancel.disabled = !activeBuild;
 
   const calendarRows = data.calendar_statistics || [];
   const topRangeWeekday = topStatistic(calendarRows, "weekday", "average_range_pct");
@@ -487,12 +532,13 @@ function renderLearning(data = {}) {
   $("#approvedModelName").textContent = approved.name || "EVE Statistical Baseline";
   $("#approvedModelVersion").textContent = approved.version ? `Version ${approved.version}` : "Version 1.0";
   $("#approvedModelNotes").textContent = approved.notes || "The trusted baseline used to judge future models.";
-  $("#challengerModelName").textContent = challenger.name || "Not trained yet";
-  $("#challengerModelVersion").textContent = challenger.version ? `Version ${challenger.version}` : "Waiting for validated learning data";
-  $("#challengerModelNotes").textContent = challenger.notes || "A challenger will never replace the approved model unless it wins on unseen data.";
+  $("#challengerModelName").textContent = challenger.name || "Waiting for first autonomous training cycle";
+  $("#challengerModelVersion").textContent = challenger.version ? `Version ${challenger.version}` : "Railway trains challengers automatically";
+  $("#challengerModelNotes").textContent = challenger.promotion_reason || challenger.notes || "A challenger will never replace the approved model unless it wins on chronological unseen data.";
 
   renderResearchQuestions(data.questions || []);
   renderDiscoveries(data.discoveries || []);
+  renderResearchReport(data.research_reports || []);
 }
 
 async function refreshLearning(silent = false) {
@@ -520,6 +566,21 @@ async function buildLearning(button) {
     showToast(error.message, true);
   } finally {
     if (learningDashboard) renderLearning(learningDashboard);
+  }
+}
+
+async function runAutonomyNow(button) {
+  button.disabled = true;
+  button.textContent = "Requesting cycle…";
+  try {
+    const payload = await api("autonomy/run", { method: "POST", body: "{}" });
+    showToast(payload.message || "Autonomous cycle requested");
+    await refreshLearning(true);
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Run diagnostic cycle now";
   }
 }
 
@@ -723,6 +784,7 @@ $("#queueAllHistory").addEventListener("click", (event) => queueAllMissingHistor
 $("#syncAllFrames").addEventListener("click", (event) => queueBatchJobs("sync", event.currentTarget, "Syncing"));
 $("#scanAllFrames").addEventListener("click", (event) => queueBatchJobs("gap-scan", event.currentTarget, "Scanning"));
 $("#buildLearning").addEventListener("click", (event) => buildLearning(event.currentTarget));
+$("#runAutonomyNow").addEventListener("click", (event) => runAutonomyNow(event.currentTarget));
 $("#cancelLearning").addEventListener("click", (event) => cancelLearning(event.currentTarget));
 $("#refreshLearning").addEventListener("click", () => refreshLearning());
 $("#resolutionMode").addEventListener("change", updateBacktestAvailability);

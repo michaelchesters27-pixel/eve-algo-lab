@@ -38,6 +38,15 @@ class Settings(BaseSettings):
     max_http_retries: int = Field(default=6, ge=1, le=12)
     exact_count_every_batches: int = Field(default=5, ge=1, le=50)
 
+    # Autonomous learning defaults require no new Railway variables. They can be
+    # overridden later, but v1.6 is fully active with the existing deployment.
+    autonomous_learning_enabled: bool = True
+    autonomous_cycle_minutes: int = Field(default=15, ge=5, le=1440)
+    autonomous_research_hours: int = Field(default=6, ge=1, le=168)
+    autonomous_model_hours: int = Field(default=24, ge=6, le=720)
+    autonomous_startup_delay_seconds: int = Field(default=120, ge=15, le=1800)
+    autonomous_model_promotion_enabled: bool = True
+
     @field_validator("supabase_url", "twelve_data_base_url")
     @classmethod
     def strip_trailing_slash(cls, value: str) -> str:

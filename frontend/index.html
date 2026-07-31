@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#07110f">
-  <meta name="description" content="EVE Algo Lab — permanent market memory and a controlled learning foundation for XAU/USD research.">
+  <meta name="description" content="EVE Algo Lab — permanent market memory with autonomous learning, research and challenger-model training for XAU/USD.">
   <title>EVE Algo Lab</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -94,7 +94,7 @@
 
       <section id="memory" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">DATA FOUNDATION v1.5</p><h2>Six layers of market memory</h2></div>
+          <div><p class="eyebrow">DATA FOUNDATION v1.6</p><h2>Six layers of market memory</h2></div>
           <p>Railway downloads each timeframe in sequence and stores it permanently in Supabase. Each dataset has independent progress, resumable history, latest-candle sync and gap review.</p>
         </div>
         <div class="timeframe-grid" id="timeframeGrid" aria-live="polite"></div>
@@ -105,8 +105,8 @@
 
       <section id="learning" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">LEARNING FOUNDATION v1.5</p><h2>EVE starts turning memory into experience</h2></div>
-          <p>The first build converts historical candles into compact research snapshots, labels what happened next, studies the full daily calendar history and creates EVE’s first evidence-led questions.</p>
+          <div><p class="eyebrow">AUTONOMOUS LEARNING v1.6</p><h2>EVE now works without waiting for you</h2></div>
+          <p>Railway checks for new candles every 15 minutes, updates learning automatically, grades predictions, tests research questions and trains controlled challenger models even while your computer is off.</p>
         </div>
 
         <div class="learning-layout">
@@ -119,21 +119,30 @@
               <div class="progress-track"><span id="learningProgressBar"></span></div>
               <strong id="learningProgress">0%</strong>
             </div>
-            <p class="backtest-message" id="learningMessage">Build the foundation once. Railway will then keep it updated as new candles arrive.</p>
+            <p class="backtest-message" id="learningMessage">Checking the autonomous Railway worker.</p>
+            <div class="autonomy-strip">
+              <div><small>AUTONOMOUS STATUS</small><strong id="autonomyStatus">CHECKING</strong></div>
+              <div><small>LAST CYCLE</small><strong id="autonomyLastCycle">—</strong></div>
+              <div><small>NEXT CYCLE</small><strong id="autonomyNextCycle">—</strong></div>
+              <div><small>LAST RESEARCH</small><strong id="autonomyLastResearch">—</strong></div>
+            </div>
             <div class="result-grid learning-result-grid">
               <div><small>RESEARCH SNAPSHOTS</small><strong id="learningSnapshots">0</strong></div>
               <div><small>OUTCOMES LABELLED</small><strong id="learningOutcomes">0</strong></div>
-              <div><small>QUESTIONS CREATED</small><strong id="learningQuestions">0</strong></div>
-              <div><small>DISCOVERIES</small><strong id="learningDiscoveries">0</strong></div>
+              <div><small>PENDING OUTCOMES</small><strong id="learningPendingOutcomes">0</strong></div>
+              <div><small>PREDICTIONS GRADED</small><strong id="learningPredictionsGraded">0</strong></div>
+              <div><small>QUESTIONS TESTED</small><strong id="learningQuestionsTested">0</strong></div>
+              <div><small>VALIDATED FINDINGS</small><strong id="learningValidatedDiscoveries">0</strong></div>
               <div><small>LAST EXPERIENCE</small><strong id="learningLatest">None</strong></div>
-              <div><small>AUTO UPDATE</small><strong id="learningAutoUpdate">After first build</strong></div>
+              <div><small>AUTO LEARNING</small><strong id="learningAutoUpdate">Checking</strong></div>
             </div>
             <div class="learning-method">
-              <strong>What v1.5 builds</strong>
-              <span>M5 feature engine</span><span>completed M15 / H1 / H4 / D1 context</span><span>5–240 minute outcomes</span><span>weekday and month intelligence</span>
+              <strong>What runs automatically</strong>
+              <span>six-timeframe candle sync</span><span>new snapshot and outcome learning</span><span>prediction grading</span><span>question testing and discovery</span><span>challenger training</span>
             </div>
             <div class="actions">
-              <button class="button button-primary" id="buildLearning">Build learning foundation</button>
+              <button class="button button-primary" id="buildLearning">Build initial learning foundation</button>
+              <button class="button" id="runAutonomyNow">Run diagnostic cycle now</button>
               <button class="button" id="cancelLearning" hidden>Cancel learning build</button>
               <button class="button button-quiet" id="refreshLearning">Refresh</button>
             </div>
@@ -160,6 +169,20 @@
           </article>
         </div>
 
+        <article class="panel autonomy-report-panel">
+          <div class="panel-head">
+            <div><p class="label">LATEST AUTONOMOUS RESEARCH REPORT</p><h2 id="researchReportTitle">Waiting for first cycle</h2></div>
+            <span class="status-pill" id="researchReportStatus">WAITING</span>
+          </div>
+          <p class="backtest-message" id="researchReportSummary">EVE will keep researching when the market is closed. No button press is required.</p>
+          <div class="report-stat-grid">
+            <div><small>QUESTIONS TESTED</small><strong id="reportQuestionsTested">0</strong></div>
+            <div><small>REJECTED</small><strong id="reportQuestionsRejected">0</strong></div>
+            <div><small>PROMISING</small><strong id="reportPromising">0</strong></div>
+            <div><small>VALIDATED</small><strong id="reportValidated">0</strong></div>
+          </div>
+        </article>
+
         <article class="panel calendar-panel">
           <div class="panel-head">
             <div><p class="label">CALENDAR INTELLIGENCE</p><h2>What the daily history is beginning to show</h2></div>
@@ -171,7 +194,7 @@
             <div class="calendar-insight"><small>LARGEST-RANGE MONTH</small><strong id="topRangeMonth">—</strong><span id="topRangeMonthMeta">Build learning first</span></div>
             <div class="calendar-insight"><small>MOST DIRECTIONAL MONTH</small><strong id="topDirectionalMonth">—</strong><span id="topDirectionalMonthMeta">Build learning first</span></div>
           </div>
-          <p class="foundation-note compact-note">These are descriptive observations, not trade instructions. v1.6 will test stability by year and on unseen periods before any finding can be promoted.</p>
+          <p class="foundation-note compact-note">These are descriptive observations, not trade instructions. v1.6 tests stability by year and on locked unseen periods before a finding can be promoted.</p>
         </article>
 
         <div class="learning-lists">
@@ -188,7 +211,7 @@
 
       <section id="backtester" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">RESEARCH BACKTESTER v1.5</p><h2>EVE Fixed Ladder v2.61</h2></div>
+          <div><p class="eyebrow">RESEARCH BACKTESTER v1.6</p><h2>EVE Fixed Ladder v2.61</h2></div>
           <p>The existing M5 approximation and M1 high-resolution replay remain available while the broader research memory is expanded.</p>
         </div>
 
@@ -271,7 +294,7 @@
 
       <section id="pipeline" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">PROJECT ROADMAP</p><h2>Memory before intelligence</h2></div>
+          <div><p class="eyebrow">PROJECT ROADMAP</p><h2>Autonomy before conversation</h2></div>
           <p>The next research engines will use the same clean multi-timeframe memory rather than rebuilding historical context for every experiment.</p>
         </div>
         <div class="pipeline">
@@ -279,7 +302,8 @@
           <article class="pipeline-card current"><div class="stage">v1.4</div><span>02</span><h3>M15 + H1 Context</h3><p>Setup context and the active intraday regime become searchable evidence.</p></article>
           <article class="pipeline-card current"><div class="stage">v1.4</div><span>03</span><h3>H4 + D1 Context</h3><p>Major swings, daily behaviour, weekdays, months and seasonal regimes.</p></article>
           <article class="pipeline-card current"><div class="stage">v1.5</div><span>04</span><h3>Learning Foundation</h3><p>Feature snapshots, forward outcomes, calendar intelligence and EVE’s research-question queue.</p></article>
-          <article class="pipeline-card"><div class="stage">NEXT</div><span>05</span><h3>Ask EVE + Pattern Match</h3><p>Natural-language research, similar historical structures and evidence-led likely outcomes.</p></article>
+          <article class="pipeline-card current"><div class="stage">v1.6</div><span>05</span><h3>Autonomous Learning</h3><p>Background learning, question testing, prediction grading and controlled challenger training.</p></article>
+          <article class="pipeline-card"><div class="stage">NEXT</div><span>06</span><h3>Ask EVE + Pattern Match</h3><p>Natural-language research, similar historical structures and evidence-led likely outcomes.</p></article>
         </div>
       </section>
 
@@ -291,7 +315,7 @@
         <div class="activity-list" id="activityList"><div class="empty-state">Waiting for Supabase activity…</div></div>
       </section>
 
-      <footer><span>EVE ALGO LAB · v1.5</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
+      <footer><span>EVE ALGO LAB · v1.6</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
     </main>
   </div>
 

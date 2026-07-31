@@ -372,7 +372,7 @@ tr:last-child td { border-bottom: 0; }
 .research-item strong { display: block; margin-top: 9px; font-size: 12px; line-height: 1.5; }
 .research-item p { margin: 7px 0 0; color: var(--muted); font-size: 10px; line-height: 1.55; }
 .status-pill.ready, .status-pill.building { color: var(--accent); border-color: rgba(142,240,197,.28); background: rgba(142,240,197,.07); }
-.pipeline { grid-template-columns: repeat(5, minmax(0,1fr)); }
+.pipeline { grid-template-columns: repeat(6, minmax(0,1fr)); }
 
 @media (max-width: 1250px) {
   .learning-result-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
@@ -391,4 +391,53 @@ tr:last-child td { border-bottom: 0; }
 
 @media (max-width: 520px) {
   .learning-result-grid, .calendar-insight-grid { grid-template-columns: 1fr; }
+}
+
+/* v1.6 autonomous learning engine */
+.status-pill.active, .status-pill.researching, .status-pill.training {
+  color: var(--accent);
+  border-color: rgba(142,240,197,.28);
+  background: rgba(142,240,197,.07);
+}
+.autonomy-strip {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 8px;
+  margin-top: 18px;
+}
+.autonomy-strip div, .report-stat-grid div {
+  min-height: 76px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: rgba(255,255,255,.017);
+}
+.autonomy-strip small, .report-stat-grid small {
+  display: block;
+  color: var(--muted);
+  font: 500 7px/1.4 "DM Mono";
+  letter-spacing: .07em;
+}
+.autonomy-strip strong, .report-stat-grid strong {
+  display: block;
+  margin-top: 10px;
+  font: 500 11px/1.4 "DM Mono";
+}
+.autonomy-report-panel { margin-top: 18px; padding: 27px; }
+.report-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4,minmax(0,1fr));
+  gap: 9px;
+  margin-top: 18px;
+}
+.report-stat-grid strong { font-size: 17px; }
+.research-item.validated { border-color: rgba(142,240,197,.25); background: rgba(142,240,197,.035); }
+.research-item.promising { border-color: rgba(216,189,120,.2); }
+.research-item.rejected { opacity: .62; }
+
+@media (max-width: 1250px) {
+  .autonomy-strip, .report-stat-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (max-width: 560px) {
+  .autonomy-strip, .report-stat-grid { grid-template-columns: 1fr; }
 }

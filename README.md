@@ -2,39 +2,42 @@
 
 EVE Algo Lab is a private XAU/USD market-research platform deployed across Netlify, Railway and Supabase.
 
-Version 1.5 adds the first permanent **Learning Foundation** on top of the complete M1, M5, M15, H1, H4 and D1 market memory.
+Version 1.6 turns the completed Learning Foundation into a permanent **Autonomous Learning Engine**. After deployment, Railway maintains the learning database and runs research cycles without waiting for the dashboard or the user's computer.
 
-## What v1.5 builds
+## What v1.6 does automatically
 
-- Compact research snapshots every 15 minutes, calculated from the underlying M5 path.
-- Rolling features for candle anatomy, ATR, momentum, volatility, compression, trend, streaks and sessions.
-- Completed M15, H1, H4 and D1 context aligned without using future candles.
-- Forward outcome labels for 5, 15, 30, 60 and 240 minutes.
-- Weekday, month and quarter intelligence from the full stored D1 history.
-- A permanent research-question queue generated from the available evidence.
-- An exploratory discovery library.
-- Prediction-ledger storage for later live prediction grading.
-- Approved-versus-challenger model control.
-- Automatic incremental learning checks after the initial build succeeds.
+- Checks the permanent M1, M5, M15, H1, H4 and D1 memory every 15 minutes.
+- Queues incremental learning when a new 15-minute research state is available.
+- Completes future-outcome labels as enough market time passes.
+- Records fresh model predictions before their outcomes are known.
+- Grades pending predictions when the matching outcomes become available.
+- Tests the existing EVE question queue using chronological train and locked-test periods.
+- Generates additional calendar, session, regime, momentum and volatility hypotheses.
+- Applies sample-size, year-stability and multiple-testing controls.
+- Trains a lightweight explainable challenger model on a chronological 70/15/15 split.
+- Promotes a challenger only if it beats the approved baseline across every locked horizon and all promotion thresholds.
+- Produces a persistent autonomous research report.
 
-The first learning build is deliberately user-started. After it completes, Railway checks for new M5 candles every six hours and queues an incremental update only when new experience is available.
+## Market-closed behaviour
+
+Railway remains active when XAU/USD is closed. With no new candles it skips candle learning, but research, question testing, prediction grading for already-known outcomes and due challenger evaluation can still run. It does not invent candles or mark market closures as experience.
+
+## No button routine
+
+After v1.6 is deployed and the existing v1.5 foundation is already complete, no button press is required. The **Run diagnostic cycle now** control is optional and exists only to test the worker immediately.
 
 ## Important boundary
 
-v1.5 creates the data and governance needed for learning. It does not yet claim a trained predictive AI, profitable signals or validated discoveries. Calendar observations remain exploratory until later builds test stability across years and unseen periods.
+The autonomous engine improves the quality and accountability of EVE's research. It does not guarantee profitable trades. Findings remain conditional evidence, and model promotion requires locked unseen-data improvement.
 
 ## Repository layout
 
 - `frontend/` — Netlify dashboard and secure proxy function.
-- `railway/` — FastAPI service, ingestion worker, learning worker and backtester.
+- `railway/` — FastAPI service, ingestion, learning, autonomy and backtesting workers.
 - `supabase/migrations/` — complete SQL history.
 - `imported-strategies/` — source strategy used by the existing backtester.
-- `SUPABASE_UPDATE_v1.5.sql` — the single SQL upgrade file for this release.
+- `SUPABASE_UPDATE_v1.6.sql` — the single SQL upgrade file for this release.
 
-## Security
+## Security and data integrity
 
-Secrets remain in Railway and Netlify environment variables. No API keys or service-role keys belong in GitHub.
-
-## Data integrity
-
-Raw candles remain immutable source evidence. Generated learning snapshots are idempotently upserted by `(symbol, snapshot_interval, candle_time)`, so interrupted builds can resume without duplicating research experience.
+Secrets remain in Railway and Netlify environment variables. Raw candles are never modified by the learning engine. Generated snapshots and predictions are idempotent, and every autonomous cycle has an audit record in Supabase.

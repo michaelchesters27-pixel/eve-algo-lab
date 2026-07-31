@@ -560,50 +560,6 @@ class LearningService:
                 logger.exception("Learning worker loop error")
                 await asyncio.sleep(10)
 
-    async def auto_update_loop(self) -> None:
-        # The first build is always user-started. After that, EVE checks every six
-        # hours and queues an incremental run only when new M5 candles exist.
-        try:
-            await asyncio.wait_for(self._stop.wait(), timeout=180)
-            return
-        except asyncio.TimeoutError:
-            pass
-
-        while not self._stop.is_set():
-            try:
-                state = await self.repo.get_learning_state("XAU/USD", SNAPSHOT_INTERVAL)
-                if state and state.get("initial_build_complete") and state.get("auto_update_enabled", True):
-                    source_state = await self.repo.get_state("XAU/USD", SOURCE_INTERVAL)
-                    latest_source = as_utc((source_state or {}).get("latest_stored"))
-                    latest_snapshot = as_utc(state.get("last_snapshot_time"))
-                    if latest_source and latest_snapshot and latest_source > latest_snapshot + timedelta(minutes=30):
-                        if not await self.repo.has_active_learning_run("XAU/USD", SNAPSHOT_INTERVAL):
-                            await self.repo.create_learning_run(
-                                {
-                                    "symbol": "XAU/USD",
-                                    "source_interval": SOURCE_INTERVAL,
-                                    "snapshot_interval": SNAPSHOT_INTERVAL,
-                                    "full_rebuild": False,
-                                    "message": "Automatic incremental learning update queued",
-                                }
-                            )
-                            await self.repo.log_event(
-                                "info",
-                                "learning",
-                                "Automatic incremental learning update queued",
-                                {"latest_source": latest_source.isoformat(), "latest_snapshot": latest_snapshot.isoformat()},
-                            )
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception("Automatic learning update check failed")
-
-            try:
-                await asyncio.wait_for(self._stop.wait(), timeout=6 * 60 * 60)
-                break
-            except asyncio.TimeoutError:
-                pass
-
     async def _run(self, run: dict[str, Any]) -> None:
         run_id = str(run["id"])
         symbol = str(run.get("symbol") or "XAU/USD")
@@ -859,7 +815,10 @@ class LearningService:
             last_run_id=run_id,
             last_success_at=datetime.now(timezone.utc).isoformat(),
             last_error=None,
-            approved_model_key="baseline-statistics-v1",
+            approved_model_key=state.get("approved_model_key") or "baseline-statistics-v1",
+            last_incremental_learning_at=datetime.now(timezone.utc).isoformat(),
+            autonomous_learning_enabled=True,
+            autonomous_status="active",
         )
         await self.repo.update_learning_run(
             run_id,
@@ -872,7 +831,7 @@ class LearningService:
             outcome_labels_written=labels_written,
             questions_generated=len(questions),
             discoveries_created=len(discoveries),
-            message="Learning foundation ready. Automatic incremental updates are enabled.",
+            message="Learning foundation ready. The autonomous v1.6 engine will maintain it without button presses.",
             finished_at=datetime.now(timezone.utc).isoformat(),
         )
         await self.repo.log_event(
