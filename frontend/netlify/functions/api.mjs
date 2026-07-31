@@ -9,6 +9,8 @@ const ALLOWED = [
   /^learning\/build$/,
   /^learning\/runs\/[0-9a-f-]+\/cancel$/i,
   /^autonomy\/run$/,
+  /^research\/results$/,
+  /^research\/wake$/,
   /^backtests$/,
   /^backtests\/[0-9a-f-]+$/i,
   /^backtests\/[0-9a-f-]+\/cancel$/i,

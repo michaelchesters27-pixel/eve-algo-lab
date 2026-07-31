@@ -1,3 +1,15 @@
+# EVE Algo Lab v1.7.3
+
+## Discovery Explorer proxy repair
+
+- Adds the read-only `research/results` route to the Netlify proxy allowlist.
+- Adds the protected `research/wake` route for controlled worker diagnostics.
+- Fixes `Route not allowed by the Netlify proxy` in Discovery Explorer.
+- Preserves the continuous historical worker, autonomous learning, stored findings and all existing data.
+- No Supabase SQL or environment-variable changes are required.
+
+---
+
 # EVE Algo Lab v1.7.2
 
 ## Discovery Explorer

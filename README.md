@@ -1,6 +1,6 @@
-# EVE Algo Lab v1.7.2
+# EVE Algo Lab v1.7.3
 
-Version 1.7.2 adds a full **Discovery Explorer** and fixes the Learning Centre frontend null-element error. EVE's validated, promising and rejected historical experiments can now be opened and inspected with locked-test evidence, sample size, effect, confidence, year stability, tested conditions and the exact reason for classification.
+Version 1.7.3 repairs the Netlify API proxy route used by the **Discovery Explorer**. The explorer can now load validated, promising and rejected historical experiments from Railway. It also retains the v1.7.2 Learning Centre null-element fix and the complete evidence views. EVE's validated, promising and rejected historical experiments can now be opened and inspected with locked-test evidence, sample size, effect, confidence, year stability, tested conditions and the exact reason for classification.
 
 The continuous historical research worker from v1.7.1 remains unchanged and continues running independently of market hours.
 

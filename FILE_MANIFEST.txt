@@ -1,6 +1,7 @@
 .gitignore
 DEPLOYMENT_GUIDE.md
-NO_SQL_OR_VARIABLE_CHANGES_REQUIRED_v1.7.2.txt
+FILE_MANIFEST.txt
+NO_SQL_OR_VARIABLE_CHANGES_REQUIRED_v1.7.3.txt
 PROJECT_STATUS.md
 README.md
 RELEASE_NOTES.md
@@ -15,6 +16,7 @@ frontend/favicon.svg
 frontend/index.html
 frontend/netlify/functions/api.mjs
 frontend/styles.css
+frontend/tests/netlify_proxy_route_test.mjs
 imported-strategies/EVE_Twelve_Data_Fixed_Ladder_v2.61.mq5
 netlify.toml
 railway/.env.example

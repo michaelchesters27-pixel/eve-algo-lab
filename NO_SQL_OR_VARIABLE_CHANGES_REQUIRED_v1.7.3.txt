@@ -1,0 +1,2 @@
+EVE Algo Lab v1.7.3 requires no Supabase SQL and no Railway or Netlify variable changes.
+Deploy the complete GitHub-ready repository replacement, wait for Railway and Netlify, then press Ctrl + F5 once.

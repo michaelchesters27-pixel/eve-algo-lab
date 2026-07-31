@@ -1,16 +1,16 @@
-# Project status — v1.7.2
+# Project status — v1.7.3
 
 ## Current milestone
 
-The autonomous learning engine and 24/7 historical worker are operational. The dashboard now exposes their completed evidence through the Discovery Explorer.
+The autonomous learning engine and 24/7 historical worker are operational. Discovery Explorer can now retrieve and display completed historical findings through the Netlify proxy.
 
-## v1.7.2 additions
+## v1.7.3 repair
 
-- Discovery Explorer for validated, promising and rejected tests
-- Full evidence detail view
-- Backend research-results API
-- Learning Centre null-element and stale-cache fix
-- No database migration required
+- Allows `GET /api/research/results` through the Netlify function proxy
+- Allows protected `POST /api/research/wake` for diagnostics
+- Fixes `Route not allowed by the Netlify proxy`
+- No database migration or variable change required
+- Preserves all v1.7.2 Discovery Explorer evidence views and frontend reliability fixes
 
 # Project status — v1.7.1
 
