@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07110f">
+  <meta name="description" content="EVE Algo Lab — historical market memory, strategy backtesting and AI learning foundation.">
+  <title>EVE Algo Lab</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <a class="brand" href="#overview" aria-label="EVE Algo Lab home">
+        <span class="brand-mark">E</span>
+        <span>
+          <strong>EVE</strong>
+          <small>ALGO LAB</small>
+        </span>
+      </a>
+
+      <nav class="nav" aria-label="Main navigation">
+        <a class="nav-link active" href="#overview"><span>01</span> Overview</a>
+        <a class="nav-link" href="#memory"><span>02</span> Market memory</a>
+        <a class="nav-link" href="#pipeline"><span>03</span> Build pipeline</a>
+        <a class="nav-link" href="#activity"><span>04</span> Activity</a>
+      </nav>
+
+      <div class="side-status">
+        <span class="pulse" id="servicePulse"></span>
+        <div>
+          <small>RAILWAY SERVICE</small>
+          <strong id="serviceStatus">Checking…</strong>
+        </div>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">PRIVATE TRADING RESEARCH PLATFORM</p>
+          <h1>Market intelligence<br><em>built on evidence.</em></h1>
+        </div>
+        <div class="market-selector" aria-label="Selected market">
+          <div class="metal-dot"></div>
+          <div>
+            <small>PRIMARY DATASET</small>
+            <strong>XAU / USD</strong>
+          </div>
+          <span>M5</span>
+        </div>
+      </header>
+
+      <section id="overview" class="hero-grid">
+        <article class="panel progress-panel">
+          <div class="panel-head">
+            <div>
+              <p class="label">HISTORICAL FOUNDATION</p>
+              <h2>Market Memory</h2>
+            </div>
+            <span class="status-pill" id="statePill">NOT STARTED</span>
+          </div>
+
+          <div class="progress-layout">
+            <div class="ring" id="progressRing" style="--progress:0">
+              <div>
+                <strong id="progressValue">0%</strong>
+                <small>COMPLETE</small>
+              </div>
+            </div>
+            <div class="progress-copy">
+              <p id="jobMessage">Ready to download the complete available XAU/USD M5 history.</p>
+              <div class="progress-track"><span id="progressBar"></span></div>
+              <div class="micro-grid">
+                <div><small>CANDLES STORED</small><strong id="candleCount">0</strong></div>
+                <div><small>BATCHES</small><strong id="batchCount">0</strong></div>
+                <div><small>DATA GAPS TO REVIEW</small><strong id="gapCount">0</strong></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="button button-primary" id="startBackfill">Start historical download</button>
+            <button class="button" id="syncLatest">Sync latest candles</button>
+            <button class="button button-quiet" id="scanGaps">Scan gaps</button>
+          </div>
+        </article>
+
+        <article class="panel live-panel">
+          <div class="panel-head">
+            <div>
+              <p class="label">LATEST VERIFIED BAR</p>
+              <h2>Live Data</h2>
+            </div>
+            <span class="live-badge"><i></i> REST SYNC</span>
+          </div>
+          <div class="price" id="latestClose">—</div>
+          <p class="price-time" id="latestTime">No candle stored yet</p>
+          <div class="ohlc-grid">
+            <div><small>OPEN</small><strong id="latestOpen">—</strong></div>
+            <div><small>HIGH</small><strong id="latestHigh">—</strong></div>
+            <div><small>LOW</small><strong id="latestLow">—</strong></div>
+            <div><small>CLOSE</small><strong id="latestCloseSmall">—</strong></div>
+          </div>
+          <div class="quality-line">
+            <span>Automatic verification</span>
+            <strong>Every M5 close +22s</strong>
+          </div>
+        </article>
+      </section>
+
+      <section id="memory" class="section-block">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">DATA FOUNDATION</p>
+            <h2>Everything the future engine learns from</h2>
+          </div>
+          <p>History is downloaded once, cleaned, stored permanently in Supabase and continuously updated from Railway.</p>
+        </div>
+
+        <div class="stat-grid">
+          <article class="stat-card"><span>01</span><small>EARLIEST AVAILABLE</small><strong id="earliestDate">Unknown</strong><p>Read directly from Twelve Data before backfill begins.</p></article>
+          <article class="stat-card"><span>02</span><small>OLDEST STORED</small><strong id="oldestDate">None</strong><p>The backward cursor resumes here after any interruption.</p></article>
+          <article class="stat-card"><span>03</span><small>LATEST STORED</small><strong id="latestDate">None</strong><p>The live synchroniser keeps this edge current.</p></article>
+          <article class="stat-card"><span>04</span><small>DATA STATUS</small><strong id="dataStatus">Waiting</strong><p>Duplicates merge safely through the database key.</p></article>
+        </div>
+      </section>
+
+      <section id="pipeline" class="section-block">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">PROJECT ROADMAP</p>
+            <h2>From raw candles to approved bots</h2>
+          </div>
+          <p>This first release delivers the live infrastructure and database. Each next engine plugs into the same permanent market memory.</p>
+        </div>
+
+        <div class="pipeline">
+          <article class="pipeline-card current"><div class="stage">LIVE NOW</div><span>01</span><h3>Market Memory</h3><p>Historical batching, resume protection, candle upserts, live sync and gap detection.</p></article>
+          <article class="pipeline-card"><div class="stage">NEXT</div><span>02</span><h3>Bot Backtester</h3><p>Replay your momentum baskets and report profit factor, drawdown and every trade.</p></article>
+          <article class="pipeline-card"><div class="stage">PLANNED</div><span>03</span><h3>AI Pattern Brain</h3><p>Learn which market states historically produced continuation, reversal or no trade.</p></article>
+          <article class="pipeline-card"><div class="stage">PLANNED</div><span>04</span><h3>Strategy Factory</h3><p>Generate explainable strategy candidates and force them through unseen-data tests.</p></article>
+        </div>
+      </section>
+
+      <section id="activity" class="section-block activity-block">
+        <div class="section-title compact">
+          <div>
+            <p class="eyebrow">SYSTEM LOG</p>
+            <h2>Recent activity</h2>
+          </div>
+          <button class="text-button" id="refreshButton">Refresh now ↗</button>
+        </div>
+        <div class="activity-list" id="activityList">
+          <div class="empty-state">Waiting for Supabase activity…</div>
+        </div>
+      </section>
+
+      <footer>
+        <span>EVE ALGO LAB · FOUNDATION v1.0</span>
+        <span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span>
+      </footer>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js" defer></script>
+</body>
+</html>
