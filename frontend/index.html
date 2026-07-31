@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=1.7.2">
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -94,7 +94,7 @@
 
       <section id="memory" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">DATA FOUNDATION v1.7.1</p><h2>Six layers of market memory</h2></div>
+          <div><p class="eyebrow">DATA FOUNDATION v1.7.2</p><h2>Six layers of market memory</h2></div>
           <p>Railway downloads each timeframe in sequence and stores it permanently in Supabase. Each dataset has independent progress, resumable history, latest-candle sync and gap review.</p>
         </div>
         <div class="timeframe-grid" id="timeframeGrid" aria-live="polite"></div>
@@ -105,7 +105,7 @@
 
       <section id="learning" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">AUTONOMOUS LEARNING v1.7.1</p><h2>EVE now works without waiting for you</h2></div>
+          <div><p class="eyebrow">AUTONOMOUS LEARNING v1.7.2</p><h2>EVE now works without waiting for you</h2></div>
           <p>Two Railway workers now run in parallel: live learning keeps new candles current, while a dedicated historical researcher continuously mines stored data whether the market is open or closed.</p>
         </div>
 
@@ -230,11 +230,54 @@
             <div class="research-list" id="discoveryList"><div class="empty-state">Exploratory findings will appear here.</div></div>
           </article>
         </div>
+
+        <article class="panel discovery-explorer-panel" id="discoveryExplorer">
+          <div class="panel-head">
+            <div><p class="label">DISCOVERY EXPLORER v1.7.2</p><h2>Open what EVE has actually learned</h2></div>
+            <span class="status-pill complete" id="discoveryExplorerStatus">READY</span>
+          </div>
+          <p class="backtest-message" id="discoveryExplorerMessage">Inspect validated, promising and rejected historical tests. Every result shows the locked-test evidence behind it.</p>
+          <div class="discovery-toolbar">
+            <div class="discovery-filter-group" role="group" aria-label="Discovery status filter">
+              <button class="discovery-filter active" type="button" data-discovery-filter="all">All</button>
+              <button class="discovery-filter" type="button" data-discovery-filter="validated">Validated</button>
+              <button class="discovery-filter" type="button" data-discovery-filter="promising">Promising</button>
+              <button class="discovery-filter" type="button" data-discovery-filter="rejected">Rejected</button>
+            </div>
+            <label class="discovery-sort-label">SORT
+              <select id="discoverySort">
+                <option value="confidence">Highest confidence</option>
+                <option value="stability">Highest stability</option>
+                <option value="sample">Largest sample</option>
+                <option value="recent">Most recent</option>
+                <option value="effect">Largest positive effect</option>
+              </select>
+            </label>
+          </div>
+          <div class="discovery-summary-grid">
+            <div><small>TESTED</small><strong id="explorerTestedCount">0</strong></div>
+            <div><small>REJECTED</small><strong id="explorerRejectedCount">0</strong></div>
+            <div><small>PROMISING</small><strong id="explorerPromisingCount">0</strong></div>
+            <div><small>VALIDATED</small><strong id="explorerValidatedCount">0</strong></div>
+          </div>
+          <div class="discovery-explorer-layout">
+            <div class="discovery-explorer-list" id="discoveryExplorerList">
+              <div class="empty-state">Loading EVE's research results…</div>
+            </div>
+            <aside class="discovery-detail" id="discoveryDetail" aria-live="polite">
+              <div class="discovery-detail-empty">
+                <small>SELECT A FINDING</small>
+                <strong>Click any result to inspect the evidence</strong>
+                <p>You will see its sample size, locked-test effect, stability, conditions and why it was validated, marked promising or rejected.</p>
+              </div>
+            </aside>
+          </div>
+        </article>
       </section>
 
       <section id="backtester" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">RESEARCH BACKTESTER v1.7.1</p><h2>EVE Fixed Ladder v2.61</h2></div>
+          <div><p class="eyebrow">RESEARCH BACKTESTER v1.7.2</p><h2>EVE Fixed Ladder v2.61</h2></div>
           <p>The existing M5 approximation and M1 high-resolution replay remain available while the broader research memory is expanded.</p>
         </div>
 
@@ -339,11 +382,11 @@
         <div class="activity-list" id="activityList"><div class="empty-state">Waiting for Supabase activity…</div></div>
       </section>
 
-      <footer><span>EVE ALGO LAB · v1.7.1</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
+      <footer><span>EVE ALGO LAB · v1.7.2</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
     </main>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js" defer></script>
+  <script src="app.js?v=1.7.2" defer></script>
 </body>
 </html>

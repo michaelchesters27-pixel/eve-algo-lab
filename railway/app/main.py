@@ -27,7 +27,7 @@ from app.services.supabase_repo import SupabaseRepository
 from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
 from app.settings import Settings, get_settings
 
-APP_VERSION = "1.7.1"
+APP_VERSION = "1.7.2"
 
 settings = get_settings()
 logging.basicConfig(
@@ -285,6 +285,19 @@ async def run_autonomous_cycle() -> ApiEnvelope:
         data={"status": "requested"},
         message="Autonomous learning cycle requested. Railway will run it in the background.",
     )
+
+
+@app.get("/api/research/results", response_model=ApiEnvelope)
+async def list_historical_research_results(
+    symbol: str = Query(default="XAU/USD", min_length=3, max_length=40),
+    result_status: str = Query(default="all", pattern="^(all|validated|promising|rejected)$"),
+    order: str = Query(default="confidence", pattern="^(confidence|stability|sample|recent|effect)$"),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> ApiEnvelope:
+    items = await repo.list_historical_research_results(
+        symbol, SNAPSHOT_INTERVAL, result_status=result_status, order=order, limit=limit
+    )
+    return ApiEnvelope(data={"items": items, "result_status": result_status, "order": order})
 
 
 @app.post("/api/research/wake", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])

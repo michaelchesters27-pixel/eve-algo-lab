@@ -94,3 +94,25 @@ async def test_stale_historical_job_recovery_uses_rpc_not_direct_patch():
     assert calls == [
         ("reset_stale_historical_research_jobs", {"p_stale_minutes": 37})
     ]
+
+@pytest.mark.asyncio
+async def test_discovery_explorer_query_filters_completed_results_safely():
+    repo = SupabaseRepository.__new__(SupabaseRepository)
+    calls = []
+
+    async def fake_select(table, query):
+        calls.append((table, query))
+        return [{"id": "result-1", "result_status": "validated"}]
+
+    repo.select = fake_select
+    rows = await repo.list_historical_research_results(
+        "XAU/USD", "15min", result_status="validated", order="stability", limit=75
+    )
+
+    assert rows[0]["result_status"] == "validated"
+    assert calls[0][0] == "historical_research_jobs"
+    query = calls[0][1]
+    assert "status=eq.complete" in query
+    assert "result_status=eq.validated" in query
+    assert "order=stability_score.desc.nullslast" in query
+    assert "limit=75" in query

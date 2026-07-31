@@ -19,6 +19,23 @@ const formatDate = (value, includeTime = false) => {
   }).format(date);
 };
 
+function setText(selector, value) {
+  const node = $(selector);
+  if (node) node.textContent = value == null ? "" : String(value);
+}
+function setClass(selector, value) {
+  const node = $(selector);
+  if (node) node.className = value;
+}
+function setWidth(selector, value) {
+  const node = $(selector);
+  if (node) node.style.width = value;
+}
+function setHtml(selector, value) {
+  const node = $(selector);
+  if (node) node.innerHTML = value;
+}
+
 const TIMEFRAMES = [
   { interval: "1min", key: "m1", label: "M1", role: "Execution path", description: "Minute-by-minute price path for detailed replay and micro-pattern research." },
   { interval: "5min", key: "m5", label: "M5", role: "Intraday structure", description: "Detailed intraday movement and the broad benchmark for current research." },
@@ -34,6 +51,11 @@ let activeBacktestId = null;
 let activeLearningRunId = null;
 let learningDashboard = null;
 let batchActionRunning = false;
+let discoveryExplorerItems = [];
+let discoveryExplorerFilter = "all";
+let discoveryExplorerOrder = "confidence";
+let selectedDiscoveryId = null;
+let discoveryRefreshTimer;
 const activeBackfillJobIds = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
 const historicalReady = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, false]));
 const marketStates = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
@@ -391,7 +413,8 @@ function topStatistic(rows, dimension, metric) {
 
 function renderResearchQuestions(questions = []) {
   const host = $("#researchQuestionList");
-  $("#questionCountBadge").textContent = formatNumber(questions.length);
+  setText("#questionCountBadge", formatNumber(questions.length));
+  if (!host) return;
   if (!questions.length) {
     host.innerHTML = '<div class="empty-state">Questions will appear after the first learning build.</div>';
     return;
@@ -412,7 +435,8 @@ function renderResearchQuestions(questions = []) {
 
 function renderDiscoveries(discoveries = []) {
   const host = $("#discoveryList");
-  $("#discoveryCountBadge").textContent = formatNumber(discoveries.length);
+  setText("#discoveryCountBadge", formatNumber(discoveries.length));
+  if (!host) return;
   if (!discoveries.length) {
     host.innerHTML = '<div class="empty-state">Exploratory findings will appear here.</div>';
     return;
@@ -428,36 +452,36 @@ function renderDiscoveries(discoveries = []) {
 
 function setCalendarInsight(nameId, metaId, row, metric, suffix) {
   if (!row) {
-    $(nameId).textContent = "—";
-    $(metaId).textContent = "Build learning first";
+    setText(nameId, "—");
+    setText(metaId, "Build learning first");
     return;
   }
-  $(nameId).textContent = row.bucket_label || row.bucket_key || "—";
+  setText(nameId, row.bucket_label || row.bucket_key || "—");
   const value = Number(row[metric] || 0);
-  $(metaId).textContent = `${value.toFixed(metric === "directional_day_rate" ? 1 : 2)}${suffix} · ${formatNumber(row.sample_count)} days`;
+  setText(metaId, `${value.toFixed(metric === "directional_day_rate" ? 1 : 2)}${suffix} · ${formatNumber(row.sample_count)} days`);
 }
 
 function renderResearchReport(reports = []) {
   const report = reports[0] || null;
   if (!report) {
-    $("#researchReportTitle").textContent = "Waiting for first cycle";
-    $("#researchReportStatus").textContent = "WAITING";
-    $("#researchReportStatus").className = "status-pill";
-    $("#researchReportSummary").textContent = "Historical research runs continuously. Market hours do not control or pause it.";
-    $("#reportQuestionsTested").textContent = "0";
-    $("#reportQuestionsRejected").textContent = "0";
-    $("#reportPromising").textContent = "0";
-    $("#reportValidated").textContent = "0";
+    setText("#researchReportTitle", "Waiting for first cycle");
+    setText("#researchReportStatus", "WAITING");
+    setClass("#researchReportStatus", "status-pill");
+    setText("#researchReportSummary", "Historical research runs continuously. Market hours do not control or pause it.");
+    setText("#reportQuestionsTested", "0");
+    setText("#reportQuestionsRejected", "0");
+    setText("#reportPromising", "0");
+    setText("#reportValidated", "0");
     return;
   }
-  $("#researchReportTitle").textContent = `Research report · ${formatDate(report.report_date)}`;
-  $("#researchReportStatus").textContent = "COMPLETE";
-  $("#researchReportStatus").className = "status-pill complete";
-  $("#researchReportSummary").textContent = report.summary || "Autonomous research cycle complete.";
-  $("#reportQuestionsTested").textContent = formatNumber(report.questions_tested);
-  $("#reportQuestionsRejected").textContent = formatNumber(report.questions_rejected);
-  $("#reportPromising").textContent = formatNumber(report.discoveries_promising);
-  $("#reportValidated").textContent = formatNumber(report.discoveries_validated);
+  setText("#researchReportTitle", `Research report · ${formatDate(report.report_date)}`);
+  setText("#researchReportStatus", "COMPLETE");
+  setClass("#researchReportStatus", "status-pill complete");
+  setText("#researchReportSummary", report.summary || "Autonomous research cycle complete.");
+  setText("#reportQuestionsTested", formatNumber(report.questions_tested));
+  setText("#reportQuestionsRejected", formatNumber(report.questions_rejected));
+  setText("#reportPromising", formatNumber(report.discoveries_promising));
+  setText("#reportValidated", formatNumber(report.discoveries_validated));
 }
 
 function renderHistoricalResearch(payload = {}) {
@@ -470,23 +494,160 @@ function renderHistoricalResearch(payload = {}) {
   const status = state.last_error ? "error" : (heartbeatFresh ? rawStatus : (heartbeatTime ? "waiting" : rawStatus));
   const displayStatus = heartbeatFresh && ["active", "loading", "researching"].includes(rawStatus) ? "ACTIVE" : status.toUpperCase();
 
-  $("#historyResearchStatus").textContent = displayStatus;
-  $("#historyResearchStatus").className = `status-pill ${heartbeatFresh ? rawStatus : status}`;
-  $("#historyResearchHeartbeat").textContent = formatDate(state.heartbeat_at, true);
-  $("#historyResearchQueue").textContent = formatNumber(state.queue_count);
-  $("#historyResearchCompleted").textContent = formatNumber(state.completed_count);
-  $("#historyResearchRowsScanned").textContent = formatNumber(state.rows_scanned_total);
-  $("#historyResearchRejected").textContent = formatNumber(state.rejected_count);
-  $("#historyResearchPromising").textContent = formatNumber(state.promising_count);
-  $("#historyResearchValidated").textContent = formatNumber(state.validated_count);
-  $("#historyResearchGeneration").textContent = formatNumber(state.generator_generation);
-  $("#historyResearchCurrentQuestion").textContent = current.question || state.current_question || (heartbeatFresh
+  setText("#historyResearchStatus", displayStatus);
+  setClass("#historyResearchStatus", `status-pill ${heartbeatFresh ? rawStatus : status}`);
+  setText("#historyResearchHeartbeat", formatDate(state.heartbeat_at, true));
+  setText("#historyResearchQueue", formatNumber(state.queue_count));
+  setText("#historyResearchCompleted", formatNumber(state.completed_count));
+  setText("#historyResearchRowsScanned", formatNumber(state.rows_scanned_total));
+  setText("#historyResearchRejected", formatNumber(state.rejected_count));
+  setText("#historyResearchPromising", formatNumber(state.promising_count));
+  setText("#historyResearchValidated", formatNumber(state.validated_count));
+  setText("#historyResearchGeneration", formatNumber(state.generator_generation));
+  setText("#historyResearchCurrentQuestion", current.question || state.current_question || (heartbeatFresh
     ? "Worker is refilling or claiming the next historical question"
-    : "Waiting for the Railway worker heartbeat");
-  $("#historyResearchMessage").textContent = state.last_error || (heartbeatFresh
+    : "Waiting for the Railway worker heartbeat"));
+  setText("#historyResearchMessage", state.last_error || (heartbeatFresh
     ? "Dedicated historical research is running in parallel with live learning. It does not wait for the market to open or close."
-    : "The worker has not reported a recent heartbeat yet. Railway may still be starting after deployment.");
-  $("#historyResearchLastResult").textContent = state.last_result || latest.summary || "EVE will continuously generate, test and challenge historical questions.";
+    : "The worker has not reported a recent heartbeat yet. Railway may still be starting after deployment."));
+  setText("#historyResearchLastResult", state.last_result || latest.summary || "EVE will continuously generate, test and challenge historical questions.");
+
+  setText("#explorerTestedCount", formatNumber(state.completed_count));
+  setText("#explorerRejectedCount", formatNumber(state.rejected_count));
+  setText("#explorerPromisingCount", formatNumber(state.promising_count));
+  setText("#explorerValidatedCount", formatNumber(state.validated_count));
+}
+
+const WEEKDAY_LABELS = { 1: "Monday", 2: "Tuesday", 3: "Wednesday", 4: "Thursday", 5: "Friday" };
+const MONTH_LABELS = { 1: "January", 2: "February", 3: "March", 4: "April", 5: "May", 6: "June", 7: "July", 8: "August", 9: "September", 10: "October", 11: "November", 12: "December" };
+
+function humaniseToken(value) {
+  return String(value ?? "").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function conditionLabel(condition = {}) {
+  const field = String(condition.field || "condition");
+  const value = condition.value;
+  if (field === "weekday") return WEEKDAY_LABELS[value] || `Weekday ${value}`;
+  if (field === "month") return MONTH_LABELS[value] || `Month ${value}`;
+  if (field === "hour_utc") return `${String(value).padStart(2, "0")}:00 UTC`;
+  if (field === "quarter") return `Quarter ${value}`;
+  if (field === "week_of_month") return `Week ${value} of month`;
+  if (field === "direction") return Number(value) > 0 ? "Bullish M5 candle" : Number(value) < 0 ? "Bearish M5 candle" : "Neutral M5 candle";
+  return `${humaniseToken(field)}: ${humaniseToken(value)}`;
+}
+
+function metricUnit(item) {
+  const metric = String(item.evidence?.metric || item.test_definition?.metric || "");
+  return ["continuation", "same_direction", "alignment_follow", "up_probability"].includes(metric) ? "pp" : "%";
+}
+
+function formatEffect(item, value = item.effect_size) {
+  if (value == null || Number.isNaN(Number(value))) return "—";
+  const number = Number(value);
+  return `${number > 0 ? "+" : ""}${number.toFixed(2)} ${metricUnit(item)}`;
+}
+
+function resultExplanation(item) {
+  const status = String(item.result_status || "rejected");
+  const evidence = item.evidence || {};
+  if (status === "validated") {
+    return "Validated: the effect remained strong in the locked unseen period, agreed with validation direction, stayed reasonably stable by year and cleared EVE's multiple-testing confidence threshold.";
+  }
+  if (status === "promising") {
+    return "Promising: the result survived the basic unseen-data and stability checks, but it was not strong or stable enough to be called validated yet.";
+  }
+  const reasons = [];
+  const metric = String(evidence.metric || item.test_definition?.metric || "");
+  const rateMetric = ["continuation", "same_direction", "alignment_follow", "up_probability"].includes(metric);
+  if (Number(item.sample_count || 0) < 60) reasons.push("the locked-test sample was below 60");
+  if (evidence.direction_consistent === false) reasons.push("validation and locked-test effects pointed in different directions");
+  if (Math.abs(Number(item.effect_size || 0)) < (rateMetric ? 3 : 6)) reasons.push("the measured effect was too small");
+  if (Number(item.stability_score || 0) < 55) reasons.push("year-by-year stability was too weak");
+  if (Number(item.confidence_score || 0) < 62) reasons.push("confidence remained below EVE's minimum threshold after the multiple-testing penalty");
+  return `Rejected: ${reasons.length ? reasons.join("; ") : "the combined validation safeguards were not met"}.`;
+}
+
+function renderDiscoveryDetail(item) {
+  const host = $("#discoveryDetail");
+  if (!host) return;
+  if (!item) {
+    host.innerHTML = '<div class="discovery-detail-empty"><small>SELECT A FINDING</small><strong>Click any result to inspect the evidence</strong><p>You will see its sample size, locked-test effect, stability, conditions and why it was validated, marked promising or rejected.</p></div>';
+    return;
+  }
+  const evidence = item.evidence || {};
+  const definition = item.test_definition || {};
+  const conditions = evidence.conditions || definition.conditions || [];
+  const split = evidence.chronological_split || {};
+  const horizon = evidence.horizon_minutes || definition.horizon_minutes || "—";
+  const metric = humaniseToken(evidence.metric || definition.metric || "unknown metric");
+  host.innerHTML = `
+    <small class="discovery-detail-label">${escapeHtml(String(item.result_status || "result").toUpperCase())} · GENERATION ${formatNumber(item.generation)}</small>
+    <h3>${escapeHtml(item.question || "Historical research result")}</h3>
+    <p class="discovery-detail-summary">${escapeHtml(item.summary || "No summary stored.")}</p>
+    <div class="discovery-verdict">${escapeHtml(resultExplanation(item))}</div>
+    <div class="discovery-detail-metrics">
+      <div><small>LOCKED EFFECT</small><strong>${escapeHtml(formatEffect(item))}</strong></div>
+      <div><small>CONFIDENCE</small><strong>${item.confidence_score == null ? "—" : `${Number(item.confidence_score).toFixed(1)}%`}</strong></div>
+      <div><small>YEAR STABILITY</small><strong>${item.stability_score == null ? "—" : `${Number(item.stability_score).toFixed(1)}%`}</strong></div>
+      <div><small>LOCKED SAMPLE</small><strong>${formatNumber(item.sample_count)}</strong></div>
+      <div><small>STATES SCANNED</small><strong>${formatNumber(item.rows_scanned)}</strong></div>
+      <div><small>HORIZON</small><strong>${Number.isFinite(Number(horizon)) ? `${formatNumber(horizon)} MIN` : "—"}</strong></div>
+    </div>
+    <div class="discovery-subsection"><small>CONDITIONS TESTED</small><div class="condition-chip-list">${conditions.length ? conditions.map((condition) => `<span class="condition-chip">${escapeHtml(conditionLabel(condition))}</span>`).join("") : '<span class="condition-chip">No additional condition</span>'}</div></div>
+    <div class="discovery-subsection"><small>TEST EVIDENCE</small><div class="evidence-list">
+      <div class="evidence-row"><span>Metric</span><strong>${escapeHtml(metric)}</strong></div>
+      <div class="evidence-row"><span>Validation effect</span><strong>${escapeHtml(formatEffect(item, evidence.validation_effect))}</strong></div>
+      <div class="evidence-row"><span>Locked-test effect</span><strong>${escapeHtml(formatEffect(item, evidence.locked_test_effect ?? item.effect_size))}</strong></div>
+      <div class="evidence-row"><span>Direction agreed</span><strong>${evidence.direction_consistent === false ? "NO" : "YES"}</strong></div>
+      <div class="evidence-row"><span>Chronological split</span><strong>${formatNumber(split.train)} / ${formatNumber(split.validation)} / ${formatNumber(split.test)}</strong></div>
+      <div class="evidence-row"><span>Multiple-testing penalty</span><strong>${evidence.multiple_testing_penalty_applied ? "APPLIED" : "NOT RECORDED"}</strong></div>
+      <div class="evidence-row"><span>Tests considered</span><strong>${formatNumber(evidence.tests_considered)}</strong></div>
+      <div class="evidence-row"><span>Finished</span><strong>${escapeHtml(formatDate(item.finished_at, true))}</strong></div>
+    </div></div>
+    <p class="discovery-warning">This is historical research evidence, not an instruction to enter a trade. A validated statistical tendency can still fail in any individual market event.</p>`;
+}
+
+function renderDiscoveryExplorer(items = []) {
+  discoveryExplorerItems = items;
+  const host = $("#discoveryExplorerList");
+  if (!host) return;
+  if (!items.length) {
+    host.innerHTML = `<div class="empty-state">No ${escapeHtml(discoveryExplorerFilter === "all" ? "completed" : discoveryExplorerFilter)} results are available yet.</div>`;
+    renderDiscoveryDetail(null);
+    return;
+  }
+  if (!selectedDiscoveryId || !items.some((item) => item.id === selectedDiscoveryId)) selectedDiscoveryId = items[0].id;
+  host.innerHTML = items.map((item) => `
+    <button class="discovery-result-card ${escapeHtml(String(item.result_status || "rejected"))} ${item.id === selectedDiscoveryId ? "selected" : ""}" type="button" data-discovery-id="${escapeHtml(item.id)}">
+      <div class="discovery-result-head"><span class="discovery-result-status">${escapeHtml(String(item.result_status || "rejected").toUpperCase())}</span><span class="discovery-result-date">${escapeHtml(formatDate(item.finished_at))}</span></div>
+      <h3>${escapeHtml(item.question || "Historical research result")}</h3>
+      <p>${escapeHtml(item.summary || resultExplanation(item))}</p>
+      <div class="discovery-result-metrics">
+        <span><small>SAMPLE</small><strong>${formatNumber(item.sample_count)}</strong></span>
+        <span><small>EFFECT</small><strong>${escapeHtml(formatEffect(item))}</strong></span>
+        <span><small>CONFIDENCE</small><strong>${item.confidence_score == null ? "—" : `${Number(item.confidence_score).toFixed(0)}%`}</strong></span>
+        <span><small>STABILITY</small><strong>${item.stability_score == null ? "—" : `${Number(item.stability_score).toFixed(0)}%`}</strong></span>
+      </div>
+    </button>`).join("");
+  renderDiscoveryDetail(items.find((item) => item.id === selectedDiscoveryId) || items[0]);
+}
+
+async function refreshDiscoveryExplorer(silent = false) {
+  setText("#discoveryExplorerStatus", "LOADING");
+  setClass("#discoveryExplorerStatus", "status-pill loading");
+  try {
+    const payload = await api(`research/results?symbol=XAU%2FUSD&result_status=${encodeURIComponent(discoveryExplorerFilter)}&order=${encodeURIComponent(discoveryExplorerOrder)}&limit=150`);
+    renderDiscoveryExplorer(payload.data?.items || []);
+    setText("#discoveryExplorerStatus", "READY");
+    setClass("#discoveryExplorerStatus", "status-pill complete");
+    setText("#discoveryExplorerMessage", `Showing ${formatNumber(payload.data?.items?.length || 0)} ${discoveryExplorerFilter === "all" ? "completed historical tests" : discoveryExplorerFilter + " results"}. Click a result to inspect exactly why EVE classified it.`);
+  } catch (error) {
+    setText("#discoveryExplorerStatus", "ERROR");
+    setClass("#discoveryExplorerStatus", "status-pill error");
+    setText("#discoveryExplorerMessage", error.message);
+    if (!silent) showToast(error.message, true);
+  }
 }
 
 function renderLearning(data = {}) {
@@ -501,48 +662,54 @@ function renderLearning(data = {}) {
   const progress = Number(activeBuild ? run.progress_percent || 0 : (state.initial_build_complete ? 100 : 0));
   const stage = activeBuild ? run.stage || "queued" : (autonomousEnabled ? "autonomous learning" : (state.initial_build_complete ? "ready" : "not built"));
 
-  $("#learningTitle").textContent = stage.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
-  $("#learningStatus").textContent = status.replaceAll("_", " ").toUpperCase();
-  $("#learningStatus").className = `status-pill ${status}`;
-  $("#learningProgress").textContent = `${Math.min(100, progress).toFixed(progress > 0 && progress < 10 ? 1 : 0)}%`;
-  $("#learningProgressBar").style.width = `${Math.min(100, progress)}%`;
-  $("#learningMessage").textContent = run.error || (activeBuild ? run.message : null) || state.last_auto_error || state.last_auto_message || state.last_error || (autonomousEnabled
+  setText("#learningTitle", stage.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase()));
+  setText("#learningStatus", status.replaceAll("_", " ").toUpperCase());
+  setClass("#learningStatus", `status-pill ${status}`);
+  setText("#learningProgress", `${Math.min(100, progress).toFixed(progress > 0 && progress < 10 ? 1 : 0)}%`);
+  setWidth("#learningProgressBar", `${Math.min(100, progress)}%`);
+  setText("#learningMessage", run.error || (activeBuild ? run.message : null) || state.last_auto_error || state.last_auto_message || state.last_error || (autonomousEnabled
     ? "Autonomous learning is active on Railway. No button press is required."
-    : "Build the foundation once. Railway will then take over automatically.");
+    : "Build the foundation once. Railway will then take over automatically."));
 
-  $("#learningSnapshots").textContent = formatNumber(state.snapshots_count);
-  $("#learningOutcomes").textContent = formatNumber(state.outcome_labels_count);
-  $("#learningPendingOutcomes").textContent = formatNumber(state.pending_outcomes_count);
-  $("#learningPredictionsGraded").textContent = formatNumber(state.graded_prediction_count);
-  $("#learningQuestionsTested").textContent = formatNumber(state.questions_tested_total);
-  $("#learningValidatedDiscoveries").textContent = formatNumber(state.discoveries_validated_count);
-  $("#learningLatest").textContent = formatDate(state.last_snapshot_time, true);
-  $("#learningAutoUpdate").textContent = autonomousEnabled ? "ACTIVE" : "After first build";
+  setText("#learningSnapshots", formatNumber(state.snapshots_count));
+  setText("#learningOutcomes", formatNumber(state.outcome_labels_count));
+  setText("#learningPendingOutcomes", formatNumber(state.pending_outcomes_count));
+  setText("#learningPredictionsGraded", formatNumber(state.graded_prediction_count));
+  setText("#learningQuestionsTested", formatNumber(state.questions_tested_total));
+  setText("#learningValidatedDiscoveries", formatNumber(state.discoveries_validated_count));
+  setText("#learningLatest", formatDate(state.last_snapshot_time, true));
+  setText("#learningAutoUpdate", autonomousEnabled ? "ACTIVE" : "After first build");
 
-  $("#autonomyStatus").textContent = autonomousEnabled ? String(state.autonomous_status || "active").replaceAll("_", " ").toUpperCase() : "WAITING";
-  $("#autonomyLastCycle").textContent = formatDate(state.last_auto_cycle_at || autonomousRun.started_at, true);
-  $("#autonomyNextCycle").textContent = formatDate(state.next_auto_cycle_at, true);
-  $("#autonomyLastResearch").textContent = formatDate(state.last_research_cycle_at, true);
+  setText("#autonomyStatus", autonomousEnabled ? String(state.autonomous_status || "active").replaceAll("_", " ").toUpperCase() : "WAITING");
+  setText("#autonomyLastCycle", formatDate(state.last_auto_cycle_at || autonomousRun.started_at, true));
+  setText("#autonomyNextCycle", formatDate(state.next_auto_cycle_at, true));
+  setText("#autonomyLastResearch", formatDate(state.last_research_cycle_at, true));
 
   const foundationReady = TIMEFRAMES.every((item) => historicalReady[item.interval]);
   const build = $("#buildLearning");
-  if (state.initial_build_complete) {
-    build.hidden = true;
-  } else {
-    build.hidden = false;
-    build.disabled = activeBuild || !foundationReady;
-    if (!foundationReady) build.textContent = "Finish data foundation first";
-    else if (activeBuild) build.textContent = "Learning build in progress…";
-    else build.textContent = "Build initial learning foundation";
+  if (build) {
+    if (state.initial_build_complete) {
+      build.hidden = true;
+    } else {
+      build.hidden = false;
+      build.disabled = activeBuild || !foundationReady;
+      if (!foundationReady) build.textContent = "Finish data foundation first";
+      else if (activeBuild) build.textContent = "Learning build in progress…";
+      else build.textContent = "Build initial learning foundation";
+    }
   }
 
   const runNow = $("#runAutonomyNow");
-  runNow.disabled = !autonomousEnabled || autonomousRun.status === "running";
-  runNow.textContent = autonomousRun.status === "running" ? "Autonomous cycle running…" : "Run diagnostic cycle now";
+  if (runNow) {
+    runNow.disabled = !autonomousEnabled || autonomousRun.status === "running";
+    runNow.textContent = autonomousRun.status === "running" ? "Autonomous cycle running…" : "Run diagnostic cycle now";
+  }
 
   const cancel = $("#cancelLearning");
-  cancel.hidden = !activeBuild;
-  cancel.disabled = !activeBuild;
+  if (cancel) {
+    cancel.hidden = !activeBuild;
+    cancel.disabled = !activeBuild;
+  }
 
   const calendarRows = data.calendar_statistics || [];
   const topRangeWeekday = topStatistic(calendarRows, "weekday", "average_range_pct");
@@ -553,17 +720,17 @@ function renderLearning(data = {}) {
   setCalendarInsight("#topDirectionalWeekday", "#topDirectionalWeekdayMeta", topDirectionalWeekday, "directional_day_rate", "% directional");
   setCalendarInsight("#topRangeMonth", "#topRangeMonthMeta", topRangeMonth, "average_range_pct", "% daily range");
   setCalendarInsight("#topDirectionalMonth", "#topDirectionalMonthMeta", topDirectionalMonth, "directional_day_rate", "% directional");
-  $("#calendarStatus").textContent = calendarRows.length ? "READY" : "WAITING";
-  $("#calendarStatus").className = `status-pill ${calendarRows.length ? "complete" : ""}`;
+  setText("#calendarStatus", calendarRows.length ? "READY" : "WAITING");
+  setClass("#calendarStatus", `status-pill ${calendarRows.length ? "complete" : ""}`);
 
   const approved = data.approved_model || {};
   const challenger = data.challenger_model || {};
-  $("#approvedModelName").textContent = approved.name || "EVE Statistical Baseline";
-  $("#approvedModelVersion").textContent = approved.version ? `Version ${approved.version}` : "Version 1.0";
-  $("#approvedModelNotes").textContent = approved.notes || "The trusted baseline used to judge future models.";
-  $("#challengerModelName").textContent = challenger.name || "Waiting for first autonomous training cycle";
-  $("#challengerModelVersion").textContent = challenger.version ? `Version ${challenger.version}` : "Railway trains challengers automatically";
-  $("#challengerModelNotes").textContent = challenger.promotion_reason || challenger.notes || "A challenger will never replace the approved model unless it wins on chronological unseen data.";
+  setText("#approvedModelName", approved.name || "EVE Statistical Baseline");
+  setText("#approvedModelVersion", approved.version ? `Version ${approved.version}` : "Version 1.0");
+  setText("#approvedModelNotes", approved.notes || "The trusted baseline used to judge future models.");
+  setText("#challengerModelName", challenger.name || "Waiting for first autonomous training cycle");
+  setText("#challengerModelVersion", challenger.version ? `Version ${challenger.version}` : "Railway trains challengers automatically");
+  setText("#challengerModelNotes", challenger.promotion_reason || challenger.notes || "A challenger will never replace the approved model unless it wins on chronological unseen data.");
 
   renderResearchQuestions(data.questions || []);
   renderDiscoveries(data.discoveries || []);
@@ -577,7 +744,8 @@ async function refreshLearning(silent = false) {
     renderLearning(payload.data || {});
   } catch (error) {
     if (!silent) showToast(error.message, true);
-    $("#learningMessage").textContent = error.message;
+    setText("#learningMessage", error.message);
+    console.error("Learning dashboard render failed", error);
   }
 }
 
@@ -798,30 +966,63 @@ async function refreshBacktests(silent = false) {
   }
 }
 
-$("#timeframeGrid").addEventListener("click", async (event) => {
+const timeframeGrid = $("#timeframeGrid");
+if (timeframeGrid) timeframeGrid.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-action][data-interval]");
   if (!button) return;
   const interval = button.dataset.interval;
   const action = button.dataset.action;
   const meta = TIMEFRAMES.find((item) => item.interval === interval);
+  if (!meta) return;
   if (action === "pause") await pauseBackfill(interval, button);
   else if (action === "backfill") await queueJob("backfill", interval, button, `${meta.label} historical download queued`);
   else if (action === "sync") await queueJob("sync", interval, button, `${meta.label} latest-candle sync queued`);
   else if (action === "gap-scan") await queueJob("gap-scan", interval, button, `${meta.label} gap scan queued`);
 });
 
-$("#queueAllHistory").addEventListener("click", (event) => queueAllMissingHistory(event.currentTarget));
-$("#syncAllFrames").addEventListener("click", (event) => queueBatchJobs("sync", event.currentTarget, "Syncing"));
-$("#scanAllFrames").addEventListener("click", (event) => queueBatchJobs("gap-scan", event.currentTarget, "Scanning"));
-$("#buildLearning").addEventListener("click", (event) => buildLearning(event.currentTarget));
-$("#runAutonomyNow").addEventListener("click", (event) => runAutonomyNow(event.currentTarget));
-$("#cancelLearning").addEventListener("click", (event) => cancelLearning(event.currentTarget));
-$("#refreshLearning").addEventListener("click", () => refreshLearning());
-$("#resolutionMode").addEventListener("change", updateBacktestAvailability);
-$("#runBacktest").addEventListener("click", (event) => runBacktest(event.currentTarget));
-$("#cancelBacktest").addEventListener("click", (event) => cancelBacktest(event.currentTarget));
-$("#refreshBacktest").addEventListener("click", () => refreshBacktests());
-$("#refreshButton").addEventListener("click", async () => { await refreshDashboard(); await refreshLearning(true); await refreshBacktests(true); });
+function listen(selector, eventName, handler) {
+  const node = $(selector);
+  if (node) node.addEventListener(eventName, handler);
+}
+
+listen("#queueAllHistory", "click", (event) => queueAllMissingHistory(event.currentTarget));
+listen("#syncAllFrames", "click", (event) => queueBatchJobs("sync", event.currentTarget, "Syncing"));
+listen("#scanAllFrames", "click", (event) => queueBatchJobs("gap-scan", event.currentTarget, "Scanning"));
+listen("#buildLearning", "click", (event) => buildLearning(event.currentTarget));
+listen("#runAutonomyNow", "click", (event) => runAutonomyNow(event.currentTarget));
+listen("#cancelLearning", "click", (event) => cancelLearning(event.currentTarget));
+listen("#refreshLearning", "click", async () => { await refreshLearning(); await refreshDiscoveryExplorer(true); });
+listen("#resolutionMode", "change", updateBacktestAvailability);
+listen("#runBacktest", "click", (event) => runBacktest(event.currentTarget));
+listen("#cancelBacktest", "click", (event) => cancelBacktest(event.currentTarget));
+listen("#refreshBacktest", "click", () => refreshBacktests());
+listen("#refreshButton", "click", async () => {
+  await refreshDashboard();
+  await refreshLearning(true);
+  await refreshDiscoveryExplorer(true);
+  await refreshBacktests(true);
+});
+listen("#discoverySort", "change", async (event) => {
+  discoveryExplorerOrder = event.currentTarget.value || "confidence";
+  selectedDiscoveryId = null;
+  await refreshDiscoveryExplorer();
+});
+
+document.querySelectorAll("[data-discovery-filter]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    discoveryExplorerFilter = button.dataset.discoveryFilter || "all";
+    selectedDiscoveryId = null;
+    document.querySelectorAll("[data-discovery-filter]").forEach((item) => item.classList.toggle("active", item === button));
+    await refreshDiscoveryExplorer();
+  });
+});
+
+listen("#discoveryExplorerList", "click", (event) => {
+  const card = event.target.closest("[data-discovery-id]");
+  if (!card) return;
+  selectedDiscoveryId = card.dataset.discoveryId;
+  renderDiscoveryExplorer(discoveryExplorerItems);
+});
 
 const navLinks = [...document.querySelectorAll(".nav-link")];
 const sections = navLinks.map((link) => document.querySelector(link.getAttribute("href"))).filter(Boolean);
@@ -836,6 +1037,7 @@ sections.forEach((section) => observer.observe(section));
   createTimeframeCards();
   await refreshDashboard(true);
   await refreshLearning(true);
+  await refreshDiscoveryExplorer(true);
   await refreshBacktests(true);
 })();
 refreshTimer = setInterval(async () => {
@@ -843,3 +1045,5 @@ refreshTimer = setInterval(async () => {
   await refreshLearning(true);
   await refreshBacktests(true);
 }, 10_000);
+
+discoveryRefreshTimer = setInterval(() => refreshDiscoveryExplorer(true), 30_000);

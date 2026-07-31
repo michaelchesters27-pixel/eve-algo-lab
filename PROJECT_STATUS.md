@@ -1,3 +1,17 @@
+# Project status — v1.7.2
+
+## Current milestone
+
+The autonomous learning engine and 24/7 historical worker are operational. The dashboard now exposes their completed evidence through the Discovery Explorer.
+
+## v1.7.2 additions
+
+- Discovery Explorer for validated, promising and rejected tests
+- Full evidence detail view
+- Backend research-results API
+- Learning Centre null-element and stale-cache fix
+- No database migration required
+
 # Project status — v1.7.1
 
 ## Permanent data foundation

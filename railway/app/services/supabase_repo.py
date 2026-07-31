@@ -737,6 +737,34 @@ class SupabaseRepository:
         )
         return result or {}
 
+    async def list_historical_research_results(
+        self,
+        symbol: str,
+        snapshot_interval: str,
+        result_status: str = "all",
+        order: str = "confidence",
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(500, int(limit)))
+        order_map = {
+            "confidence": "confidence_score.desc.nullslast,finished_at.desc.nullslast",
+            "stability": "stability_score.desc.nullslast,confidence_score.desc.nullslast",
+            "sample": "sample_count.desc,confidence_score.desc.nullslast",
+            "recent": "finished_at.desc.nullslast",
+            "effect": "effect_size.desc.nullslast,confidence_score.desc.nullslast",
+        }
+        order_clause = order_map.get(order, order_map["confidence"])
+        filters = [
+            "select=id,job_key,generation,question,rationale,test_definition,result_status,rows_scanned,sample_count,effect_size,confidence_score,stability_score,summary,evidence,requested_at,started_at,finished_at",
+            f"symbol=eq.{quote(symbol, safe='')}",
+            f"snapshot_interval=eq.{quote(snapshot_interval, safe='')}",
+            "status=eq.complete",
+        ]
+        if result_status in {"validated", "promising", "rejected"}:
+            filters.append(f"result_status=eq.{result_status}")
+        filters.extend([f"order={order_clause}", f"limit={safe_limit}"])
+        return await self.select("historical_research_jobs", "&".join(filters))
+
     async def fail_interrupted_backtests(self) -> None:
         await self.update(
             "backtest_runs",

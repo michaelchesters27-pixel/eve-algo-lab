@@ -1,3 +1,26 @@
+# EVE Algo Lab v1.7.2
+
+## Discovery Explorer
+
+- Browse validated, promising and rejected historical research results.
+- Filter by result status and sort by confidence, stability, sample, recency or effect.
+- Open each result to inspect locked-test effect, validation effect, sample size, year stability, chronological split, conditions and multiple-testing safeguards.
+- Rejected findings now explain which safeguards they failed.
+- Results come directly from `historical_research_jobs`; no findings are fabricated by the frontend.
+
+## Frontend reliability fix
+
+- Replaced brittle Learning Centre DOM writes with guarded setters.
+- Added safe event binding so a stale or partially cached page cannot crash the whole Learning Centre.
+- Added versioned CSS and JavaScript asset URLs to prevent mismatched Netlify cache assets after deployment.
+- Fixes `Cannot set properties of null (setting 'textContent')`.
+
+## Deployment
+
+No Supabase SQL or environment-variable changes are required.
+
+---
+
 # EVE Algo Lab v1.7.1
 
 ## Continuous Historical Research
