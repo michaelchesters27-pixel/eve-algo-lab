@@ -31,6 +31,8 @@ const TIMEFRAMES = [
 let refreshTimer;
 let toastTimer;
 let activeBacktestId = null;
+let activeLearningRunId = null;
+let learningDashboard = null;
 let batchActionRunning = false;
 const activeBackfillJobIds = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
 const historicalReady = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, false]));
@@ -380,6 +382,162 @@ function updateBacktestAvailability() {
   }
 }
 
+
+function topStatistic(rows, dimension, metric) {
+  const candidates = rows.filter((row) => row.dimension === dimension && Number(row.sample_count || 0) > 0);
+  if (!candidates.length) return null;
+  return candidates.reduce((best, row) => Number(row[metric] || 0) > Number(best[metric] || 0) ? row : best, candidates[0]);
+}
+
+function renderResearchQuestions(questions = []) {
+  const host = $("#researchQuestionList");
+  $("#questionCountBadge").textContent = formatNumber(questions.length);
+  if (!questions.length) {
+    host.innerHTML = '<div class="empty-state">Questions will appear after the first learning build.</div>';
+    return;
+  }
+  host.innerHTML = questions.map((question) => `
+    <div class="research-item">
+      <div class="research-item-head"><small>${escapeHtml(String(question.category || "research").toUpperCase())}</small><span class="score">PRIORITY ${formatNumber(question.priority)}</span></div>
+      <strong>${escapeHtml(question.question || "Untitled research question")}</strong>
+      <p>${escapeHtml(question.rationale || "Waiting for formal testing.")}</p>
+    </div>
+  `).join("");
+}
+
+function renderDiscoveries(discoveries = []) {
+  const host = $("#discoveryList");
+  $("#discoveryCountBadge").textContent = formatNumber(discoveries.length);
+  if (!discoveries.length) {
+    host.innerHTML = '<div class="empty-state">Exploratory findings will appear here.</div>';
+    return;
+  }
+  host.innerHTML = discoveries.map((item) => `
+    <div class="research-item">
+      <div class="research-item-head"><small>${escapeHtml(String(item.status || "exploratory").toUpperCase())}</small><span class="score">${item.confidence_score == null ? "UNSCORED" : `${Number(item.confidence_score).toFixed(0)}% CONFIDENCE`}</span></div>
+      <strong>${escapeHtml(item.title || "Untitled observation")}</strong>
+      <p>${escapeHtml(item.summary || "Awaiting validation.")}</p>
+    </div>
+  `).join("");
+}
+
+function setCalendarInsight(nameId, metaId, row, metric, suffix) {
+  if (!row) {
+    $(nameId).textContent = "—";
+    $(metaId).textContent = "Build learning first";
+    return;
+  }
+  $(nameId).textContent = row.bucket_label || row.bucket_key || "—";
+  const value = Number(row[metric] || 0);
+  $(metaId).textContent = `${value.toFixed(metric === "directional_day_rate" ? 1 : 2)}${suffix} · ${formatNumber(row.sample_count)} days`;
+}
+
+function renderLearning(data = {}) {
+  learningDashboard = data;
+  const state = data.state || {};
+  const run = data.latest_run || {};
+  const active = ["queued", "running"].includes(run.status);
+  activeLearningRunId = active ? run.id : null;
+  const status = active ? run.status : (state.status || "not_started");
+  const progress = Number(active ? run.progress_percent || 0 : (state.initial_build_complete ? 100 : 0));
+  const stage = active ? run.stage || "queued" : (state.initial_build_complete ? "ready" : "not built");
+
+  $("#learningTitle").textContent = stage.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  $("#learningStatus").textContent = status.replaceAll("_", " ").toUpperCase();
+  $("#learningStatus").className = `status-pill ${status}`;
+  $("#learningProgress").textContent = `${Math.min(100, progress).toFixed(progress > 0 && progress < 10 ? 1 : 0)}%`;
+  $("#learningProgressBar").style.width = `${Math.min(100, progress)}%`;
+  $("#learningMessage").textContent = run.error || run.message || state.last_error || (state.initial_build_complete
+    ? "Learning foundation ready. EVE will add new completed candles automatically."
+    : "Build the foundation once. Railway will then keep it updated as new candles arrive.");
+
+  $("#learningSnapshots").textContent = formatNumber(state.snapshots_count);
+  $("#learningOutcomes").textContent = formatNumber(state.outcome_labels_count);
+  $("#learningQuestions").textContent = formatNumber(state.question_count);
+  $("#learningDiscoveries").textContent = formatNumber(state.discovery_count);
+  $("#learningLatest").textContent = formatDate(state.last_snapshot_time);
+  $("#learningAutoUpdate").textContent = state.initial_build_complete && state.auto_update_enabled !== false ? "Enabled" : "After first build";
+
+  const foundationReady = TIMEFRAMES.every((item) => historicalReady[item.interval]);
+  const build = $("#buildLearning");
+  build.disabled = active || !foundationReady;
+  if (!foundationReady) build.textContent = "Finish data foundation first";
+  else if (active) build.textContent = "Learning build in progress…";
+  else if (state.initial_build_complete) build.textContent = "Update learning with new candles";
+  else build.textContent = "Build learning foundation";
+
+  const cancel = $("#cancelLearning");
+  cancel.hidden = !active;
+  cancel.disabled = !active;
+
+  const calendarRows = data.calendar_statistics || [];
+  const topRangeWeekday = topStatistic(calendarRows, "weekday", "average_range_pct");
+  const topDirectionalWeekday = topStatistic(calendarRows, "weekday", "directional_day_rate");
+  const topRangeMonth = topStatistic(calendarRows, "month", "average_range_pct");
+  const topDirectionalMonth = topStatistic(calendarRows, "month", "directional_day_rate");
+  setCalendarInsight("#topRangeWeekday", "#topRangeWeekdayMeta", topRangeWeekday, "average_range_pct", "% daily range");
+  setCalendarInsight("#topDirectionalWeekday", "#topDirectionalWeekdayMeta", topDirectionalWeekday, "directional_day_rate", "% directional");
+  setCalendarInsight("#topRangeMonth", "#topRangeMonthMeta", topRangeMonth, "average_range_pct", "% daily range");
+  setCalendarInsight("#topDirectionalMonth", "#topDirectionalMonthMeta", topDirectionalMonth, "directional_day_rate", "% directional");
+  $("#calendarStatus").textContent = calendarRows.length ? "READY" : "WAITING";
+  $("#calendarStatus").className = `status-pill ${calendarRows.length ? "complete" : ""}`;
+
+  const approved = data.approved_model || {};
+  const challenger = data.challenger_model || {};
+  $("#approvedModelName").textContent = approved.name || "EVE Statistical Baseline";
+  $("#approvedModelVersion").textContent = approved.version ? `Version ${approved.version}` : "Version 1.0";
+  $("#approvedModelNotes").textContent = approved.notes || "The trusted baseline used to judge future models.";
+  $("#challengerModelName").textContent = challenger.name || "Not trained yet";
+  $("#challengerModelVersion").textContent = challenger.version ? `Version ${challenger.version}` : "Waiting for validated learning data";
+  $("#challengerModelNotes").textContent = challenger.notes || "A challenger will never replace the approved model unless it wins on unseen data.";
+
+  renderResearchQuestions(data.questions || []);
+  renderDiscoveries(data.discoveries || []);
+}
+
+async function refreshLearning(silent = false) {
+  try {
+    const payload = await api("learning/status?symbol=XAU%2FUSD");
+    renderLearning(payload.data || {});
+  } catch (error) {
+    if (!silent) showToast(error.message, true);
+    $("#learningMessage").textContent = error.message;
+  }
+}
+
+async function buildLearning(button) {
+  button.disabled = true;
+  button.textContent = "Queuing…";
+  try {
+    const payload = await api("learning/build", {
+      method: "POST",
+      body: JSON.stringify({ symbol: "XAU/USD", full_rebuild: false }),
+    });
+    activeLearningRunId = payload.data.id;
+    showToast(payload.message || "Learning foundation queued");
+    await refreshLearning(true);
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    if (learningDashboard) renderLearning(learningDashboard);
+  }
+}
+
+async function cancelLearning(button) {
+  if (!activeLearningRunId) return;
+  button.disabled = true;
+  button.textContent = "Cancelling…";
+  try {
+    const payload = await api(`learning/runs/${activeLearningRunId}/cancel`, { method: "POST", body: "{}" });
+    showToast(payload.message || "Learning cancellation requested");
+    await refreshLearning(true);
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    button.textContent = "Cancel learning build";
+  }
+}
+
 function backtestPayload() {
   const resolution = $("#resolutionMode").value;
   return {
@@ -564,11 +722,14 @@ $("#timeframeGrid").addEventListener("click", async (event) => {
 $("#queueAllHistory").addEventListener("click", (event) => queueAllMissingHistory(event.currentTarget));
 $("#syncAllFrames").addEventListener("click", (event) => queueBatchJobs("sync", event.currentTarget, "Syncing"));
 $("#scanAllFrames").addEventListener("click", (event) => queueBatchJobs("gap-scan", event.currentTarget, "Scanning"));
+$("#buildLearning").addEventListener("click", (event) => buildLearning(event.currentTarget));
+$("#cancelLearning").addEventListener("click", (event) => cancelLearning(event.currentTarget));
+$("#refreshLearning").addEventListener("click", () => refreshLearning());
 $("#resolutionMode").addEventListener("change", updateBacktestAvailability);
 $("#runBacktest").addEventListener("click", (event) => runBacktest(event.currentTarget));
 $("#cancelBacktest").addEventListener("click", (event) => cancelBacktest(event.currentTarget));
 $("#refreshBacktest").addEventListener("click", () => refreshBacktests());
-$("#refreshButton").addEventListener("click", async () => { await refreshDashboard(); await refreshBacktests(true); });
+$("#refreshButton").addEventListener("click", async () => { await refreshDashboard(); await refreshLearning(true); await refreshBacktests(true); });
 
 const navLinks = [...document.querySelectorAll(".nav-link")];
 const sections = navLinks.map((link) => document.querySelector(link.getAttribute("href"))).filter(Boolean);
@@ -582,9 +743,11 @@ sections.forEach((section) => observer.observe(section));
 (async () => {
   createTimeframeCards();
   await refreshDashboard(true);
+  await refreshLearning(true);
   await refreshBacktests(true);
 })();
 refreshTimer = setInterval(async () => {
   await refreshDashboard(true);
+  await refreshLearning(true);
   await refreshBacktests(true);
 }, 10_000);

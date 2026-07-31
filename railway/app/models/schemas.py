@@ -23,6 +23,11 @@ class JobResponse(BaseModel):
     message: str
 
 
+class LearningBuildRequest(BaseModel):
+    symbol: str = Field(default="XAU/USD", min_length=3, max_length=40)
+    full_rebuild: bool = False
+
+
 class MetricsPreviewRequest(BaseModel):
     net_pnls: list[float] = Field(min_length=1, max_length=100_000)
     starting_balance: float = Field(default=10_000, gt=0)

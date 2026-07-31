@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#07110f">
-  <meta name="description" content="EVE Algo Lab — permanent multi-timeframe XAU/USD market memory from M1 through D1.">
+  <meta name="description" content="EVE Algo Lab — permanent market memory and a controlled learning foundation for XAU/USD research.">
   <title>EVE Algo Lab</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -25,9 +25,10 @@
       <nav class="nav" aria-label="Main navigation">
         <a class="nav-link active" href="#overview"><span>01</span> Overview</a>
         <a class="nav-link" href="#memory"><span>02</span> Data foundation</a>
-        <a class="nav-link" href="#backtester"><span>03</span> Backtester</a>
-        <a class="nav-link" href="#pipeline"><span>04</span> Build pipeline</a>
-        <a class="nav-link" href="#activity"><span>05</span> Activity</a>
+        <a class="nav-link" href="#learning"><span>03</span> Learning centre</a>
+        <a class="nav-link" href="#backtester"><span>04</span> Backtester</a>
+        <a class="nav-link" href="#pipeline"><span>05</span> Build pipeline</a>
+        <a class="nav-link" href="#activity"><span>06</span> Activity</a>
       </nav>
       <div class="side-status">
         <span class="pulse" id="servicePulse"></span>
@@ -93,7 +94,7 @@
 
       <section id="memory" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">DATA FOUNDATION v1.4</p><h2>Six layers of market memory</h2></div>
+          <div><p class="eyebrow">DATA FOUNDATION v1.5</p><h2>Six layers of market memory</h2></div>
           <p>Railway downloads each timeframe in sequence and stores it permanently in Supabase. Each dataset has independent progress, resumable history, latest-candle sync and gap review.</p>
         </div>
         <div class="timeframe-grid" id="timeframeGrid" aria-live="polite"></div>
@@ -102,9 +103,92 @@
         </div>
       </section>
 
+      <section id="learning" class="section-block">
+        <div class="section-title">
+          <div><p class="eyebrow">LEARNING FOUNDATION v1.5</p><h2>EVE starts turning memory into experience</h2></div>
+          <p>The first build converts historical candles into compact research snapshots, labels what happened next, studies the full daily calendar history and creates EVE’s first evidence-led questions.</p>
+        </div>
+
+        <div class="learning-layout">
+          <article class="panel learning-status-panel">
+            <div class="panel-head">
+              <div><p class="label">LEARNING ENGINE</p><h2 id="learningTitle">Not built yet</h2></div>
+              <span class="status-pill" id="learningStatus">WAITING</span>
+            </div>
+            <div class="learning-progress-row">
+              <div class="progress-track"><span id="learningProgressBar"></span></div>
+              <strong id="learningProgress">0%</strong>
+            </div>
+            <p class="backtest-message" id="learningMessage">Build the foundation once. Railway will then keep it updated as new candles arrive.</p>
+            <div class="result-grid learning-result-grid">
+              <div><small>RESEARCH SNAPSHOTS</small><strong id="learningSnapshots">0</strong></div>
+              <div><small>OUTCOMES LABELLED</small><strong id="learningOutcomes">0</strong></div>
+              <div><small>QUESTIONS CREATED</small><strong id="learningQuestions">0</strong></div>
+              <div><small>DISCOVERIES</small><strong id="learningDiscoveries">0</strong></div>
+              <div><small>LAST EXPERIENCE</small><strong id="learningLatest">None</strong></div>
+              <div><small>AUTO UPDATE</small><strong id="learningAutoUpdate">After first build</strong></div>
+            </div>
+            <div class="learning-method">
+              <strong>What v1.5 builds</strong>
+              <span>M5 feature engine</span><span>completed M15 / H1 / H4 / D1 context</span><span>5–240 minute outcomes</span><span>weekday and month intelligence</span>
+            </div>
+            <div class="actions">
+              <button class="button button-primary" id="buildLearning">Build learning foundation</button>
+              <button class="button" id="cancelLearning" hidden>Cancel learning build</button>
+              <button class="button button-quiet" id="refreshLearning">Refresh</button>
+            </div>
+          </article>
+
+          <article class="panel model-control-panel">
+            <div class="panel-head">
+              <div><p class="label">MODEL CONTROL</p><h2>Approved versus challenger</h2></div>
+              <span class="live-badge"><i></i> CONTROLLED LEARNING</span>
+            </div>
+            <div class="model-card approved-model">
+              <small>APPROVED FOUNDATION</small>
+              <strong id="approvedModelName">EVE Statistical Baseline</strong>
+              <span id="approvedModelVersion">Version 1.0</span>
+              <p id="approvedModelNotes">The trusted baseline used to judge future models.</p>
+            </div>
+            <div class="model-card challenger-model">
+              <small>CHALLENGER</small>
+              <strong id="challengerModelName">Not trained yet</strong>
+              <span id="challengerModelVersion">Waiting for validated learning data</span>
+              <p id="challengerModelNotes">A challenger will never replace the approved model unless it wins on unseen data.</p>
+            </div>
+            <div class="quality-line"><span>Self-improvement rule</span><strong>PROVE IT BEFORE PROMOTION</strong></div>
+          </article>
+        </div>
+
+        <article class="panel calendar-panel">
+          <div class="panel-head">
+            <div><p class="label">CALENDAR INTELLIGENCE</p><h2>What the daily history is beginning to show</h2></div>
+            <span class="status-pill" id="calendarStatus">WAITING</span>
+          </div>
+          <div class="calendar-insight-grid">
+            <div class="calendar-insight"><small>LARGEST-RANGE WEEKDAY</small><strong id="topRangeWeekday">—</strong><span id="topRangeWeekdayMeta">Build learning first</span></div>
+            <div class="calendar-insight"><small>MOST DIRECTIONAL WEEKDAY</small><strong id="topDirectionalWeekday">—</strong><span id="topDirectionalWeekdayMeta">Build learning first</span></div>
+            <div class="calendar-insight"><small>LARGEST-RANGE MONTH</small><strong id="topRangeMonth">—</strong><span id="topRangeMonthMeta">Build learning first</span></div>
+            <div class="calendar-insight"><small>MOST DIRECTIONAL MONTH</small><strong id="topDirectionalMonth">—</strong><span id="topDirectionalMonthMeta">Build learning first</span></div>
+          </div>
+          <p class="foundation-note compact-note">These are descriptive observations, not trade instructions. v1.6 will test stability by year and on unseen periods before any finding can be promoted.</p>
+        </article>
+
+        <div class="learning-lists">
+          <article class="panel list-panel">
+            <div class="panel-head"><div><p class="label">EVE ASKS</p><h2>Research question queue</h2></div><span id="questionCountBadge" class="status-pill">0</span></div>
+            <div class="research-list" id="researchQuestionList"><div class="empty-state">Questions will appear after the first learning build.</div></div>
+          </article>
+          <article class="panel list-panel">
+            <div class="panel-head"><div><p class="label">DISCOVERY LIBRARY</p><h2>Observations worth challenging</h2></div><span id="discoveryCountBadge" class="status-pill">0</span></div>
+            <div class="research-list" id="discoveryList"><div class="empty-state">Exploratory findings will appear here.</div></div>
+          </article>
+        </div>
+      </section>
+
       <section id="backtester" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">RESEARCH BACKTESTER v1.4</p><h2>EVE Fixed Ladder v2.61</h2></div>
+          <div><p class="eyebrow">RESEARCH BACKTESTER v1.5</p><h2>EVE Fixed Ladder v2.61</h2></div>
           <p>The existing M5 approximation and M1 high-resolution replay remain available while the broader research memory is expanded.</p>
         </div>
 
@@ -194,7 +278,8 @@
           <article class="pipeline-card current"><div class="stage">LIVE</div><span>01</span><h3>M1 + M5 Memory</h3><p>High-resolution path and detailed intraday structure are stored permanently.</p></article>
           <article class="pipeline-card current"><div class="stage">v1.4</div><span>02</span><h3>M15 + H1 Context</h3><p>Setup context and the active intraday regime become searchable evidence.</p></article>
           <article class="pipeline-card current"><div class="stage">v1.4</div><span>03</span><h3>H4 + D1 Context</h3><p>Major swings, daily behaviour, weekdays, months and seasonal regimes.</p></article>
-          <article class="pipeline-card"><div class="stage">NEXT</div><span>04</span><h3>Research Engine</h3><p>Ask questions, compare similar history and generate new market hypotheses.</p></article>
+          <article class="pipeline-card current"><div class="stage">v1.5</div><span>04</span><h3>Learning Foundation</h3><p>Feature snapshots, forward outcomes, calendar intelligence and EVE’s research-question queue.</p></article>
+          <article class="pipeline-card"><div class="stage">NEXT</div><span>05</span><h3>Ask EVE + Pattern Match</h3><p>Natural-language research, similar historical structures and evidence-led likely outcomes.</p></article>
         </div>
       </section>
 
@@ -206,7 +291,7 @@
         <div class="activity-list" id="activityList"><div class="empty-state">Waiting for Supabase activity…</div></div>
       </section>
 
-      <footer><span>EVE ALGO LAB · v1.4</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
+      <footer><span>EVE ALGO LAB · v1.5</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
     </main>
   </div>
 

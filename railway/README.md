@@ -1,8 +1,12 @@
 # Railway service
 
-FastAPI API and persistent ingestion worker for EVE Algo Lab.
+FastAPI API with three persistent engines for EVE Algo Lab:
 
-The worker supports `1min`, `5min`, `15min`, `1h`, `4h` and `1day` historical backfills and automatic completed-candle synchronisation.
+- Multi-timeframe candle ingestion and automatic sync.
+- Resumable Learning Foundation builds and incremental updates.
+- M5 approximation and M1 replay backtesting.
+
+No new environment variables are required for v1.5.
 
 Local run:
 

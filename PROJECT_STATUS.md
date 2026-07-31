@@ -1,30 +1,39 @@
-# Project status — v1.4.0
+# Project status — v1.5.0
 
-## Live and working
+## Live foundation
 
 - Netlify dashboard
-- Railway API and persistent ingestion worker
-- Supabase permanent candle database
-- XAU/USD M1 and M5 historical memory
-- Resumable M15, H1, H4 and D1 historical downloaders
-- One-click queue for every missing timeframe
-- Independent progress, candle counts and date coverage for six timeframes
-- Automatic latest-candle sync for M1, M5, M15, H1, H4 and D1
-- Staggered automatic sync requests
-- Gap scans with expected-closure versus review classification
+- Railway API and ingestion worker
+- Supabase permanent market memory
+- Complete XAU/USD M1, M5, M15, H1, H4 and D1 history
+- Automatic completed-candle synchronisation
+- Gap classification and review
 - Existing M5 approximation backtester
 - Existing M1 high-resolution replay backtester
 
+## New learning capability
+
+- Resumable learning runs
+- 15-minute research anchors calculated from M5 evidence
+- Multi-horizon feature snapshots
+- 5–240 minute outcome labels
+- D1 weekday, month and quarter intelligence
+- EVE-generated question queue
+- Exploratory discovery storage
+- Prediction ledger
+- Approved-versus-challenger model governance
+- Automatic incremental learning checks
+
 ## Next major engine
 
-Research Lab: calendar intelligence, historical pattern similarity, user questions, EVE-generated questions and a permanent discovery library.
+v1.6: **Ask EVE and Historical Pattern Match** — query the research snapshots, compare the current market with similar historical states, test EVE’s questions and show evidence-based outcome distributions.
 
 ## Not yet claimed
 
 - Tick-accurate replay
-- Natural-language Ask EVE engine
-- Autonomous market discoveries
+- Natural-language answers in production
+- A trained predictive challenger model
+- Validated autonomous discoveries
 - AI strategy generation
-- Continuous model retraining
 - Live paper trading
 - Live MT5 execution

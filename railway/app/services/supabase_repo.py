@@ -79,6 +79,13 @@ class SupabaseRepository:
         response = await self._request("GET", f"{table}?{query}")
         return response.json()
 
+    async def delete(self, table: str, filters: str) -> None:
+        await self._request(
+            "DELETE",
+            f"{table}?{filters}",
+            headers={"Prefer": "return=minimal"},
+        )
+
     async def rpc(self, function_name: str, payload: dict[str, Any]) -> Any:
         response = await self._request("POST", f"rpc/{function_name}", json=payload)
         if not response.content:
@@ -345,6 +352,153 @@ class SupabaseRepository:
         return await self.select(
             "backtest_trades",
             f"select=*&backtest_run_id=eq.{quote(run_id, safe='')}&order=opened_at.desc&limit={safe_limit}",
+        )
+
+    async def create_learning_run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        rows = await self.insert("learning_runs", payload)
+        return rows[0]
+
+    async def has_active_learning_run(self, symbol: str, snapshot_interval: str) -> bool:
+        rows = await self.select(
+            "learning_runs",
+            "select=id&symbol=eq.{}&snapshot_interval=eq.{}&status=in.(queued,running)&limit=1".format(
+                quote(symbol, safe=""), quote(snapshot_interval, safe="")
+            ),
+        )
+        return bool(rows)
+
+    async def claim_next_learning_run(self, worker_id: str) -> dict[str, Any] | None:
+        result = await self.rpc("claim_next_learning_run", {"p_worker_id": worker_id})
+        if isinstance(result, list) and result:
+            return result[0]
+        return None
+
+    async def get_learning_run(self, run_id: str) -> dict[str, Any] | None:
+        rows = await self.select("learning_runs", f"select=*&id=eq.{quote(run_id, safe='')}&limit=1")
+        return rows[0] if rows else None
+
+    async def list_learning_runs(self, limit: int = 20) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(100, int(limit)))
+        return await self.select("learning_runs", f"select=*&order=requested_at.desc&limit={safe_limit}")
+
+    async def update_learning_run(self, run_id: str, **changes: Any) -> None:
+        changes["heartbeat_at"] = datetime.now(timezone.utc).isoformat()
+        await self.update("learning_runs", f"id=eq.{quote(run_id, safe='')}", changes)
+
+    async def cancel_learning_run(self, run_id: str) -> dict[str, Any] | None:
+        rows = await self.update(
+            "learning_runs",
+            f"id=eq.{quote(run_id, safe='')}&status=in.(queued,running)",
+            {
+                "status": "cancelled",
+                "stage": "cancelled",
+                "message": "Learning build cancellation requested",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+            },
+            return_representation=True,
+        )
+        return rows[0] if rows else None
+
+    async def reset_stale_learning_runs(self, stale_minutes: int = 10) -> None:
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=stale_minutes)).isoformat()
+        await self.update(
+            "learning_runs",
+            f"status=eq.running&or=(heartbeat_at.is.null,heartbeat_at.lt.{quote(cutoff, safe=':-TZ')})",
+            {
+                "status": "queued",
+                "worker_id": None,
+                "message": "Recovered after Railway restart",
+            },
+        )
+
+    async def get_learning_state(self, symbol: str, snapshot_interval: str) -> dict[str, Any] | None:
+        rows = await self.select(
+            "learning_state",
+            "select=*&symbol=eq.{}&snapshot_interval=eq.{}&limit=1".format(
+                quote(symbol, safe=""), quote(snapshot_interval, safe="")
+            ),
+        )
+        return rows[0] if rows else None
+
+    async def upsert_learning_state(self, symbol: str, snapshot_interval: str, **changes: Any) -> None:
+        existing = await self.get_learning_state(symbol, snapshot_interval)
+        if existing:
+            await self.update(
+                "learning_state",
+                "symbol=eq.{}&snapshot_interval=eq.{}".format(
+                    quote(symbol, safe=""), quote(snapshot_interval, safe="")
+                ),
+                changes,
+            )
+            return
+        await self.insert(
+            "learning_state",
+            {"symbol": symbol, "snapshot_interval": snapshot_interval, **changes},
+        )
+
+    async def refresh_learning_state(self, symbol: str, snapshot_interval: str) -> None:
+        await self.rpc(
+            "refresh_learning_state",
+            {"p_symbol": symbol, "p_snapshot_interval": snapshot_interval},
+        )
+
+    async def learning_dashboard(self, symbol: str, snapshot_interval: str) -> dict[str, Any]:
+        result = await self.rpc(
+            "get_learning_dashboard",
+            {"p_symbol": symbol, "p_snapshot_interval": snapshot_interval},
+        )
+        return result or {}
+
+    async def bulk_upsert_learning_snapshots(self, rows: list[dict[str, Any]], chunk_size: int = 500) -> None:
+        for start in range(0, len(rows), chunk_size):
+            await self.upsert(
+                "market_learning_snapshots",
+                rows[start:start + chunk_size],
+                "symbol,snapshot_interval,candle_time",
+            )
+
+    async def replace_calendar_statistics(self, symbol: str, rows: list[dict[str, Any]]) -> None:
+        await self.delete("calendar_statistics", f"symbol=eq.{quote(symbol, safe='')}")
+        for start in range(0, len(rows), 250):
+            await self.upsert(
+                "calendar_statistics",
+                rows[start:start + 250],
+                "symbol,dimension,bucket_key",
+            )
+
+    async def upsert_research_questions(self, rows: list[dict[str, Any]]) -> None:
+        # Questions are few. Upserting one at a time lets PostgreSQL apply defaults
+        # while preserving fields such as a human-reviewed status.
+        for row in rows:
+            await self.upsert("research_questions", row, "question_key")
+
+    async def upsert_discoveries(self, rows: list[dict[str, Any]]) -> None:
+        # Preserve any later validation status while refreshing the evidence.
+        for row in rows:
+            await self.upsert("discoveries", row, "discovery_key")
+
+    async def delete_learning_generated_data(self, symbol: str, snapshot_interval: str) -> None:
+        await self.delete(
+            "market_learning_snapshots",
+            "symbol=eq.{}&snapshot_interval=eq.{}".format(
+                quote(symbol, safe=""), quote(snapshot_interval, safe="")
+            ),
+        )
+        await self.delete("calendar_statistics", f"symbol=eq.{quote(symbol, safe='')}")
+        await self.delete("research_questions", f"symbol=eq.{quote(symbol, safe='')}")
+        await self.delete("discoveries", f"symbol=eq.{quote(symbol, safe='')}")
+        await self.upsert_learning_state(
+            symbol,
+            snapshot_interval,
+            status="not_started",
+            initial_build_complete=False,
+            last_snapshot_time=None,
+            snapshots_count=0,
+            complete_outcomes_count=0,
+            outcome_labels_count=0,
+            calendar_stat_count=0,
+            question_count=0,
+            discovery_count=0,
         )
 
     async def fail_interrupted_backtests(self) -> None:

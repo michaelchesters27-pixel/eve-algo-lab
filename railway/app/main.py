@@ -15,15 +15,17 @@ from app.models.schemas import (
     FixedLadderBacktestRequest,
     JobRequest,
     JobResponse,
+    LearningBuildRequest,
     MetricsPreviewRequest,
 )
 from app.services.backtests import BacktestService
 from app.services.ingestion import IngestionService, historical_backfill_complete
+from app.services.learning import LearningService, SNAPSHOT_INTERVAL
 from app.services.supabase_repo import SupabaseRepository
 from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
 from app.settings import Settings, get_settings
 
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.5.0"
 
 settings = get_settings()
 logging.basicConfig(
@@ -41,6 +43,7 @@ twelve = TwelveDataClient(
 )
 ingestion = IngestionService(settings, repo, twelve)
 backtests = BacktestService(repo)
+learning = LearningService(repo)
 background_tasks: list[asyncio.Task[Any]] = []
 
 
@@ -49,6 +52,8 @@ async def lifespan(_: FastAPI):
     await repo.fail_interrupted_backtests()
     await repo.log_event("info", "railway", "EVE Algo Lab Railway service started", {"version": APP_VERSION})
     background_tasks.append(asyncio.create_task(ingestion.worker_loop(), name="ingestion-worker"))
+    background_tasks.append(asyncio.create_task(learning.worker_loop(), name="learning-worker"))
+    background_tasks.append(asyncio.create_task(learning.auto_update_loop(), name="automatic-learning-update"))
     for sync_index, interval in enumerate(settings.auto_sync_interval_list):
         if interval not in INTERVAL_SECONDS:
             logger.warning("Skipping unsupported AUTO_SYNC_INTERVALS value: %s", interval)
@@ -58,6 +63,7 @@ async def lifespan(_: FastAPI):
         )
     yield
     await ingestion.stop()
+    await learning.stop()
     for task in background_tasks:
         task.cancel()
     for task in list(backtests.tasks.values()):
@@ -70,7 +76,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="EVE Algo Lab API",
     version=APP_VERSION,
-    description="Permanent multi-timeframe XAU/USD market memory from M1 through D1, plus high-resolution research backtesting.",
+    description="Permanent multi-timeframe XAU/USD market memory, a resumable learning foundation and high-resolution research backtesting.",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -204,6 +210,64 @@ async def cancel_job(job_id: str) -> ApiEnvelope:
     if not job:
         raise HTTPException(status_code=409, detail="Job is no longer queued or running")
     return ApiEnvelope(data=job, message="Pause requested. The saved cursor will be used when you resume.")
+
+
+@app.get("/api/learning/status", response_model=ApiEnvelope)
+async def learning_status(
+    symbol: str = Query(default="XAU/USD", min_length=3, max_length=40),
+) -> ApiEnvelope:
+    dashboard = await repo.learning_dashboard(symbol, SNAPSHOT_INTERVAL)
+    dashboard["service"] = "online"
+    dashboard["version"] = APP_VERSION
+    dashboard["snapshot_interval"] = SNAPSHOT_INTERVAL
+    return ApiEnvelope(data=dashboard)
+
+
+@app.get("/api/learning/runs", response_model=ApiEnvelope)
+async def list_learning_runs(limit: int = Query(default=20, ge=1, le=100)) -> ApiEnvelope:
+    return ApiEnvelope(data=await repo.list_learning_runs(limit))
+
+
+@app.post("/api/learning/build", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])
+async def start_learning_build(request: LearningBuildRequest) -> ApiEnvelope:
+    if await repo.has_active_learning_run(request.symbol, SNAPSHOT_INTERVAL):
+        raise HTTPException(status_code=409, detail="A learning build is already queued or running")
+
+    required = {
+        "5min": "M5 Market Memory",
+        "1day": "D1 Market Memory",
+    }
+    for interval, label in required.items():
+        state = await repo.get_state(request.symbol, interval)
+        if not state_is_historically_ready(state, interval):
+            raise HTTPException(status_code=409, detail=f"{label} must be complete before EVE can build its learning foundation")
+
+    run = await repo.create_learning_run(
+        {
+            "symbol": request.symbol,
+            "source_interval": "5min",
+            "snapshot_interval": SNAPSHOT_INTERVAL,
+            "full_rebuild": request.full_rebuild,
+            "message": "Waiting for Railway learning worker",
+        }
+    )
+    await repo.upsert_learning_state(
+        request.symbol,
+        SNAPSHOT_INTERVAL,
+        status="queued",
+        last_run_id=str(run["id"]),
+        last_error=None,
+    )
+    message = "Full learning rebuild queued" if request.full_rebuild else "Learning foundation update queued"
+    return ApiEnvelope(data={"id": str(run["id"]), "status": run["status"]}, message=message)
+
+
+@app.post("/api/learning/runs/{run_id}/cancel", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])
+async def cancel_learning_run(run_id: str) -> ApiEnvelope:
+    run = await repo.cancel_learning_run(run_id)
+    if not run:
+        raise HTTPException(status_code=409, detail="Learning build is no longer queued or running")
+    return ApiEnvelope(data=run, message="Learning build cancellation requested")
 
 
 @app.post("/api/backtests/fixed-ladder-v2-61", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])
