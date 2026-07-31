@@ -19,11 +19,22 @@ const formatDate = (value, includeTime = false) => {
   }).format(date);
 };
 
+const TIMEFRAMES = [
+  { interval: "1min", key: "m1", label: "M1", role: "Execution path", description: "Minute-by-minute price path for detailed replay and micro-pattern research." },
+  { interval: "5min", key: "m5", label: "M5", role: "Intraday structure", description: "Detailed intraday movement and the broad benchmark for current research." },
+  { interval: "15min", key: "m15", label: "M15", role: "Setup context", description: "Momentum transitions, compression and context around lower-timeframe patterns." },
+  { interval: "1h", key: "h1", label: "H1", role: "Intraday regime", description: "Trend, range and volatility regime surrounding each intraday event." },
+  { interval: "4h", key: "h4", label: "H4", role: "Major swing context", description: "Broader market structure and multi-session directional behaviour." },
+  { interval: "1day", key: "d1", label: "D1", role: "Calendar context", description: "Daily ranges, weekdays, months, seasons and long-term market regimes." },
+];
+
 let refreshTimer;
 let toastTimer;
 let activeBacktestId = null;
-const activeBackfillJobIds = { "5min": null, "1min": null };
-const historicalReady = { "5min": false, "1min": false };
+let batchActionRunning = false;
+const activeBackfillJobIds = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
+const historicalReady = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, false]));
+const marketStates = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
 
 function showToast(message, isError = false) {
   const toast = $("#toast");
@@ -76,173 +87,296 @@ function renderEvents(events = []) {
   `).join("");
 }
 
-function defaultJobMessage(status, rows, interval) {
-  const label = interval === "1min" ? "M1" : "M5";
-  if (status === "paused") return `${label} download paused safely. Press Resume to continue from the saved point.`;
-  if (status === "error") return `The last ${label} download stopped with an error. Press Resume after checking Activity.`;
-  if (rows > 0) return `Recent ${label} candles are stored. The multi-year historical download has not completed yet.`;
-  return `Ready to download the complete available XAU/USD ${label} history.`;
+function timeframeCard(meta) {
+  return `
+    <article class="timeframe-card" data-interval="${meta.interval}">
+      <div class="timeframe-head">
+        <div class="timeframe-name"><span>${meta.label}</span><div><small>${meta.role.toUpperCase()}</small><h3>XAU/USD ${meta.label}</h3></div></div>
+        <span class="status-pill" id="tf-${meta.key}-status">CHECKING</span>
+      </div>
+      <p class="timeframe-description">${meta.description}</p>
+      <div class="timeframe-progress-row">
+        <div class="progress-track"><span id="tf-${meta.key}-bar"></span></div>
+        <strong id="tf-${meta.key}-progress">0%</strong>
+      </div>
+      <p class="timeframe-message" id="tf-${meta.key}-message">Checking stored candles and job state.</p>
+      <div class="timeframe-metrics">
+        <div><small>CANDLES</small><strong id="tf-${meta.key}-rows">0</strong></div>
+        <div><small>BATCHES</small><strong id="tf-${meta.key}-batches">0</strong></div>
+        <div><small>REVIEW GAPS</small><strong id="tf-${meta.key}-review">0</strong></div>
+        <div><small>EXPECTED CLOSURES</small><strong id="tf-${meta.key}-expected">0</strong></div>
+      </div>
+      <div class="coverage-strip">
+        <div><small>STORED FROM</small><strong id="tf-${meta.key}-oldest">None</strong></div>
+        <div><small>LATEST</small><strong id="tf-${meta.key}-latest">None</strong></div>
+      </div>
+      <div class="actions compact-actions">
+        <button class="button button-primary" data-action="backfill" data-interval="${meta.interval}">Download history</button>
+        <button class="button" data-action="pause" data-interval="${meta.interval}" hidden>Pause</button>
+        <button class="button" data-action="sync" data-interval="${meta.interval}">Sync latest</button>
+        <button class="button button-quiet" data-action="gap-scan" data-interval="${meta.interval}">Scan gaps</button>
+      </div>
+    </article>
+  `;
 }
 
-function updateBacktestAvailability() {
-  const resolution = $("#resolutionMode").value;
-  const ready = resolution === "m1_replay" ? historicalReady["1min"] : historicalReady["5min"];
-  const button = $("#runBacktest");
-  button.disabled = !ready || Boolean(activeBacktestId);
-  button.textContent = resolution === "m1_replay" ? "Run M1 high-resolution replay" : "Run M5 approximation";
-
-  if (resolution === "m1_replay") {
-    $("#resolutionNote").textContent = historicalReady["1min"]
-      ? "M1 Market Memory is complete. This run uses every verified one-minute candle in sequence."
-      : "M1 replay is locked until the M1 historical download reaches 100%.";
-  } else {
-    $("#resolutionNote").textContent = "M5 baseline uses the completed broad historical dataset and a candle-path approximation.";
-  }
+function createTimeframeCards() {
+  $("#timeframeGrid").innerHTML = TIMEFRAMES.map(timeframeCard).join("");
 }
 
-function renderM5Dashboard(data) {
+function defaultJobMessage(meta, status, rows) {
+  if (status === "paused") return `${meta.label} download paused safely. Press Resume to continue from the saved point.`;
+  if (status === "error") return `The last ${meta.label} job stopped with an error. Check Activity, then press Resume.`;
+  if (rows > 0) return `Recent ${meta.label} candles are stored. The complete available history has not finished yet.`;
+  return `Ready to download the complete available XAU/USD ${meta.label} history.`;
+}
+
+function renderTimeframeDashboard(meta, data) {
   const state = data.state || {};
   const job = data.backfill_job || {};
-  const candle = data.latest_candle || {};
   const gaps = data.gaps || {};
   const status = state.status || "not_started";
-  historicalReady["5min"] = Boolean(data.historical_ready || state.historical_complete);
+  const ready = Boolean(data.historical_ready || state.historical_complete);
   const progress = Number(data.historical_progress_percent ?? state.progress_percent ?? 0);
   const rows = Number(state.rows_in_database || state.rows_processed || 0);
   const active = ["queued", "running"].includes(job.status);
 
-  activeBackfillJobIds["5min"] = active ? job.id : null;
-  setService(true, "Online");
-  $("#statePill").textContent = status.replaceAll("_", " ").toUpperCase();
-  $("#statePill").className = `status-pill ${status}`;
-  $("#progressValue").textContent = `${Math.min(100, progress).toFixed(progress > 0 && progress < 10 ? 1 : 0)}%`;
-  $("#progressRing").style.setProperty("--progress", Math.min(100, progress));
-  $("#progressBar").style.width = `${Math.min(100, progress)}%`;
-  $("#jobMessage").textContent = job.message || state.last_error || defaultJobMessage(status, rows, "5min");
-  $("#candleCount").textContent = formatNumber(rows);
-  $("#batchCount").textContent = formatNumber(state.batches_completed);
-  $("#gapCount").textContent = formatNumber(gaps.review);
+  marketStates[meta.interval] = data;
+  historicalReady[meta.interval] = ready;
+  activeBackfillJobIds[meta.interval] = active ? job.id : null;
 
-  $("#earliestDate").textContent = formatDate(state.earliest_available);
-  $("#oldestDate").textContent = formatDate(state.oldest_stored);
+  const statusNode = $(`#tf-${meta.key}-status`);
+  statusNode.textContent = status.replaceAll("_", " ").toUpperCase();
+  statusNode.className = `status-pill ${status}`;
+  $(`#tf-${meta.key}-progress`).textContent = `${Math.min(100, progress).toFixed(progress > 0 && progress < 10 ? 1 : 0)}%`;
+  $(`#tf-${meta.key}-bar`).style.width = `${Math.min(100, progress)}%`;
+  $(`#tf-${meta.key}-message`).textContent = job.message || state.last_error || defaultJobMessage(meta, status, rows);
+  $(`#tf-${meta.key}-rows`).textContent = formatNumber(rows);
+  $(`#tf-${meta.key}-batches`).textContent = formatNumber(state.batches_completed);
+  $(`#tf-${meta.key}-review`).textContent = formatNumber(gaps.review);
+  $(`#tf-${meta.key}-expected`).textContent = formatNumber(gaps.expected);
+  $(`#tf-${meta.key}-oldest`).textContent = formatDate(state.oldest_stored);
+  $(`#tf-${meta.key}-latest`).textContent = formatDate(state.latest_stored);
 
+  const card = document.querySelector(`.timeframe-card[data-interval="${meta.interval}"]`);
+  const start = card.querySelector('[data-action="backfill"]');
+  const pause = card.querySelector('[data-action="pause"]');
+  const sync = card.querySelector('[data-action="sync"]');
+  const scan = card.querySelector('[data-action="gap-scan"]');
+
+  start.disabled = active || ready || batchActionRunning;
+  if (ready) start.textContent = `${meta.label} database ready`;
+  else if (active) start.textContent = `${meta.label} download in progress…`;
+  else if (["paused", "error"].includes(status) || Number(state.batches_completed || 0) > 0) start.textContent = `Resume ${meta.label} history`;
+  else start.textContent = `Download ${meta.label} history`;
+
+  pause.hidden = !active;
+  pause.disabled = !active || batchActionRunning;
+  pause.textContent = `Pause ${meta.label}`;
+  sync.disabled = active || batchActionRunning;
+  scan.disabled = active || rows < 2 || batchActionRunning;
+}
+
+function renderM5Live(data) {
+  const candle = data.latest_candle || {};
   $("#latestClose").textContent = formatPrice(candle.close);
   $("#latestTime").textContent = candle.candle_time ? formatDate(candle.candle_time, true) : "No candle stored yet";
   $("#latestOpen").textContent = formatPrice(candle.open);
   $("#latestHigh").textContent = formatPrice(candle.high);
   $("#latestLow").textContent = formatPrice(candle.low);
   $("#latestCloseSmall").textContent = formatPrice(candle.close);
+}
 
-  const start = $("#startBackfill");
-  start.disabled = active || historicalReady["5min"];
-  if (historicalReady["5min"]) start.textContent = "M5 historical database ready";
-  else if (active) start.textContent = "M5 download in progress…";
-  else if (["paused", "error"].includes(status) || Number(state.batches_completed || 0) > 0) start.textContent = "Resume M5 historical download";
-  else start.textContent = "Start M5 historical download";
+function renderFoundationSummary() {
+  const datasets = TIMEFRAMES.map((item) => marketStates[item.interval]).filter(Boolean);
+  const ready = TIMEFRAMES.filter((item) => historicalReady[item.interval]).length;
+  const active = TIMEFRAMES.filter((item) => Boolean(activeBackfillJobIds[item.interval])).length;
+  const totalRows = datasets.reduce((sum, data) => sum + Number(data.state?.rows_in_database || data.state?.rows_processed || 0), 0);
+  const totalReview = datasets.reduce((sum, data) => sum + Number(data.gaps?.review || 0), 0);
+  const averageProgress = TIMEFRAMES.reduce((sum, item) => {
+    const data = marketStates[item.interval];
+    return sum + Number(data?.historical_progress_percent ?? data?.state?.progress_percent ?? 0);
+  }, 0) / TIMEFRAMES.length;
 
-  const pause = $("#pauseBackfill");
-  pause.hidden = !active;
-  pause.disabled = !active;
-  $("#syncLatest").disabled = active;
-  $("#scanGaps").disabled = active || rows < 2;
-  renderEvents(data.events || []);
+  const pill = $("#foundationStatePill");
+  if (ready === TIMEFRAMES.length) {
+    pill.textContent = "COMPLETE";
+    pill.className = "status-pill complete";
+    $("#foundationMessage").textContent = "All six timeframes are stored and ready for continuous synchronisation.";
+  } else if (active > 0) {
+    pill.textContent = "DOWNLOADING";
+    pill.className = "status-pill downloading";
+    $("#foundationMessage").textContent = `${active} historical dataset${active === 1 ? " is" : "s are"} queued or downloading. Railway processes the queue one job at a time.`;
+  } else {
+    pill.textContent = "BUILDING";
+    pill.className = "status-pill queued";
+    $("#foundationMessage").textContent = `${ready} of ${TIMEFRAMES.length} datasets are complete. Queue the remaining history to finish the foundation.`;
+  }
+
+  $("#foundationProgressValue").textContent = `${Math.min(100, averageProgress).toFixed(0)}%`;
+  $("#foundationProgressRing").style.setProperty("--progress", Math.min(100, averageProgress));
+  $("#foundationProgressBar").style.width = `${Math.min(100, averageProgress)}%`;
+  $("#totalCandleCount").textContent = formatNumber(totalRows);
+  $("#datasetsReadyCount").textContent = `${ready} / ${TIMEFRAMES.length}`;
+  $("#activeDownloadCount").textContent = formatNumber(active);
+  $("#totalGapCount").textContent = formatNumber(totalReview);
+  $("#queueAllHistory").disabled = ready === TIMEFRAMES.length || batchActionRunning;
+  $("#queueAllHistory").textContent = ready === TIMEFRAMES.length ? "All history is stored" : "Queue all missing history";
+  $("#syncAllFrames").disabled = batchActionRunning;
+  $("#scanAllFrames").disabled = batchActionRunning || totalRows < 2;
   updateBacktestAvailability();
 }
 
-function renderM1Dashboard(data) {
-  const state = data.state || {};
-  const job = data.backfill_job || {};
-  const gaps = data.gaps || {};
-  const status = state.status || "not_started";
-  historicalReady["1min"] = Boolean(data.historical_ready || state.historical_complete);
-  const progress = Number(data.historical_progress_percent ?? state.progress_percent ?? 0);
-  const rows = Number(state.rows_in_database || state.rows_processed || 0);
-  const active = ["queued", "running"].includes(job.status);
-
-  activeBackfillJobIds["1min"] = active ? job.id : null;
-  $("#m1StatePill").textContent = status.replaceAll("_", " ").toUpperCase();
-  $("#m1StatePill").className = `status-pill ${status}`;
-  $("#m1ProgressValue").textContent = `${Math.min(100, progress).toFixed(progress > 0 && progress < 10 ? 1 : 0)}%`;
-  $("#m1ProgressRing").style.setProperty("--progress", Math.min(100, progress));
-  $("#m1ProgressBar").style.width = `${Math.min(100, progress)}%`;
-  $("#m1JobMessage").textContent = job.message || state.last_error || defaultJobMessage(status, rows, "1min");
-  $("#m1CandleCount").textContent = formatNumber(rows);
-  $("#m1BatchCount").textContent = formatNumber(state.batches_completed);
-  $("#m1GapCount").textContent = formatNumber(gaps.review);
-  $("#m1LatestDate").textContent = formatDate(state.latest_stored);
-  $("#m1OldestDate").textContent = formatDate(state.oldest_stored);
-  $("#replayDataStatus").textContent = historicalReady["1min"] ? "M1 replay ready" : active ? "M1 downloading" : rows > 0 ? "M1 partial" : "Waiting";
-
-  const start = $("#startM1Backfill");
-  start.disabled = active || historicalReady["1min"];
-  if (historicalReady["1min"]) start.textContent = "M1 historical database ready";
-  else if (active) start.textContent = "M1 download in progress…";
-  else if (["paused", "error"].includes(status) || Number(state.batches_completed || 0) > 0) start.textContent = "Resume M1 historical download";
-  else start.textContent = "Download M1 history";
-
-  const pause = $("#pauseM1Backfill");
-  pause.hidden = !active;
-  pause.disabled = !active;
-  $("#syncM1Latest").disabled = active;
-  $("#scanM1Gaps").disabled = active || rows < 2;
-  updateBacktestAvailability();
-}
-
-async function refreshMarketStatus(interval, silent = false) {
+async function refreshMarketStatus(meta, silent = false) {
   try {
-    const payload = await api(`status?symbol=XAU%2FUSD&interval=${encodeURIComponent(interval)}`);
-    if (interval === "1min") renderM1Dashboard(payload.data || {});
-    else renderM5Dashboard(payload.data || {});
-  } catch (error) {
-    if (interval === "5min") {
-      setService(false, "Setup needed");
-      $("#jobMessage").textContent = error.message;
-    } else {
-      $("#m1JobMessage").textContent = error.message;
+    const payload = await api(`status?symbol=XAU%2FUSD&interval=${encodeURIComponent(meta.interval)}`);
+    const data = payload.data || {};
+    renderTimeframeDashboard(meta, data);
+    if (meta.interval === "5min") {
+      renderM5Live(data);
+      renderEvents(data.events || []);
+      setService(true, "Online");
     }
+  } catch (error) {
+    marketStates[meta.interval] = null;
+    const messageNode = $(`#tf-${meta.key}-message`);
+    if (messageNode) messageNode.textContent = error.message;
+    if (meta.interval === "5min") setService(false, "Setup needed");
     if (!silent) showToast(error.message, true);
   }
 }
 
 async function refreshDashboard(silent = false) {
-  await Promise.all([
-    refreshMarketStatus("5min", silent),
-    refreshMarketStatus("1min", true),
-  ]);
+  await Promise.all(TIMEFRAMES.map((meta) => refreshMarketStatus(meta, silent || meta.interval !== "5min")));
+  renderFoundationSummary();
 }
 
-async function queueJob(endpoint, interval, button, successText) {
-  const original = button.textContent;
-  button.disabled = true;
-  button.textContent = "Queuing…";
+async function queueJob(endpoint, interval, button = null, successText = "Job queued") {
+  const meta = TIMEFRAMES.find((item) => item.interval === interval);
+  const original = button?.textContent;
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Queuing…";
+  }
   try {
     const payload = await api(`jobs/${endpoint}`, {
       method: "POST",
       body: JSON.stringify({ symbol: "XAU/USD", interval, force_restart: false }),
     });
     showToast(payload.message || successText);
-    await refreshMarketStatus(interval, true);
+    await refreshDashboard(true);
+    return true;
   } catch (error) {
     showToast(error.message, true);
+    return false;
   } finally {
-    button.disabled = false;
-    button.textContent = original;
+    if (button && original) button.textContent = original;
+    if (meta && marketStates[interval]) renderTimeframeDashboard(meta, marketStates[interval]);
   }
 }
 
 async function pauseBackfill(interval, button) {
   const jobId = activeBackfillJobIds[interval];
   if (!jobId) return;
+  const meta = TIMEFRAMES.find((item) => item.interval === interval);
   button.disabled = true;
   button.textContent = "Pausing…";
   try {
     const payload = await api(`jobs/${jobId}/cancel`, { method: "POST", body: "{}" });
     showToast(payload.message || "Pause requested");
-    await refreshMarketStatus(interval, true);
+    await refreshDashboard(true);
   } catch (error) {
     showToast(error.message, true);
   } finally {
-    button.textContent = interval === "1min" ? "Pause M1 download" : "Pause M5 download";
+    button.textContent = `Pause ${meta?.label || "download"}`;
+  }
+}
+
+async function queueAllMissingHistory(button) {
+  if (batchActionRunning) return;
+  batchActionRunning = true;
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = "Queuing history…";
+  let queued = 0;
+  const errors = [];
+  try {
+    for (const meta of TIMEFRAMES) {
+      if (historicalReady[meta.interval] || activeBackfillJobIds[meta.interval]) continue;
+      try {
+        await api("jobs/backfill", {
+          method: "POST",
+          body: JSON.stringify({ symbol: "XAU/USD", interval: meta.interval, force_restart: false }),
+        });
+        queued += 1;
+      } catch (error) {
+        errors.push(`${meta.label}: ${error.message}`);
+      }
+    }
+    if (queued > 0) showToast(`${queued} historical download${queued === 1 ? "" : "s"} queued. Railway will process them one at a time.`);
+    else if (!errors.length) showToast("Every available timeframe is already complete or queued.");
+    if (errors.length) showToast(`Queued ${queued}. ${errors.join(" | ")}`, true);
+    await refreshDashboard(true);
+  } finally {
+    batchActionRunning = false;
+    button.textContent = original;
+    renderFoundationSummary();
+    TIMEFRAMES.forEach((meta) => marketStates[meta.interval] && renderTimeframeDashboard(meta, marketStates[meta.interval]));
+  }
+}
+
+async function queueBatchJobs(endpoint, button, label) {
+  if (batchActionRunning) return;
+  batchActionRunning = true;
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = `${label}…`;
+  let queued = 0;
+  const errors = [];
+  try {
+    for (const meta of TIMEFRAMES) {
+      const data = marketStates[meta.interval];
+      const rows = Number(data?.state?.rows_in_database || data?.state?.rows_processed || 0);
+      if (!data || activeBackfillJobIds[meta.interval]) continue;
+      if (endpoint === "gap-scan" && rows < 2) continue;
+      try {
+        await api(`jobs/${endpoint}`, {
+          method: "POST",
+          body: JSON.stringify({ symbol: "XAU/USD", interval: meta.interval, force_restart: false }),
+        });
+        queued += 1;
+      } catch (error) {
+        errors.push(`${meta.label}: ${error.message}`);
+      }
+    }
+    if (queued > 0) showToast(`${queued} ${label.toLowerCase()} job${queued === 1 ? "" : "s"} queued.`);
+    else if (!errors.length) showToast("No eligible datasets were available for this action.");
+    if (errors.length) showToast(`Queued ${queued}. ${errors.join(" | ")}`, true);
+    await refreshDashboard(true);
+  } finally {
+    batchActionRunning = false;
+    button.textContent = original;
+    renderFoundationSummary();
+    TIMEFRAMES.forEach((meta) => marketStates[meta.interval] && renderTimeframeDashboard(meta, marketStates[meta.interval]));
+  }
+}
+
+function updateBacktestAvailability() {
+  const resolution = $("#resolutionMode")?.value || "candle";
+  const ready = resolution === "m1_replay" ? historicalReady["1min"] : historicalReady["5min"];
+  const button = $("#runBacktest");
+  if (!button) return;
+  button.disabled = !ready || Boolean(activeBacktestId);
+  button.textContent = resolution === "m1_replay" ? "Run M1 high-resolution replay" : "Run M5 approximation";
+
+  if (resolution === "m1_replay") {
+    $("#resolutionNote").textContent = historicalReady["1min"]
+      ? "M1 Market Memory is complete. This run uses every verified one-minute candle in sequence."
+      : "M1 replay is locked until the M1 historical dataset reaches 100%.";
+  } else {
+    $("#resolutionNote").textContent = historicalReady["5min"]
+      ? "M5 baseline uses the completed broad historical dataset and a candle-path approximation."
+      : "M5 Market Memory must be complete before this run can start.";
   }
 }
 
@@ -415,16 +549,21 @@ async function refreshBacktests(silent = false) {
   }
 }
 
-$("#startBackfill").addEventListener("click", (event) => queueJob("backfill", "5min", event.currentTarget, "M5 historical download queued"));
-$("#pauseBackfill").addEventListener("click", (event) => pauseBackfill("5min", event.currentTarget));
-$("#syncLatest").addEventListener("click", (event) => queueJob("sync", "5min", event.currentTarget, "Latest M5 sync queued"));
-$("#scanGaps").addEventListener("click", (event) => queueJob("gap-scan", "5min", event.currentTarget, "M5 gap scan queued"));
+$("#timeframeGrid").addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-action][data-interval]");
+  if (!button) return;
+  const interval = button.dataset.interval;
+  const action = button.dataset.action;
+  const meta = TIMEFRAMES.find((item) => item.interval === interval);
+  if (action === "pause") await pauseBackfill(interval, button);
+  else if (action === "backfill") await queueJob("backfill", interval, button, `${meta.label} historical download queued`);
+  else if (action === "sync") await queueJob("sync", interval, button, `${meta.label} latest-candle sync queued`);
+  else if (action === "gap-scan") await queueJob("gap-scan", interval, button, `${meta.label} gap scan queued`);
+});
 
-$("#startM1Backfill").addEventListener("click", (event) => queueJob("backfill", "1min", event.currentTarget, "M1 historical download queued"));
-$("#pauseM1Backfill").addEventListener("click", (event) => pauseBackfill("1min", event.currentTarget));
-$("#syncM1Latest").addEventListener("click", (event) => queueJob("sync", "1min", event.currentTarget, "Latest M1 sync queued"));
-$("#scanM1Gaps").addEventListener("click", (event) => queueJob("gap-scan", "1min", event.currentTarget, "M1 gap scan queued"));
-
+$("#queueAllHistory").addEventListener("click", (event) => queueAllMissingHistory(event.currentTarget));
+$("#syncAllFrames").addEventListener("click", (event) => queueBatchJobs("sync", event.currentTarget, "Syncing"));
+$("#scanAllFrames").addEventListener("click", (event) => queueBatchJobs("gap-scan", event.currentTarget, "Scanning"));
 $("#resolutionMode").addEventListener("change", updateBacktestAvailability);
 $("#runBacktest").addEventListener("click", (event) => runBacktest(event.currentTarget));
 $("#cancelBacktest").addEventListener("click", (event) => cancelBacktest(event.currentTarget));
@@ -441,6 +580,7 @@ const observer = new IntersectionObserver((entries) => {
 sections.forEach((section) => observer.observe(section));
 
 (async () => {
+  createTimeframeCards();
   await refreshDashboard(true);
   await refreshBacktests(true);
 })();

@@ -1,35 +1,44 @@
-# EVE Algo Lab v1.3 — deployment guide
+# EVE Algo Lab v1.4 — deployment guide
 
-Use the existing `eve-algo-lab` GitHub repository. Do not upload this update to the separate momentum-bot repository.
+Use the existing **eve-algo-lab** GitHub repository. Do not upload this package to the separate trading-bot repository.
 
-## Step 1 — run one Supabase SQL file
+## Step 1 — run the one Supabase update
 
-1. Open the existing **eve-algo-lab** project in Supabase.
-2. Click **SQL Editor**.
+1. Open the existing EVE Algo Lab project in Supabase.
+2. Open **SQL Editor**.
 3. Click **New query**.
-4. Open `SUPABASE_UPDATE_v1.3.sql` from this package in Notepad.
-5. Press **Ctrl+A**, then **Ctrl+C**.
-6. Paste it into Supabase.
-7. Click **Run**.
-8. The expected result is **Success. No rows returned**.
+4. Open `SUPABASE_UPDATE_v1.4.sql` from this package.
+5. Copy the entire file and paste it into Supabase.
+6. Click **Run**.
+7. The expected result is **Success. No rows returned**.
 
-This only adds performance indexes. It does not delete or replace the existing M5 history or backtest results.
+This preserves every existing M1/M5 candle and backtest result. It adds supporting indexes and improves gap reporting so expected market closures are separated from gaps requiring review.
 
 ## Step 2 — replace the GitHub repository contents
 
-1. Unzip `EVE-ALGO-LAB-v1.3-GITHUB-READY.zip`.
+1. Unzip `EVE-ALGO-LAB-v1.4-GITHUB-READY.zip`.
 2. Open the inner `eve-algo-lab` folder.
-3. Replace the contents of the existing **eve-algo-lab** GitHub repository with everything from that folder.
-4. Commit the update to `main`.
-5. Railway and Netlify will redeploy automatically.
+3. Replace the contents of the existing **eve-algo-lab** GitHub repository with everything inside that folder.
+4. Commit the replacement to `main`.
+5. Railway and Netlify should redeploy automatically.
 
-Do not change the `eve-twelve-data-momentum-trader` repository.
+## Step 3 — update the Railway sync variable
 
-## Step 3 — variables
+Open Railway → EVE Algo Lab service → **Variables**.
 
-No new mandatory variable is required. Existing variables remain:
+If `AUTO_SYNC_INTERVALS` already exists, change it to exactly:
 
-### Railway
+```text
+1min,5min,15min,1h,4h,1day
+```
+
+Add this optional variable to stagger requests that share a candle boundary:
+
+```text
+AUTO_SYNC_STAGGER_SECONDS=3
+```
+
+Keep the existing variables unchanged:
 
 - `TWELVE_DATA_API_KEY`
 - `SUPABASE_URL`
@@ -37,38 +46,32 @@ No new mandatory variable is required. Existing variables remain:
 - `ADMIN_TOKEN`
 - `CORS_ORIGINS`
 
-Optional Railway variable:
-
-- `AUTO_SYNC_INTERVALS=1min,5min`
-
-The code already defaults to `1min,5min`, so adding it is optional.
-
-### Netlify
+Netlify still uses:
 
 - `RAILWAY_API_URL`
 - `EVE_ADMIN_TOKEN`
 
-## Step 4 — start M1 Market Memory
+## Step 4 — queue the remaining history
 
-1. Open the Netlify EVE Algo Lab site after both deployments finish.
-2. Scroll to **M1 execution memory**.
-3. Press **Download M1 history** once.
-4. Leave it running. Railway continues even if the browser is closed.
-5. Do not repeatedly press the button.
+After both deployments finish:
 
-M1 contains roughly five times as many candles as M5, so the download and Supabase insertion will take longer.
+1. Open EVE Algo Lab.
+2. Go to **Data foundation**.
+3. Press **Queue all missing history** once.
+4. Because M1 and M5 are already complete, EVE should queue **M15, H1, H4 and D1**.
+5. Leave it running. Railway processes the downloads one at a time even when the browser is closed.
+6. Do not repeatedly press the button.
 
-## Step 5 — run the high-resolution replay
+Higher timeframes contain far fewer rows than M1, although H1 and D1 may reach farther back if Twelve Data provides older history.
 
-After M1 reaches 100%:
+## Step 5 — verify completion
 
-1. Open **Bot backtester**.
-2. Select **M1 high-resolution replay**.
-3. Leave the baseline settings unchanged for the first comparison.
-4. Press **Run M1 high-resolution replay** once.
-5. Wait for 100%.
-6. Review the M5 versus M1 comparison panel.
+For each timeframe, confirm:
 
-## Important
+- Status shows **COMPLETE**.
+- Progress shows **100%**.
+- **Stored from** and **Latest** contain dates.
+- The candle count is greater than zero.
+- The automatic post-download gap scan has completed.
 
-M1 replay is higher resolution, not tick-perfect. It uses each one-minute OHLC path in chronological order. Tick history is still required where multiple material events occur inside the same M1 candle.
+The top summary reaches **6 / 6 datasets ready** when the full foundation is complete.

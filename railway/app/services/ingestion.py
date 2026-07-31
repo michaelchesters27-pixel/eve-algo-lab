@@ -392,12 +392,13 @@ class IngestionService:
         await self.repo.log_event("info", "data_quality", f"Gap scan completed for {symbol} {interval}", result)
         return result
 
-    async def auto_sync_loop(self, interval: str | None = None) -> None:
+    async def auto_sync_loop(self, interval: str | None = None, stagger_index: int = 0) -> None:
         """Synchronise one interval shortly after each completed candle boundary.
 
-        v1.3 runs one loop for M1 and one for M5. A historical backfill for an
-        interval takes priority, so automatic sync quietly waits until that job
-        is no longer queued or downloading.
+        v1.4 runs one loop for every configured research timeframe. A historical
+        backfill for an interval takes priority, so automatic sync quietly waits
+        until that dataset is no longer queued or downloading. Small per-timeframe
+        staggering avoids a burst of provider requests on shared candle boundaries.
         """
         if not self.settings.auto_sync_enabled:
             logger.info("Automatic latest-candle sync is disabled")
@@ -413,8 +414,9 @@ class IngestionService:
         while not self._stop.is_set():
             now = datetime.now(timezone.utc)
             next_boundary_epoch = ((int(now.timestamp()) // seconds) + 1) * seconds
+            stagger = max(0, stagger_index) * self.settings.auto_sync_stagger_seconds
             run_at = datetime.fromtimestamp(next_boundary_epoch, tz=timezone.utc) + timedelta(
-                seconds=self.settings.auto_sync_offset_seconds
+                seconds=self.settings.auto_sync_offset_seconds + stagger
             )
             wait_seconds = max(1, (run_at - now).total_seconds())
             try:

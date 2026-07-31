@@ -1,27 +1,29 @@
-# Project status — v1.3.0
+# Project status — v1.4.0
 
 ## Live and working
 
 - Netlify dashboard
-- Railway API and ingestion worker
-- Supabase permanent market database
-- XAU/USD M5 historical Market Memory
-- XAU/USD M1 historical Market Memory downloader
-- Automatic M1 and M5 latest-candle synchronisation
-- M5 and M1 gap scans
-- Imported Fixed Ladder v2.61 strategy
-- M5 approximation backtester
-- M1 high-resolution replay backtester
-- Profit factor, drawdown, win rate, positions, baskets and ending balance
-- M5 versus M1 comparison
+- Railway API and persistent ingestion worker
+- Supabase permanent candle database
+- XAU/USD M1 and M5 historical memory
+- Resumable M15, H1, H4 and D1 historical downloaders
+- One-click queue for every missing timeframe
+- Independent progress, candle counts and date coverage for six timeframes
+- Automatic latest-candle sync for M1, M5, M15, H1, H4 and D1
+- Staggered automatic sync requests
+- Gap scans with expected-closure versus review classification
+- Existing M5 approximation backtester
+- Existing M1 high-resolution replay backtester
 
 ## Next major engine
 
-AI Pattern Brain: feature generation, historical outcome labels, pattern similarity and bot-trade filtering.
+Research Lab: calendar intelligence, historical pattern similarity, user questions, EVE-generated questions and a permanent discovery library.
 
 ## Not yet claimed
 
 - Tick-accurate replay
+- Natural-language Ask EVE engine
+- Autonomous market discoveries
 - AI strategy generation
 - Continuous model retraining
 - Live paper trading

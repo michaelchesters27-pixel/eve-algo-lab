@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#07110f">
-  <meta name="description" content="EVE Algo Lab — permanent XAU/USD M5 and M1 market memory with evidence-based bot backtesting.">
+  <meta name="description" content="EVE Algo Lab — permanent multi-timeframe XAU/USD market memory from M1 through D1.">
   <title>EVE Algo Lab</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -24,8 +24,8 @@
       </a>
       <nav class="nav" aria-label="Main navigation">
         <a class="nav-link active" href="#overview"><span>01</span> Overview</a>
-        <a class="nav-link" href="#memory"><span>02</span> Market memory</a>
-        <a class="nav-link" href="#backtester"><span>03</span> Bot backtester</a>
+        <a class="nav-link" href="#memory"><span>02</span> Data foundation</a>
+        <a class="nav-link" href="#backtester"><span>03</span> Backtester</a>
         <a class="nav-link" href="#pipeline"><span>04</span> Build pipeline</a>
         <a class="nav-link" href="#activity"><span>05</span> Activity</a>
       </nav>
@@ -38,39 +38,39 @@
     <main>
       <header class="topbar">
         <div>
-          <p class="eyebrow">PRIVATE TRADING RESEARCH PLATFORM</p>
-          <h1>Market intelligence<br><em>built on evidence.</em></h1>
+          <p class="eyebrow">PRIVATE MARKET RESEARCH PLATFORM</p>
+          <h1>Build the memory.<br><em>Then find the edge.</em></h1>
         </div>
         <div class="market-selector" aria-label="Selected market">
           <div class="metal-dot"></div>
           <div><small>PRIMARY DATASET</small><strong>XAU / USD</strong></div>
-          <span>M5 + M1</span>
+          <span>M1 → D1</span>
         </div>
       </header>
 
       <section id="overview" class="hero-grid">
         <article class="panel progress-panel">
           <div class="panel-head">
-            <div><p class="label">M5 HISTORICAL FOUNDATION</p><h2>Market Memory</h2></div>
-            <span class="status-pill" id="statePill">NOT STARTED</span>
+            <div><p class="label">MULTI-TIMEFRAME FOUNDATION</p><h2>Market Memory</h2></div>
+            <span class="status-pill" id="foundationStatePill">CHECKING</span>
           </div>
           <div class="progress-layout">
-            <div class="ring" id="progressRing" style="--progress:0"><div><strong id="progressValue">0%</strong><small>COMPLETE</small></div></div>
+            <div class="ring" id="foundationProgressRing" style="--progress:0"><div><strong id="foundationProgressValue">0%</strong><small>DATASETS</small></div></div>
             <div class="progress-copy">
-              <p id="jobMessage">Ready to download the complete available XAU/USD M5 history.</p>
-              <div class="progress-track"><span id="progressBar"></span></div>
-              <div class="micro-grid">
-                <div><small>M5 CANDLES STORED</small><strong id="candleCount">0</strong></div>
-                <div><small>BATCHES</small><strong id="batchCount">0</strong></div>
-                <div><small>GAPS TO REVIEW</small><strong id="gapCount">0</strong></div>
+              <p id="foundationMessage">Checking M1, M5, M15, H1, H4 and D1 storage.</p>
+              <div class="progress-track"><span id="foundationProgressBar"></span></div>
+              <div class="micro-grid four">
+                <div><small>TOTAL CANDLES</small><strong id="totalCandleCount">0</strong></div>
+                <div><small>DATASETS READY</small><strong id="datasetsReadyCount">0 / 6</strong></div>
+                <div><small>ACTIVE DOWNLOADS</small><strong id="activeDownloadCount">0</strong></div>
+                <div><small>GAPS TO REVIEW</small><strong id="totalGapCount">0</strong></div>
               </div>
             </div>
           </div>
           <div class="actions">
-            <button class="button button-primary" id="startBackfill">Start M5 historical download</button>
-            <button class="button" id="pauseBackfill" hidden>Pause M5 download</button>
-            <button class="button" id="syncLatest">Sync latest M5</button>
-            <button class="button button-quiet" id="scanGaps">Scan M5 gaps</button>
+            <button class="button button-primary" id="queueAllHistory">Queue all missing history</button>
+            <button class="button" id="syncAllFrames">Sync every timeframe</button>
+            <button class="button button-quiet" id="scanAllFrames">Scan all gaps</button>
           </div>
         </article>
 
@@ -87,54 +87,25 @@
             <div><small>LOW</small><strong id="latestLow">—</strong></div>
             <div><small>CLOSE</small><strong id="latestCloseSmall">—</strong></div>
           </div>
-          <div class="quality-line"><span>Automatic verification</span><strong>M1 +22s / M5 +22s</strong></div>
+          <div class="quality-line"><span>Automatic completed-bar sync</span><strong>M1 · M5 · M15 · H1 · H4 · D1</strong></div>
         </article>
       </section>
 
       <section id="memory" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">DATA FOUNDATION v1.3</p><h2>M1 execution memory</h2></div>
-          <p>M5 remains the broad benchmark. M1 is the higher-resolution execution layer used to reduce uncertainty around pending orders, stops and basket exits.</p>
+          <div><p class="eyebrow">DATA FOUNDATION v1.4</p><h2>Six layers of market memory</h2></div>
+          <p>Railway downloads each timeframe in sequence and stores it permanently in Supabase. Each dataset has independent progress, resumable history, latest-candle sync and gap review.</p>
         </div>
-
-        <article class="panel m1-memory-panel">
-          <div class="panel-head">
-            <div><p class="label">HIGH-RESOLUTION DATASET</p><h2>XAU/USD M1 Market Memory</h2></div>
-            <span class="status-pill" id="m1StatePill">NOT STARTED</span>
-          </div>
-          <div class="m1-memory-grid">
-            <div class="ring compact-ring" id="m1ProgressRing" style="--progress:0"><div><strong id="m1ProgressValue">0%</strong><small>COMPLETE</small></div></div>
-            <div class="m1-progress-copy">
-              <p id="m1JobMessage">Ready to download the complete available XAU/USD M1 history.</p>
-              <div class="progress-track"><span id="m1ProgressBar"></span></div>
-              <div class="micro-grid four">
-                <div><small>M1 CANDLES</small><strong id="m1CandleCount">0</strong></div>
-                <div><small>BATCHES</small><strong id="m1BatchCount">0</strong></div>
-                <div><small>GAPS TO REVIEW</small><strong id="m1GapCount">0</strong></div>
-                <div><small>LATEST M1</small><strong id="m1LatestDate">None</strong></div>
-              </div>
-            </div>
-          </div>
-          <div class="actions">
-            <button class="button button-primary" id="startM1Backfill">Download M1 history</button>
-            <button class="button" id="pauseM1Backfill" hidden>Pause M1 download</button>
-            <button class="button" id="syncM1Latest">Sync latest M1</button>
-            <button class="button button-quiet" id="scanM1Gaps">Scan M1 gaps</button>
-          </div>
-        </article>
-
-        <div class="stat-grid memory-stats">
-          <article class="stat-card"><span>01</span><small>M5 EARLIEST</small><strong id="earliestDate">Unknown</strong><p>Broad historical benchmark from Twelve Data.</p></article>
-          <article class="stat-card"><span>02</span><small>M5 STORED FROM</small><strong id="oldestDate">None</strong><p>Oldest verified M5 candle in Supabase.</p></article>
-          <article class="stat-card"><span>03</span><small>M1 STORED FROM</small><strong id="m1OldestDate">None</strong><p>Oldest verified high-resolution candle.</p></article>
-          <article class="stat-card"><span>04</span><small>REPLAY STATUS</small><strong id="replayDataStatus">Waiting</strong><p>M1 replay unlocks only when M1 history is complete.</p></article>
+        <div class="timeframe-grid" id="timeframeGrid" aria-live="polite"></div>
+        <div class="foundation-note">
+          <strong>Safe queueing:</strong> the four new historical downloads can be queued together. Railway processes one ingestion job at a time, so Twelve Data is not hit by four large downloads simultaneously.
         </div>
       </section>
 
       <section id="backtester" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">BOT BACKTESTER v1.3</p><h2>EVE Fixed Ladder v2.61</h2></div>
-          <p>Run the same imported MT5 rules against M5 approximation or the new M1 high-resolution execution replay, then compare both results.</p>
+          <div><p class="eyebrow">RESEARCH BACKTESTER v1.4</p><h2>EVE Fixed Ladder v2.61</h2></div>
+          <p>The existing M5 approximation and M1 high-resolution replay remain available while the broader research memory is expanded.</p>
         </div>
 
         <div class="backtest-layout">
@@ -158,7 +129,7 @@
               <label><span>Peak activation ($)</span><input id="peakActivation" type="number" value="4.00" min="0.01" step="0.01"></label>
               <label><span>Maximum giveback ($)</span><input id="peakGiveback" type="number" value="1.00" min="0.01" step="0.01"></label>
             </form>
-            <div class="resolution-note" id="resolutionNote">M5 is ready. M1 replay becomes available after the M1 historical download reaches 100%.</div>
+            <div class="resolution-note" id="resolutionNote">Checking M5 and M1 replay readiness.</div>
             <div class="rule-strip">
               <span>8 BUY STOP</span><span>8 SELL STOP</span><span>3.000 spacing</span><span>2.000 fallback</span><span>0.750 first cut</span><span>BE +0.150 at +1.500</span>
             </div>
@@ -196,7 +167,7 @@
           </div>
           <div class="comparison-grid">
             <div class="comparison-card"><small>M5 APPROXIMATION</small><strong id="m5ComparePF">—</strong><span>Profit factor</span><p id="m5CompareMeta">Run available</p></div>
-            <div class="comparison-card"><small>M1 HIGH-RESOLUTION</small><strong id="m1ComparePF">—</strong><span>Profit factor</span><p id="m1CompareMeta">Download M1 history first</p></div>
+            <div class="comparison-card"><small>M1 HIGH-RESOLUTION</small><strong id="m1ComparePF">—</strong><span>Profit factor</span><p id="m1CompareMeta">Checking M1 memory</p></div>
             <div class="comparison-card"><small>PROFIT DIFFERENCE</small><strong id="compareProfitDelta">—</strong><span>M1 minus M5</span><p id="compareReliability">Waiting for both completed runs</p></div>
           </div>
         </article>
@@ -216,14 +187,14 @@
 
       <section id="pipeline" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">PROJECT ROADMAP</p><h2>From raw candles to approved bots</h2></div>
-          <p>Every engine plugs into the same permanent Market Memory and every result stays available for comparison.</p>
+          <div><p class="eyebrow">PROJECT ROADMAP</p><h2>Memory before intelligence</h2></div>
+          <p>The next research engines will use the same clean multi-timeframe memory rather than rebuilding historical context for every experiment.</p>
         </div>
         <div class="pipeline">
-          <article class="pipeline-card current"><div class="stage">LIVE</div><span>01</span><h3>M5 Market Memory</h3><p>Complete broad historical data, live sync, resume protection and gap detection.</p></article>
-          <article class="pipeline-card current"><div class="stage">LIVE</div><span>02</span><h3>M1 Execution Memory</h3><p>High-resolution history and automatic M1 synchronisation for execution replay.</p></article>
-          <article class="pipeline-card current"><div class="stage">LIVE</div><span>03</span><h3>Dual-Resolution Backtester</h3><p>Compare M5 approximation with M1 replay using the same exact imported strategy.</p></article>
-          <article class="pipeline-card"><div class="stage">NEXT</div><span>04</span><h3>AI Pattern Brain</h3><p>Learn which market states improve or damage each bot strategy.</p></article>
+          <article class="pipeline-card current"><div class="stage">LIVE</div><span>01</span><h3>M1 + M5 Memory</h3><p>High-resolution path and detailed intraday structure are stored permanently.</p></article>
+          <article class="pipeline-card current"><div class="stage">v1.4</div><span>02</span><h3>M15 + H1 Context</h3><p>Setup context and the active intraday regime become searchable evidence.</p></article>
+          <article class="pipeline-card current"><div class="stage">v1.4</div><span>03</span><h3>H4 + D1 Context</h3><p>Major swings, daily behaviour, weekdays, months and seasonal regimes.</p></article>
+          <article class="pipeline-card"><div class="stage">NEXT</div><span>04</span><h3>Research Engine</h3><p>Ask questions, compare similar history and generate new market hypotheses.</p></article>
         </div>
       </section>
 
@@ -235,7 +206,7 @@
         <div class="activity-list" id="activityList"><div class="empty-state">Waiting for Supabase activity…</div></div>
       </section>
 
-      <footer><span>EVE ALGO LAB · v1.3</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
+      <footer><span>EVE ALGO LAB · v1.4</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
     </main>
   </div>
 

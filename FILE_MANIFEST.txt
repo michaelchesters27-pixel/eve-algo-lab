@@ -5,7 +5,7 @@ PROJECT_STATUS.md
 README.md
 RELEASE_NOTES.md
 STRATEGY_IMPORT_AUDIT.md
-SUPABASE_UPDATE_v1.3.sql
+SUPABASE_UPDATE_v1.4.sql
 VERSION
 frontend/app.js
 frontend/favicon.svg
@@ -37,9 +37,11 @@ railway/tests/test_fixed_ladder_v261.py
 railway/tests/test_ingestion.py
 railway/tests/test_m1_replay.py
 railway/tests/test_metrics.py
+railway/tests/test_multitimeframe_foundation.py
 railway/tests/test_twelve_data.py
 supabase/migrations/20260731090100_initial_schema.sql
 supabase/migrations/20260731112000_market_memory_v1_1_repair.sql
 supabase/migrations/20260731125000_bot_backtester_v1_2.sql
 supabase/migrations/20260731131000_m1_market_memory_replay_v1_3.sql
+supabase/migrations/20260731154500_multitimeframe_data_foundation_v1_4.sql
 supabase/schema.sql

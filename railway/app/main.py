@@ -23,7 +23,7 @@ from app.services.supabase_repo import SupabaseRepository
 from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
 from app.settings import Settings, get_settings
 
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.4.0"
 
 settings = get_settings()
 logging.basicConfig(
@@ -49,12 +49,12 @@ async def lifespan(_: FastAPI):
     await repo.fail_interrupted_backtests()
     await repo.log_event("info", "railway", "EVE Algo Lab Railway service started", {"version": APP_VERSION})
     background_tasks.append(asyncio.create_task(ingestion.worker_loop(), name="ingestion-worker"))
-    for interval in settings.auto_sync_interval_list:
+    for sync_index, interval in enumerate(settings.auto_sync_interval_list):
         if interval not in INTERVAL_SECONDS:
             logger.warning("Skipping unsupported AUTO_SYNC_INTERVALS value: %s", interval)
             continue
         background_tasks.append(
-            asyncio.create_task(ingestion.auto_sync_loop(interval), name=f"automatic-sync-{interval}")
+            asyncio.create_task(ingestion.auto_sync_loop(interval, sync_index), name=f"automatic-sync-{interval}")
         )
     yield
     await ingestion.stop()
@@ -70,7 +70,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="EVE Algo Lab API",
     version=APP_VERSION,
-    description="Permanent M5/M1 market memory and high-resolution backtesting for EVE Fixed Ladder v2.61.",
+    description="Permanent multi-timeframe XAU/USD market memory from M1 through D1, plus high-resolution research backtesting.",
     lifespan=lifespan,
 )
 app.add_middleware(

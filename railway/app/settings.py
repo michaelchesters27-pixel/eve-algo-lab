@@ -30,8 +30,9 @@ class Settings(BaseSettings):
     default_symbol: str = "XAU/USD"
     default_interval: str = "5min"
     auto_sync_enabled: bool = True
-    auto_sync_intervals: str = "1min,5min"
+    auto_sync_intervals: str = "1min,5min,15min,1h,4h,1day"
     auto_sync_offset_seconds: int = Field(default=22, ge=0, le=59)
+    auto_sync_stagger_seconds: int = Field(default=3, ge=0, le=30)
     worker_poll_seconds: float = Field(default=4.0, ge=1, le=60)
     request_timeout_seconds: float = Field(default=45.0, ge=5, le=180)
     max_http_retries: int = Field(default=6, ge=1, le=12)
