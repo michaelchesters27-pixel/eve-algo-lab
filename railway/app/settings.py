@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     default_symbol: str = "XAU/USD"
     default_interval: str = "5min"
     auto_sync_enabled: bool = True
+    auto_sync_intervals: str = "1min,5min"
     auto_sync_offset_seconds: int = Field(default=22, ge=0, le=59)
     worker_poll_seconds: float = Field(default=4.0, ge=1, le=60)
     request_timeout_seconds: float = Field(default=45.0, ge=5, le=180)
@@ -46,6 +47,15 @@ class Settings(BaseSettings):
         if self.cors_origins.strip() == "*":
             return ["*"]
         return [item.strip() for item in self.cors_origins.split(",") if item.strip()]
+
+    @property
+    def auto_sync_interval_list(self) -> List[str]:
+        intervals: list[str] = []
+        for item in self.auto_sync_intervals.split(","):
+            interval = item.strip()
+            if interval and interval not in intervals:
+                intervals.append(interval)
+        return intervals or [self.default_interval]
 
 
 @lru_cache(maxsize=1)

@@ -23,6 +23,8 @@ from app.services.supabase_repo import SupabaseRepository
 from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
 from app.settings import Settings, get_settings
 
+APP_VERSION = "1.3.0"
+
 settings = get_settings()
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -45,13 +47,15 @@ background_tasks: list[asyncio.Task[Any]] = []
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await repo.fail_interrupted_backtests()
-    await repo.log_event("info", "railway", "EVE Algo Lab Railway service started", {"version": "1.2.0"})
-    background_tasks.extend(
-        [
-            asyncio.create_task(ingestion.worker_loop(), name="ingestion-worker"),
-            asyncio.create_task(ingestion.auto_sync_loop(), name="automatic-sync"),
-        ]
-    )
+    await repo.log_event("info", "railway", "EVE Algo Lab Railway service started", {"version": APP_VERSION})
+    background_tasks.append(asyncio.create_task(ingestion.worker_loop(), name="ingestion-worker"))
+    for interval in settings.auto_sync_interval_list:
+        if interval not in INTERVAL_SECONDS:
+            logger.warning("Skipping unsupported AUTO_SYNC_INTERVALS value: %s", interval)
+            continue
+        background_tasks.append(
+            asyncio.create_task(ingestion.auto_sync_loop(interval), name=f"automatic-sync-{interval}")
+        )
     yield
     await ingestion.stop()
     for task in background_tasks:
@@ -65,8 +69,8 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="EVE Algo Lab API",
-    version="1.2.0",
-    description="Permanent market memory and an exact-rule M5 backtester for EVE Fixed Ladder v2.61.",
+    version=APP_VERSION,
+    description="Permanent M5/M1 market memory and high-resolution backtesting for EVE Fixed Ladder v2.61.",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -90,7 +94,7 @@ def state_is_historically_ready(state: dict[str, Any] | None, interval: str) -> 
 
 @app.get("/")
 async def root() -> dict[str, Any]:
-    return {"name": settings.app_name, "status": "online", "version": "1.2.0"}
+    return {"name": settings.app_name, "status": "online", "version": APP_VERSION}
 
 
 @app.get("/health")
@@ -98,7 +102,7 @@ async def health() -> dict[str, Any]:
     return {
         "status": "healthy",
         "service": settings.app_name,
-        "version": "1.2.0",
+        "version": APP_VERSION,
         "time": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -140,7 +144,7 @@ async def market_status(
     dashboard["service"] = "online"
     dashboard["symbol"] = symbol
     dashboard["interval"] = interval
-    dashboard["version"] = "1.2.0"
+    dashboard["version"] = APP_VERSION
     dashboard["latest_backtest"] = (await repo.list_backtest_runs(limit=1) or [{}])[0]
     return ApiEnvelope(data=dashboard)
 
@@ -204,21 +208,24 @@ async def cancel_job(job_id: str) -> ApiEnvelope:
 
 @app.post("/api/backtests/fixed-ladder-v2-61", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])
 async def start_fixed_ladder_backtest(request: FixedLadderBacktestRequest) -> ApiEnvelope:
-    state = await repo.get_state(request.symbol, request.interval)
-    if not state_is_historically_ready(state, request.interval):
-        raise HTTPException(status_code=409, detail="Market Memory must be complete before backtesting")
+    data_interval = "1min" if request.resolution == "m1_replay" else "5min"
+    state = await repo.get_state(request.symbol, data_interval)
+    if not state_is_historically_ready(state, data_interval):
+        label = "M1 Market Memory" if data_interval == "1min" else "M5 Market Memory"
+        raise HTTPException(status_code=409, detail=f"{label} must be complete before this backtest can run")
     if await repo.has_active_backtest():
         raise HTTPException(status_code=409, detail="Another backtest is already running")
 
     strategy_version_id = await backtests.ensure_strategy_version()
     settings_payload = request.model_dump(mode="json")
+    accuracy = "M1 high-resolution candle replay" if request.resolution == "m1_replay" else "M5 candle-path approximation"
     run = await repo.create_backtest_run(
         {
             "strategy_version_id": strategy_version_id,
             "name": request.name,
             "symbol": request.symbol,
             "interval": request.interval,
-            "resolution": "candle",
+            "resolution": request.resolution,
             "status": "queued",
             "date_from": request.date_from.isoformat() if request.date_from else state.get("oldest_stored"),
             "date_to": request.date_to.isoformat() if request.date_to else state.get("latest_stored"),
@@ -227,13 +234,15 @@ async def start_fixed_ladder_backtest(request: FixedLadderBacktestRequest) -> Ap
             "reliability": {
                 "progress_percent": 0,
                 "message": "Queued for Railway",
-                "accuracy": "M5 candle-path approximation",
+                "accuracy": accuracy,
+                "input_interval": data_interval,
             },
         }
     )
     run_id = str(run["id"])
     await backtests.start(run_id, settings_payload)
-    return ApiEnvelope(data={"id": run_id, "status": "queued"}, message="Fixed Ladder v2.61 backtest started")
+    label = "M1 replay" if request.resolution == "m1_replay" else "M5 approximation"
+    return ApiEnvelope(data={"id": run_id, "status": "queued"}, message=f"Fixed Ladder v2.61 {label} started")
 
 
 @app.get("/api/backtests", response_model=ApiEnvelope)

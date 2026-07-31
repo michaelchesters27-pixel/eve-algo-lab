@@ -232,7 +232,8 @@ class IngestionService:
                 last_error=None,
             )
 
-            if batches % self.settings.exact_count_every_batches == 0:
+            count_every = max(self.settings.exact_count_every_batches, 20) if interval == "1min" else self.settings.exact_count_every_batches
+            if batches % count_every == 0:
                 await self.repo.refresh_state(symbol, interval)
 
             await self.repo.update_job(
@@ -391,14 +392,23 @@ class IngestionService:
         await self.repo.log_event("info", "data_quality", f"Gap scan completed for {symbol} {interval}", result)
         return result
 
-    async def auto_sync_loop(self) -> None:
+    async def auto_sync_loop(self, interval: str | None = None) -> None:
+        """Synchronise one interval shortly after each completed candle boundary.
+
+        v1.3 runs one loop for M1 and one for M5. A historical backfill for an
+        interval takes priority, so automatic sync quietly waits until that job
+        is no longer queued or downloading.
+        """
         if not self.settings.auto_sync_enabled:
             logger.info("Automatic latest-candle sync is disabled")
             return
 
-        interval = self.settings.default_interval
-        seconds = INTERVAL_SECONDS.get(interval, 300)
-        logger.info("Automatic sync enabled for %s %s", self.settings.default_symbol, interval)
+        selected_interval = interval or self.settings.default_interval
+        seconds = INTERVAL_SECONDS.get(selected_interval)
+        if seconds is None:
+            logger.error("Automatic sync interval is unsupported: %s", selected_interval)
+            return
+        logger.info("Automatic sync enabled for %s %s", self.settings.default_symbol, selected_interval)
 
         while not self._stop.is_set():
             now = datetime.now(timezone.utc)
@@ -414,10 +424,16 @@ class IngestionService:
                 pass
 
             try:
-                state = await self.repo.get_state(self.settings.default_symbol, interval)
+                state = await self.repo.get_state(self.settings.default_symbol, selected_interval)
                 if state and state.get("status") in {"queued", "downloading"}:
                     continue
-                await self.sync_latest(None, self.settings.default_symbol, interval)
+                await self.sync_latest(None, self.settings.default_symbol, selected_interval)
             except Exception as exc:
-                logger.exception("Automatic sync failed")
-                await self.repo.log_event("error", "live_sync", "Automatic sync failed", {"error": str(exc)})
+                logger.exception("Automatic sync failed for %s", selected_interval)
+                await self.repo.log_event(
+                    "error",
+                    "live_sync",
+                    f"Automatic {selected_interval} sync failed",
+                    {"error": str(exc), "interval": selected_interval},
+                )
+

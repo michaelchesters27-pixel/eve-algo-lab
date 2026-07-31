@@ -399,3 +399,15 @@ create table if not exists public.backtest_baskets (
 );
 create index if not exists backtest_baskets_run_idx on public.backtest_baskets (backtest_run_id, opened_at desc);
 alter table public.backtest_baskets enable row level security;
+
+-- Added in v1.3
+create index if not exists market_candles_forward_replay_idx
+  on public.market_candles (symbol, interval, candle_time asc)
+  include (open, high, low, close, volume);
+
+create index if not exists backtest_runs_resolution_recent_idx
+  on public.backtest_runs (resolution, created_at desc);
+
+create index if not exists backtest_runs_active_idx
+  on public.backtest_runs (status, created_at desc)
+  where status in ('queued', 'running');

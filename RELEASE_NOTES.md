@@ -1,40 +1,29 @@
-# EVE Algo Lab v1.2.0 — Fixed Ladder Backtester
+# EVE Algo Lab v1.3.0
 
-## Imported
+## M1 Market Memory and high-resolution replay
 
-- Exact current source: `EVE_Twelve_Data_Fixed_Ladder_v2.61.mq5`
-- Source SHA-256: `f033bc756b8a066b8fdfe780ca36fe82363b3b70c2e4dd4a15e7d57546d02da9`
+This release adds the next completed engine to the existing EVE Algo Lab deployment.
 
-## Added
+### New
 
-- Railway background backtest service
-- Exact v2.61 fixed-ladder rule model
-- Full-history XAU/USD M5 replay
-- Bid/ask modelling from configurable spread
-- Configurable commission and starting balance
-- Three deterministic intrabar path modes
-- Position and basket result storage
-- Basket-level profit factor and drawdown reporting
-- Separate position-level metrics
-- Recent basket table in Netlify
-- Backtest progress and cancellation
-- Ambiguous M5 candle count and accuracy warning
-- Interrupted-run handling after Railway restart
-- `backtest_baskets` Supabase migration
-- Imported strategy source stored in the repository
+- Complete resumable XAU/USD **1-minute historical downloader**.
+- Separate M1 progress, candle count, batches and gap controls on the Netlify dashboard.
+- Automatic Railway synchronisation for both **M1 and M5**, each shortly after its candle closes.
+- **M1 high-resolution Fixed Ladder v2.61 backtest**.
+- Resolution selector: M5 approximation or M1 replay.
+- Permanent resolution field on every backtest run.
+- Side-by-side M5 versus M1 profit factor, net profit and drawdown comparison.
+- Ambiguous-bar reporting is resolution-aware: ambiguous M5 bars versus ambiguous M1 bars.
+- Supabase indexes for chronological replay across the larger M1 dataset.
 
-## Preserved
+### Accuracy statement
 
-- Existing Market Memory
-- Historical downloader
-- Automatic M5 synchronisation
-- Gap scan
-- Existing Railway and Netlify variables
+M1 replay is substantially more precise than M5 because it replays five one-minute bars inside each five-minute period. It is still not tick-perfect. A single M1 candle can contain more than one material event, so tick replay remains the final execution-validation layer.
 
-## Tested
+### Preserved
 
-- Python compilation
-- Ten automated unit tests
-- Fixed-ladder synthetic event tests
-- Frontend JavaScript syntax
-- Netlify proxy JavaScript syntax
+- Existing 477,000+ M5 candles.
+- Existing M5 backtest results.
+- Fixed Ladder v2.61 imported source.
+- Railway, Netlify and Supabase variables.
+- Resume protection, duplicate prevention and gap scanning.

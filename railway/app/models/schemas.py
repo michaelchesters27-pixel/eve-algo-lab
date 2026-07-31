@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 SupportedInterval = Literal["1min", "5min", "15min", "30min", "45min", "1h", "2h", "4h", "8h", "1day"]
 PathMode = Literal["candle_direction", "open_high_low_close", "open_low_high_close"]
+BacktestResolution = Literal["candle", "m1_replay"]
 
 
 class JobRequest(BaseModel):
@@ -31,6 +32,7 @@ class FixedLadderBacktestRequest(BaseModel):
     name: str = Field(default="Fixed Ladder v2.61 — Full M5 History", min_length=3, max_length=120)
     symbol: str = Field(default="XAU/USD", min_length=3, max_length=40)
     interval: Literal["5min"] = "5min"
+    resolution: BacktestResolution = "candle"
     date_from: datetime | None = None
     date_to: datetime | None = None
     starting_balance: float = Field(default=1000.0, gt=0, le=100_000_000)

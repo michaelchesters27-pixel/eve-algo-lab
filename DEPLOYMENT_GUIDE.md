@@ -1,109 +1,74 @@
-# EVE Algo Lab v1.2 — deployment guide
+# EVE Algo Lab v1.3 — deployment guide
 
-Your existing Market Memory data remains in Supabase. This update does not delete or redownload the 477,000+ XAU/USD M5 candles.
+Use the existing `eve-algo-lab` GitHub repository. Do not upload this update to the separate momentum-bot repository.
 
 ## Step 1 — run one Supabase SQL file
 
-Before updating GitHub:
-
-1. Open the `eve-algo-lab` project in Supabase.
+1. Open the existing **eve-algo-lab** project in Supabase.
 2. Click **SQL Editor**.
 3. Click **New query**.
-4. Open this file from the ZIP:
+4. Open `SUPABASE_UPDATE_v1.3.sql` from this package in Notepad.
+5. Press **Ctrl+A**, then **Ctrl+C**.
+6. Paste it into Supabase.
+7. Click **Run**.
+8. The expected result is **Success. No rows returned**.
 
-```text
-supabase/migrations/20260731125000_bot_backtester_v1_2.sql
-```
+This only adds performance indexes. It does not delete or replace the existing M5 history or backtest results.
 
-5. Copy the complete SQL into Supabase.
-6. Press **Run** once.
+## Step 2 — replace the GitHub repository contents
 
-This creates only the `backtest_baskets` result table. Existing candles and tables are untouched.
-
-## Step 2 — replace the GitHub repository
-
-1. Unzip `EVE-ALGO-LAB-v1.2-GITHUB-READY.zip`.
+1. Unzip `EVE-ALGO-LAB-v1.3-GITHUB-READY.zip`.
 2. Open the inner `eve-algo-lab` folder.
-3. Replace the contents of the GitHub repository with everything inside that folder.
-4. Commit the replacement to `main`.
+3. Replace the contents of the existing **eve-algo-lab** GitHub repository with everything from that folder.
+4. Commit the update to `main`.
+5. Railway and Netlify will redeploy automatically.
 
-Do not upload the ZIP itself into GitHub.
-
-Railway and Netlify should redeploy automatically.
+Do not change the `eve-twelve-data-momentum-trader` repository.
 
 ## Step 3 — variables
 
-No new variables are required.
+No new mandatory variable is required. Existing variables remain:
 
-Railway keeps:
+### Railway
 
-```text
-TWELVE_DATA_API_KEY
-SUPABASE_URL
-SUPABASE_SERVICE_ROLE_KEY
-ADMIN_TOKEN
-CORS_ORIGINS
-DEFAULT_SYMBOL
-DEFAULT_INTERVAL
-```
+- `TWELVE_DATA_API_KEY`
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `ADMIN_TOKEN`
+- `CORS_ORIGINS`
 
-Netlify keeps:
+Optional Railway variable:
 
-```text
-RAILWAY_API_URL
-EVE_ADMIN_TOKEN
-```
+- `AUTO_SYNC_INTERVALS=1min,5min`
 
-`EVE_ADMIN_TOKEN` must still match Railway `ADMIN_TOKEN` exactly.
+The code already defaults to `1min,5min`, so adding it is optional.
 
-## Step 4 — check deployment
+### Netlify
 
-Railway root directory remains:
+- `RAILWAY_API_URL`
+- `EVE_ADMIN_TOKEN`
 
-```text
-/railway
-```
+## Step 4 — start M1 Market Memory
 
-Opening the Railway domain should show version `1.2.0`.
+1. Open the Netlify EVE Algo Lab site after both deployments finish.
+2. Scroll to **M1 execution memory**.
+3. Press **Download M1 history** once.
+4. Leave it running. Railway continues even if the browser is closed.
+5. Do not repeatedly press the button.
 
-The Netlify dashboard should now contain a new section:
+M1 contains roughly five times as many candles as M5, so the download and Supabase insertion will take longer.
 
-```text
-Bot Backtester — EVE Fixed Ladder v2.61
-```
+## Step 5 — run the high-resolution replay
 
-## Step 5 — run the first backtest
+After M1 reaches 100%:
 
-1. Open the Netlify dashboard.
-2. Scroll to **Bot Backtester**.
-3. Leave the exact v2.61 rule values unchanged for the first baseline.
-4. Set the starting balance you want to model.
-5. Leave spread at `0.05` and commission at `$0.08 per 0.01 lot` unless you have better broker figures.
-6. Press **Run full backtest** once.
-
-Railway processes the test in the background. The browser and laptop can be closed.
-
-The dashboard shows:
-
-- progress through Market Memory;
-- net profit;
-- basket profit factor;
-- maximum drawdown;
-- basket win rate;
-- total positions;
-- total baskets;
-- ending balance;
-- ambiguous M5 candles;
-- recent basket-by-basket outcomes.
+1. Open **Bot backtester**.
+2. Select **M1 high-resolution replay**.
+3. Leave the baseline settings unchanged for the first comparison.
+4. Press **Run M1 high-resolution replay** once.
+5. Wait for 100%.
+6. Review the M5 versus M1 comparison panel.
 
 ## Important
 
-This first result is **M5 candle-path approximation**, not tick accuracy. Do not approve the bot for live funds from this result alone. M1 replay and later tick testing must follow.
-
-## Do not do these
-
-- Do not restart the historical download.
-- Do not delete `market_candles`.
-- Do not press Run repeatedly while a backtest is active.
-- Do not expose the Supabase service-role key in Netlify or GitHub.
-- Do not interpret a high historical profit factor as a guarantee of future profit.
+M1 replay is higher resolution, not tick-perfect. It uses each one-minute OHLC path in chronological order. Tick history is still required where multiple material events occur inside the same M1 candle.

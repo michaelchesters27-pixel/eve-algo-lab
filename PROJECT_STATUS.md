@@ -1,43 +1,28 @@
-# Project status
+# Project status — v1.3.0
 
-## Delivered — Market Memory
+## Live and working
 
-- [x] 477,000+ XAU/USD M5 candle foundation
-- [x] Historical Twelve Data downloader
-- [x] Resume, duplicate protection and live sync
-- [x] Gap scan
-- [x] Supabase, Railway and Netlify infrastructure
+- Netlify dashboard
+- Railway API and ingestion worker
+- Supabase permanent market database
+- XAU/USD M5 historical Market Memory
+- XAU/USD M1 historical Market Memory downloader
+- Automatic M1 and M5 latest-candle synchronisation
+- M5 and M1 gap scans
+- Imported Fixed Ladder v2.61 strategy
+- M5 approximation backtester
+- M1 high-resolution replay backtester
+- Profit factor, drawdown, win rate, positions, baskets and ending balance
+- M5 versus M1 comparison
 
-## Delivered — Fixed Ladder Backtester v1.2
+## Next major engine
 
-- [x] Import current v2.61 MT5 source
-- [x] Preserve source hash
-- [x] Reproduce fixed 16-order ladder
-- [x] Reproduce first-bullet quick cut
-- [x] Reproduce individual break-even protection
-- [x] Reproduce newest-unprotected-bullet basket closure
-- [x] Reproduce target and basket peak protection
-- [x] Reproduce emergency basket loss
-- [x] Configurable spread and commission
-- [x] Full background backtest
-- [x] Basket profit factor
-- [x] Balance and equity drawdown
-- [x] Position and basket result storage
-- [x] Dashboard progress and recent baskets
-- [x] Intrabar ambiguity count
+AI Pattern Brain: feature generation, historical outcome labels, pattern similarity and bot-trade filtering.
 
-## Next
+## Not yet claimed
 
-- [ ] Download XAU/USD M1 history
-- [ ] M1 execution replay beneath the M5 strategy
-- [ ] Compare alternative path assumptions automatically
-- [ ] Version-to-version bot comparison
-- [ ] Parameter stress testing
-
-## Later
-
-- [ ] AI market feature store
-- [ ] Bot plus AI filter testing
-- [ ] Explainable strategy factory
-- [ ] Live paper trading
-- [ ] Controlled MT5 bridge
+- Tick-accurate replay
+- AI strategy generation
+- Continuous model retraining
+- Live paper trading
+- Live MT5 execution

@@ -69,8 +69,26 @@ class BacktestService:
     async def cancel(self, run_id: str) -> None:
         await self.repo.update_backtest_run(run_id, status="cancelled", finished_at=datetime.now(timezone.utc).isoformat())
 
+    @staticmethod
+    def _resolution_details(request: dict[str, Any]) -> tuple[str, str, str, str]:
+        resolution = str(request.get("resolution", "candle"))
+        if resolution == "m1_replay":
+            return (
+                "1min",
+                "M1 high-resolution candle replay",
+                "M1 bars greatly reduce intrabar ordering uncertainty, but a one-minute bar can still contain multiple events. Tick replay is required for exact execution proof.",
+                "M1",
+            )
+        return (
+            "5min",
+            "M5 candle-path approximation",
+            "M5 bars cannot prove the exact order of every pending-order, break-even and stop event inside a candle. Use M1 or tick replay before live approval.",
+            "M5",
+        )
+
     async def _run(self, run_id: str, request: dict[str, Any]) -> None:
         started_at = datetime.now(timezone.utc)
+        data_interval, accuracy, warning, interval_label = self._resolution_details(request)
         try:
             await self.repo.update_backtest_run(
                 run_id,
@@ -78,11 +96,18 @@ class BacktestService:
                 started_at=started_at.isoformat(),
                 reliability={
                     "progress_percent": 0,
-                    "message": "Loading verified XAU/USD M5 candles from Market Memory",
-                    "accuracy": "M5 candle-path approximation",
+                    "message": f"Loading verified XAU/USD {interval_label} candles from Market Memory",
+                    "accuracy": accuracy,
+                    "input_interval": data_interval,
+                    "source_sha256": SOURCE_SHA256,
                 },
             )
-            await self.repo.log_event("info", "backtester", "Fixed Ladder v2.61 backtest started", {"run_id": run_id})
+            await self.repo.log_event(
+                "info",
+                "backtester",
+                f"Fixed Ladder v2.61 {interval_label} backtest started",
+                {"run_id": run_id, "resolution": request.get("resolution", "candle")},
+            )
 
             params = FixedLadderParameters(
                 fixed_lot=float(request.get("fixed_lot", 0.01)),
@@ -106,28 +131,29 @@ class BacktestService:
             simulator = FixedLadderV261Backtester(float(request.get("starting_balance", 1000.0)), params)
 
             symbol = str(request.get("symbol", "XAU/USD"))
-            interval = str(request.get("interval", "5min"))
             date_from = request.get("date_from")
             date_to = request.get("date_to")
-            expected_rows = await self.repo.count_market_candles(symbol, interval, date_from, date_to)
+            expected_rows = await self.repo.count_market_candles(symbol, data_interval, date_from, date_to)
             if expected_rows <= 0:
-                raise RuntimeError("No candles exist for the selected date range")
+                raise RuntimeError(f"No {interval_label} candles exist for the selected date range")
 
             cursor: str | None = None
             processed = 0
             trade_buffer: list[dict[str, Any]] = []
             basket_buffer: list[dict[str, Any]] = []
             last_progress_update = 0
+            page_number = 0
 
             while True:
-                run = await self.repo.get_backtest_run(run_id)
-                if not run or run.get("status") == "cancelled":
-                    await self.repo.log_event("warning", "backtester", "Backtest cancelled", {"run_id": run_id})
-                    return
+                if page_number % 10 == 0:
+                    run = await self.repo.get_backtest_run(run_id)
+                    if not run or run.get("status") == "cancelled":
+                        await self.repo.log_event("warning", "backtester", "Backtest cancelled", {"run_id": run_id})
+                        return
 
                 page = await self.repo.fetch_candles_page(
                     symbol=symbol,
-                    interval=interval,
+                    interval=data_interval,
                     after=cursor,
                     date_from=date_from,
                     date_to=date_to,
@@ -135,6 +161,7 @@ class BacktestService:
                 )
                 if not page:
                     break
+                page_number += 1
 
                 for row in page:
                     simulator.process_candle(Candle.from_row(row))
@@ -154,14 +181,16 @@ class BacktestService:
                     basket_buffer.clear()
 
                 progress = min(99.5, processed / expected_rows * 100.0)
-                if processed - last_progress_update >= 5000 or processed == expected_rows:
+                update_every = 10_000 if data_interval == "1min" else 5_000
+                if processed - last_progress_update >= update_every or processed == expected_rows:
                     last_progress_update = processed
                     await self.repo.update_backtest_run(
                         run_id,
                         reliability={
                             "progress_percent": round(progress, 3),
-                            "message": f"Processed {processed:,} of {expected_rows:,} verified M5 candles",
-                            "accuracy": "M5 candle-path approximation",
+                            "message": f"Processed {processed:,} of {expected_rows:,} verified {interval_label} candles",
+                            "accuracy": accuracy,
+                            "input_interval": data_interval,
                             "ambiguous_candles": simulator.ambiguous_candles,
                             "source_sha256": SOURCE_SHA256,
                         },
@@ -187,8 +216,9 @@ class BacktestService:
             reliability = {
                 "progress_percent": 100,
                 "message": "Backtest complete",
-                "accuracy": "M5 candle-path approximation",
-                "warning": "M5 bars cannot prove the exact order of every pending-order, break-even and stop event inside a candle. Use M1 or tick replay before live approval.",
+                "accuracy": accuracy,
+                "warning": warning,
+                "input_interval": data_interval,
                 "candles_processed": summary.candles_processed,
                 "ambiguous_candles": summary.ambiguous_candles,
                 "ambiguous_percent": round(summary.ambiguous_candles / summary.candles_processed * 100, 5) if summary.candles_processed else 0,
@@ -228,7 +258,7 @@ class BacktestService:
             await self.repo.log_event(
                 "success",
                 "backtester",
-                "Fixed Ladder v2.61 backtest completed",
+                f"Fixed Ladder v2.61 {interval_label} backtest completed",
                 {
                     "run_id": run_id,
                     "candles": summary.candles_processed,
@@ -236,6 +266,7 @@ class BacktestService:
                     "baskets": summary.total_baskets,
                     "net_profit": primary_metrics.net_profit,
                     "profit_factor": profit_factor,
+                    "resolution": request.get("resolution", "candle"),
                 },
             )
         except asyncio.CancelledError:
@@ -246,7 +277,12 @@ class BacktestService:
                 run_id,
                 status="failed",
                 error=str(exc),
-                reliability={"progress_percent": 0, "message": str(exc), "accuracy": "M5 candle-path approximation"},
+                reliability={
+                    "progress_percent": 0,
+                    "message": str(exc),
+                    "accuracy": accuracy,
+                    "input_interval": data_interval,
+                },
                 finished_at=datetime.now(timezone.utc).isoformat(),
             )
             await self.repo.log_event("error", "backtester", "Backtest failed", {"run_id": run_id, "error": str(exc)})

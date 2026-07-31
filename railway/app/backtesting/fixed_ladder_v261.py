@@ -220,9 +220,9 @@ class _CandidateEvent:
 class FixedLadderV261Backtester:
     """Candle-path approximation of the exact v2.61 fixed-ladder rules.
 
-    It deliberately does not claim tick accuracy. The engine models bid/ask from a
-    configurable fixed spread and records candles where both extremes can make the
-    event order material. M1/tick replay is the next accuracy layer.
+    It deliberately does not claim tick accuracy. The same state machine can replay
+    either M5 or M1 candles. It models bid/ask from a configurable fixed spread and
+    records input bars where both extremes can make the event order material.
     """
 
     EPS = 1e-9

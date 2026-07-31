@@ -358,7 +358,7 @@ class SupabaseRepository:
                 "reliability": {
                     "progress_percent": 0,
                     "message": "Interrupted by Railway restart",
-                    "accuracy": "M5 candle-path approximation",
+                    "accuracy": "Backtest interrupted before completion",
                 },
             },
         )
