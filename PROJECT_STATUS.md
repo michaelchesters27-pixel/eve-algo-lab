@@ -1,4 +1,4 @@
-# Project status — v1.6.0
+# Project status — v1.6.1
 
 ## Permanent data foundation
 
@@ -26,6 +26,11 @@
 - Daily explainable challenger training checks
 - Strict automatic promotion governance
 - Research reports and cycle audit trail
+
+## Responsive dashboard
+
+- Live Data price fits common desktop, laptop and mobile widths
+- OHLC and sync context wrap without horizontal clipping
 
 ## Next major engine
 

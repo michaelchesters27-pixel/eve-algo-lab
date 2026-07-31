@@ -4,6 +4,10 @@ EVE Algo Lab is a private XAU/USD market-research platform deployed across Netli
 
 Version 1.6 turns the completed Learning Foundation into a permanent **Autonomous Learning Engine**. After deployment, Railway maintains the learning database and runs research cycles without waiting for the dashboard or the user's computer.
 
+## v1.6.1 interface fix
+
+The Live Data card now scales its main price and supporting information to desktop, laptop and mobile widths without clipping. No database or environment-variable changes are required from v1.6.0.
+
 ## What v1.6 does automatically
 
 - Checks the permanent M1, M5, M15, H1, H4 and D1 memory every 15 minutes.
