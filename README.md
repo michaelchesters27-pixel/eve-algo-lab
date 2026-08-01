@@ -1,54 +1,25 @@
-# EVE Algo Lab v1.7.3
+# EVE Algo Lab v2.0.0
 
-Version 1.7.3 repairs the Netlify API proxy route used by the **Discovery Explorer**. The explorer can now load validated, promising and rejected historical experiments from Railway. It also retains the v1.7.2 Learning Centre null-element fix and the complete evidence views. EVE's validated, promising and rejected historical experiments can now be opened and inspected with locked-test evidence, sample size, effect, confidence, year stability, tested conditions and the exact reason for classification.
+EVE Algo Lab is a private XAU/USD market-research platform running on Supabase, Railway, Netlify and Twelve Data.
 
-The continuous historical research worker from v1.7.1 remains unchanged and continues running independently of market hours.
+It permanently stores six timeframes, builds multi-timeframe learning snapshots, labels future outcomes, researches historical relationships continuously and now converts strong findings into automatically tested strategy candidates.
 
-## What runs in parallel
+## v2.0 Strategy Idea Factory
 
-### Live learning worker
+The autonomous Strategy Lab:
 
-- Syncs completed M1, M5, M15, H1, H4 and D1 candles.
-- Adds new 15-minute market snapshots.
-- Completes 5, 15, 30, 60 and 240-minute outcomes.
-- Grades predictions and controls challenger-model training.
+1. Reads validated and promising historical findings.
+2. Converts them into explicit bot rules.
+3. Generates risk variants with ATR stops and targets.
+4. Prevents overlapping research trades.
+5. Tests training, validation and locked unseen periods chronologically.
+6. Compares each candidate against an equivalent unfiltered baseline.
+7. Rejects weak rules and retains promising, validated and elite candidates.
 
-### 24/7 historical research worker
+Candidate results include profit factor, expectancy in R, maximum drawdown, trade count, win rate, year stability and baseline improvement.
 
-- Maintains a persistent queue of research questions in Supabase.
-- Generates new questions automatically whenever the queue becomes low.
-- Tests one question at a time against complete stored learning snapshots.
-- Uses chronological training, validation and locked test periods.
-- Checks year-by-year stability and applies a multiple-testing penalty.
-- Rejects weak or unstable findings.
-- Stores promising and validated findings in the Discovery Library.
-- Continues working during trading hours, weekends and market holidays.
-- Recovers queued work after Railway restarts without repeating completed jobs.
+## Important
 
-## Resource control
+A strong Strategy Lab result is not approval for live trading. v2.0 uses conservative candle/outcome replay. M1 or tick replay, realistic broker costs and forward testing remain mandatory before MT5 implementation.
 
-Historical research does not hammer Twelve Data. It operates on the data already stored in Supabase and keeps a refreshed in-memory research cache on Railway. It processes one experiment at a time with a controlled pause between experiments.
-
-## Dashboard proof
-
-The Learning Centre now shows:
-
-- worker status and heartbeat;
-- current historical question;
-- queue size;
-- completed questions;
-- total historical states scanned;
-- rejected, promising and validated counts;
-- latest result and research generation.
-
-## Important boundary
-
-Continuous research is designed to discover and challenge statistical tendencies. It does not guarantee profitable trades. A result must survive unseen chronological data and stability checks before EVE labels it validated.
-
-## Repository layout
-
-- `frontend/` — Netlify dashboard and secure API proxy.
-- `railway/` — FastAPI service, ingestion, learning, continuous research and backtesting workers.
-- `supabase/migrations/` — complete SQL history.
-- `imported-strategies/` — source strategy used by the existing backtester.
-- `SUPABASE_UPDATE_v1.7.sql` — the single Supabase upgrade file for this release.
+See `DEPLOYMENT_GUIDE.md`.

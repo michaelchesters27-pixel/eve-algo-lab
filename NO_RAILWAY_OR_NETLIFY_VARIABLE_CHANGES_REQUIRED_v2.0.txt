@@ -1,0 +1,5 @@
+EVE Algo Lab v2.0 uses built-in Strategy Lab defaults.
+
+Do not add or change Railway or Netlify variables for this release.
+
+The only database action is to run SUPABASE_UPDATE_v2.0.sql once before deploying the GitHub files.

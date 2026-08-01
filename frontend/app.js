@@ -56,6 +56,12 @@ let discoveryExplorerFilter = "all";
 let discoveryExplorerOrder = "confidence";
 let selectedDiscoveryId = null;
 let discoveryRefreshTimer;
+let strategyLabDashboard = null;
+let strategyCandidateItems = [];
+let strategyCandidateFilter = "all";
+let strategyCandidateOrder = "profit_factor";
+let selectedStrategyCandidateId = null;
+let strategyRefreshTimer;
 const activeBackfillJobIds = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
 const historicalReady = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, false]));
 const marketStates = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
@@ -966,6 +972,154 @@ async function refreshBacktests(silent = false) {
   }
 }
 
+
+function formatR(value) {
+  const numberValue = Number(value);
+  if (!Number.isFinite(numberValue)) return "—";
+  return `${numberValue >= 0 ? "+" : ""}${numberValue.toFixed(3)}R`;
+}
+
+function renderStrategyLabStatus(data = {}) {
+  strategyLabDashboard = data;
+  const state = data.state || {};
+  const current = data.current_candidate || {};
+  const status = state.status || "waiting";
+  setText("#strategyLabStatus", status.toUpperCase());
+  setClass("#strategyLabStatus", `status-pill ${status === "active" || status === "testing" || status === "generating" ? "complete" : status}`);
+  setText("#strategyLabMessage", state.last_error || "EVE converts research findings into strategy candidates and tests them without waiting for market hours.");
+  setText("#strategyCurrentCandidate", current.name || state.current_candidate_name || "Waiting for the next candidate");
+  setText("#strategyHeartbeat", formatDate(state.heartbeat_at, true));
+  setText("#strategyQueued", formatNumber(state.queue_count));
+  setText("#strategyCompleted", formatNumber(state.completed_count));
+  setText("#strategyRowsScanned", formatNumber(state.rows_scanned_total));
+  setText("#strategyRejected", formatNumber(state.rejected_count));
+  setText("#strategyPromising", formatNumber(state.promising_count));
+  setText("#strategyValidated", formatNumber(state.validated_count));
+  setText("#strategyElite", formatNumber(state.elite_count));
+  setText("#strategyLastResult", state.last_result || "Waiting for validated research findings to become strategy candidates.");
+  setText("#strategyTestedCount", formatNumber(state.completed_count));
+  setText("#strategyRejectedCount", formatNumber(state.rejected_count));
+  setText("#strategyPromisingCount", formatNumber(state.promising_count));
+  setText("#strategyStrongCount", formatNumber(Number(state.validated_count || 0) + Number(state.elite_count || 0)));
+}
+
+function strategyStatusExplanation(item) {
+  const status = String(item.result_status || "rejected");
+  if (status === "elite") return "Elite: strong locked-test performance, positive validation, stable yearly expectancy and a clear improvement over the comparable baseline. It is ready for high-resolution replay and forward testing—not live deployment.";
+  if (status === "validated") return "Validated: the candidate stayed positive on unseen data and improved sufficiently on its baseline. It still requires M1/tick replay and forward testing.";
+  if (status === "promising") return "Promising: the candidate was profitable on locked data but did not clear every robustness threshold.";
+  return "Rejected: the rule set failed profitability, sample-size, stability or baseline-improvement requirements.";
+}
+
+function strategyRulesText(item) {
+  const rules = item.rules || {};
+  const mode = rules.condition_mode === "exclude" ? "Avoid the source condition" : "Require the source condition";
+  const direction = String(rules.direction_rule || "current_direction").replaceAll("_", " ");
+  return [
+    mode,
+    `Direction: ${direction}`,
+    `Stop: ${Number(rules.stop_atr || 0).toFixed(2)} ATR`,
+    `Target: ${Number(rules.target_atr || 0).toFixed(2)} ATR`,
+    `Maximum hold: ${formatNumber(rules.horizon_minutes)} minutes`,
+    `Cooldown: ${formatNumber(rules.cooldown_minutes)} minutes`,
+  ];
+}
+
+function renderStrategyCandidateDetail(item) {
+  const host = $("#strategyCandidateDetail");
+  if (!host) return;
+  if (!item) {
+    host.innerHTML = '<div class="discovery-detail-empty"><small>SELECT A CANDIDATE</small><strong>Click a strategy idea to inspect its rules</strong><p>You will see its entry direction, filters, stop, target and locked-test evidence.</p></div>';
+    return;
+  }
+  const test = item.metrics?.locked_test || {};
+  const validation = item.metrics?.validation || {};
+  const baseline = item.metrics?.baseline_locked_test || {};
+  const caveats = item.evidence?.caveats || [];
+  host.innerHTML = `
+    <small class="discovery-detail-label">${escapeHtml(String(item.result_status || "result").toUpperCase())} · ${escapeHtml(String(item.family || "strategy").replaceAll("_", " ").toUpperCase())}</small>
+    <h2>${escapeHtml(item.name || "Strategy candidate")}</h2>
+    <p class="discovery-detail-summary">${escapeHtml(item.hypothesis || "No hypothesis stored.")}</p>
+    <div class="discovery-verdict">${escapeHtml(strategyStatusExplanation(item))}</div>
+    <div class="discovery-detail-metrics strategy-detail-metrics">
+      <div><small>LOCKED PF</small><strong>${Number(item.profit_factor || 0).toFixed(2)}</strong></div>
+      <div><small>EXPECTANCY</small><strong>${formatR(item.expectancy_r)}</strong></div>
+      <div><small>MAX DRAWDOWN</small><strong>${formatR(-Math.abs(Number(item.max_drawdown_r || 0)))}</strong></div>
+      <div><small>WIN RATE</small><strong>${Number(item.win_rate || 0).toFixed(1)}%</strong></div>
+      <div><small>LOCKED TRADES</small><strong>${formatNumber(item.trades_total)}</strong></div>
+      <div><small>YEAR STABILITY</small><strong>${Number(item.stability_score || 0).toFixed(1)}%</strong></div>
+    </div>
+    <div class="discovery-subsection"><small>BOT RULE SPECIFICATION</small><div class="condition-chip-list">${strategyRulesText(item).map((rule) => `<span class="condition-chip">${escapeHtml(rule)}</span>`).join("")}</div></div>
+    <div class="discovery-subsection"><small>SOURCE RESEARCH</small><p>${escapeHtml(item.source_question || "No source question stored.")}</p></div>
+    <div class="discovery-subsection"><small>ROBUSTNESS EVIDENCE</small><div class="evidence-list">
+      <div><span>Validation profit factor</span><strong>${Number(validation.profit_factor || 0).toFixed(2)}</strong></div>
+      <div><span>Locked-test profit factor</span><strong>${Number(test.profit_factor || 0).toFixed(2)}</strong></div>
+      <div><span>Unfiltered baseline PF</span><strong>${Number(baseline.profit_factor || item.baseline_profit_factor || 0).toFixed(2)}</strong></div>
+      <div><span>Locked-test net result</span><strong>${formatR(test.net_r)}</strong></div>
+      <div><span>Locked-test expectancy</span><strong>${formatR(test.expectancy_r)}</strong></div>
+      <div><span>Historical states scanned</span><strong>${formatNumber(item.rows_scanned)}</strong></div>
+    </div></div>
+    <div class="discovery-subsection"><small>LIMITATIONS BEFORE MT5</small><ul class="strategy-caveat-list">${caveats.map((caveat) => `<li>${escapeHtml(caveat)}</li>`).join("")}</ul></div>
+    <p class="discovery-warning">This candidate is an evidence-backed bot specification, not a live trading instruction. It must pass high-resolution replay and forward testing before implementation.</p>`;
+}
+
+function renderStrategyCandidates(items = []) {
+  strategyCandidateItems = items;
+  const host = $("#strategyCandidateList");
+  if (!host) return;
+  if (!items.length) {
+    host.innerHTML = `<div class="empty-state">No ${escapeHtml(strategyCandidateFilter === "all" ? "completed" : strategyCandidateFilter)} strategy candidates are available yet. EVE will create them automatically from validated and promising research.</div>`;
+    renderStrategyCandidateDetail(null);
+    return;
+  }
+  if (!selectedStrategyCandidateId || !items.some((item) => item.id === selectedStrategyCandidateId)) selectedStrategyCandidateId = items[0].id;
+  host.innerHTML = items.map((item) => `
+    <button class="discovery-result-card strategy-result-card ${escapeHtml(String(item.result_status || "rejected"))} ${item.id === selectedStrategyCandidateId ? "selected" : ""}" type="button" data-strategy-id="${escapeHtml(item.id)}">
+      <div class="discovery-result-head"><span class="discovery-result-status">${escapeHtml(String(item.result_status || "rejected").toUpperCase())}</span><span class="discovery-result-date">${escapeHtml(formatDate(item.finished_at))}</span></div>
+      <h3>${escapeHtml(item.name || "Strategy candidate")}</h3>
+      <p>${escapeHtml(item.source_question || item.hypothesis || "Evidence-backed candidate")}</p>
+      <div class="discovery-result-metrics strategy-result-metrics">
+        <div><small>PF</small><strong>${Number(item.profit_factor || 0).toFixed(2)}</strong></div>
+        <div><small>EXPECTANCY</small><strong>${formatR(item.expectancy_r)}</strong></div>
+        <div><small>TRADES</small><strong>${formatNumber(item.trades_total)}</strong></div>
+        <div><small>DRAWDOWN</small><strong>${Number(item.max_drawdown_r || 0).toFixed(1)}R</strong></div>
+      </div>
+    </button>`).join("");
+  renderStrategyCandidateDetail(items.find((item) => item.id === selectedStrategyCandidateId) || items[0]);
+}
+
+async function refreshStrategyLab(silent = false) {
+  try {
+    const [statusPayload, candidatesPayload] = await Promise.all([
+      api("strategy-lab/status?symbol=XAU%2FUSD"),
+      api(`strategy-lab/candidates?symbol=XAU%2FUSD&result_status=${encodeURIComponent(strategyCandidateFilter)}&order=${encodeURIComponent(strategyCandidateOrder)}&limit=150`),
+    ]);
+    renderStrategyLabStatus(statusPayload.data || {});
+    renderStrategyCandidates(candidatesPayload.data?.items || []);
+    setText("#strategyExplorerStatus", "READY");
+    setClass("#strategyExplorerStatus", "status-pill complete");
+    setText("#strategyExplorerMessage", `Showing ${formatNumber(candidatesPayload.data?.items?.length || 0)} completed candidates. EVE keeps generating and testing new bot ideas in Railway.`);
+  } catch (error) {
+    setText("#strategyExplorerStatus", "ERROR");
+    setClass("#strategyExplorerStatus", "status-pill error");
+    setText("#strategyExplorerMessage", error.message);
+    if (!silent) showToast(error.message, true);
+  }
+}
+
+async function wakeStrategyLab(button) {
+  button.disabled = true;
+  try {
+    const payload = await api("strategy-lab/wake", { method: "POST", body: "{}" });
+    showToast(payload.message || "Strategy Lab wake requested");
+    await refreshStrategyLab(true);
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 const timeframeGrid = $("#timeframeGrid");
 if (timeframeGrid) timeframeGrid.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-action][data-interval]");
@@ -1000,6 +1154,7 @@ listen("#refreshButton", "click", async () => {
   await refreshDashboard();
   await refreshLearning(true);
   await refreshDiscoveryExplorer(true);
+  await refreshStrategyLab(true);
   await refreshBacktests(true);
 });
 listen("#discoverySort", "change", async (event) => {
@@ -1024,6 +1179,29 @@ listen("#discoveryExplorerList", "click", (event) => {
   renderDiscoveryExplorer(discoveryExplorerItems);
 });
 
+
+listen("#wakeStrategyLab", "click", (event) => wakeStrategyLab(event.currentTarget));
+listen("#refreshStrategyLab", "click", () => refreshStrategyLab());
+listen("#strategySort", "change", async (event) => {
+  strategyCandidateOrder = event.currentTarget.value || "profit_factor";
+  selectedStrategyCandidateId = null;
+  await refreshStrategyLab();
+});
+document.querySelectorAll("[data-strategy-filter]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    strategyCandidateFilter = button.dataset.strategyFilter || "all";
+    selectedStrategyCandidateId = null;
+    document.querySelectorAll("[data-strategy-filter]").forEach((item) => item.classList.toggle("active", item === button));
+    await refreshStrategyLab();
+  });
+});
+listen("#strategyCandidateList", "click", (event) => {
+  const card = event.target.closest("[data-strategy-id]");
+  if (!card) return;
+  selectedStrategyCandidateId = card.dataset.strategyId;
+  renderStrategyCandidates(strategyCandidateItems);
+});
+
 const navLinks = [...document.querySelectorAll(".nav-link")];
 const sections = navLinks.map((link) => document.querySelector(link.getAttribute("href"))).filter(Boolean);
 const observer = new IntersectionObserver((entries) => {
@@ -1038,12 +1216,15 @@ sections.forEach((section) => observer.observe(section));
   await refreshDashboard(true);
   await refreshLearning(true);
   await refreshDiscoveryExplorer(true);
+  await refreshStrategyLab(true);
   await refreshBacktests(true);
 })();
 refreshTimer = setInterval(async () => {
   await refreshDashboard(true);
   await refreshLearning(true);
+  await refreshStrategyLab(true);
   await refreshBacktests(true);
 }, 10_000);
 
 discoveryRefreshTimer = setInterval(() => refreshDiscoveryExplorer(true), 30_000);
+strategyRefreshTimer = setInterval(() => refreshStrategyLab(true), 30_000);

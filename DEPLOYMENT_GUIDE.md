@@ -1,12 +1,29 @@
-# EVE Algo Lab v1.7.3 — deployment guide
+# Deploy EVE Algo Lab v2.0.0
 
-This is a complete GitHub-ready replacement. **No Supabase SQL and no variable changes are required.**
+## 1. Supabase
 
-1. Unzip the v1.7.3 package.
-2. Open the inner `eve-algo-lab` folder.
-3. Replace the contents of the existing `eve-algo-lab` GitHub repository with everything inside that folder.
-4. Wait for Railway and Netlify to redeploy.
-5. Open EVE Algo Lab and press `Ctrl + F5` once.
-6. Open **Learning centre → Discovery Explorer**.
+Open the existing EVE Algo Lab project, open SQL Editor, paste the complete contents of `SUPABASE_UPDATE_v2.0.sql`, and run it once. Wait for `Success. No rows returned`.
 
-The Discovery Explorer request is now explicitly allowed through the Netlify API proxy. Existing candles, learning snapshots, historical research results, models, discoveries and backtests are preserved.
+The update preserves every existing candle, learning snapshot, discovery, model and backtest.
+
+## 2. GitHub
+
+Unzip the GitHub-ready package. Open the inner `eve-algo-lab` folder and replace the contents of the existing EVE Algo Lab repository with everything inside it. Commit the replacement.
+
+## 3. Railway and Netlify
+
+Allow the existing GitHub deployments to finish. Do not add or change any variables.
+
+## 4. Verify
+
+Open EVE, press `Ctrl + F5`, and select **Strategy Lab**.
+
+After the Railway startup delay, verify:
+
+- Strategy worker status is ACTIVE.
+- Worker heartbeat shows a recent time.
+- Candidates queued is above zero once validated/promising research exists.
+- Completed and states-scanned counts begin rising.
+- Candidate Explorer opens finished results.
+
+The Strategy Lab runs in Railway with the browser and computer switched off.

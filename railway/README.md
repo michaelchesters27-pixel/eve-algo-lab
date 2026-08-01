@@ -8,7 +8,7 @@ FastAPI with five persistent engines for EVE Algo Lab:
 - Continuous 24/7 historical research on stored past data.
 - M5 approximation and M1 replay backtesting.
 
-No new environment variables are required for v1.7. Historical-research defaults are loaded from code.
+No new environment variables are required for v2.0. Historical research and Strategy Lab defaults are loaded from code.
 
 Local run:
 
@@ -25,3 +25,8 @@ Run tests:
 ```bash
 pytest -q
 ```
+
+
+## v2.0 Strategy Lab
+
+A fourth Railway worker converts validated historical findings into strategy candidates and evaluates them automatically. It runs independently of market hours and uses only stored learning snapshots.

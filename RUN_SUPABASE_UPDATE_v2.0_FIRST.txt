@@ -1,0 +1,7 @@
+EVE ALGO LAB v2.0
+
+Before deploying the GitHub files, run the complete SUPABASE_UPDATE_v2.0.sql file once in the existing EVE Algo Lab Supabase project.
+
+The update creates only the Strategy Lab state, candidate queue and supporting functions. Existing candles, learning snapshots, discoveries, models and backtests are preserved.
+
+No Railway or Netlify variables need to be added or changed.

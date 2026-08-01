@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=1.7.3">
+  <link rel="stylesheet" href="styles.css?v=2.0.0">
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -26,9 +26,10 @@
         <a class="nav-link active" href="#overview"><span>01</span> Overview</a>
         <a class="nav-link" href="#memory"><span>02</span> Data foundation</a>
         <a class="nav-link" href="#learning"><span>03</span> Learning centre</a>
-        <a class="nav-link" href="#backtester"><span>04</span> Backtester</a>
-        <a class="nav-link" href="#pipeline"><span>05</span> Build pipeline</a>
-        <a class="nav-link" href="#activity"><span>06</span> Activity</a>
+        <a class="nav-link" href="#strategy-lab"><span>04</span> Strategy Lab</a>
+        <a class="nav-link" href="#backtester"><span>05</span> Backtester</a>
+        <a class="nav-link" href="#pipeline"><span>06</span> Build pipeline</a>
+        <a class="nav-link" href="#activity"><span>07</span> Activity</a>
       </nav>
       <div class="side-status">
         <span class="pulse" id="servicePulse"></span>
@@ -94,7 +95,7 @@
 
       <section id="memory" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">DATA FOUNDATION v1.7.3</p><h2>Six layers of market memory</h2></div>
+          <div><p class="eyebrow">DATA FOUNDATION v2.0</p><h2>Six layers of market memory</h2></div>
           <p>Railway downloads each timeframe in sequence and stores it permanently in Supabase. Each dataset has independent progress, resumable history, latest-candle sync and gap review.</p>
         </div>
         <div class="timeframe-grid" id="timeframeGrid" aria-live="polite"></div>
@@ -105,7 +106,7 @@
 
       <section id="learning" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">AUTONOMOUS LEARNING v1.7.3</p><h2>EVE now works without waiting for you</h2></div>
+          <div><p class="eyebrow">AUTONOMOUS LEARNING v2.0</p><h2>EVE now works without waiting for you</h2></div>
           <p>Two Railway workers now run in parallel: live learning keeps new candles current, while a dedicated historical researcher continuously mines stored data whether the market is open or closed.</p>
         </div>
 
@@ -217,7 +218,7 @@
             <div class="calendar-insight"><small>LARGEST-RANGE MONTH</small><strong id="topRangeMonth">—</strong><span id="topRangeMonthMeta">Build learning first</span></div>
             <div class="calendar-insight"><small>MOST DIRECTIONAL MONTH</small><strong id="topDirectionalMonth">—</strong><span id="topDirectionalMonthMeta">Build learning first</span></div>
           </div>
-          <p class="foundation-note compact-note">These are descriptive observations, not trade instructions. v1.7 tests stability by year and on locked unseen periods before a finding can be promoted.</p>
+          <p class="foundation-note compact-note">These are descriptive observations, not trade instructions. EVE tests stability by year and on locked unseen periods before a finding can be promoted.</p>
         </article>
 
         <div class="learning-lists">
@@ -233,7 +234,7 @@
 
         <article class="panel discovery-explorer-panel" id="discoveryExplorer">
           <div class="panel-head">
-            <div><p class="label">DISCOVERY EXPLORER v1.7.3</p><h2>Open what EVE has actually learned</h2></div>
+            <div><p class="label">DISCOVERY EXPLORER v2.0</p><h2>Open what EVE has actually learned</h2></div>
             <span class="status-pill complete" id="discoveryExplorerStatus">READY</span>
           </div>
           <p class="backtest-message" id="discoveryExplorerMessage">Inspect validated, promising and rejected historical tests. Every result shows the locked-test evidence behind it.</p>
@@ -275,9 +276,83 @@
         </article>
       </section>
 
+
+      <section id="strategy-lab" class="section-block">
+        <div class="section-title">
+          <div><p class="eyebrow">STRATEGY IDEA FACTORY v2.0</p><h2>Turn research into testable bot rules</h2></div>
+          <p>EVE continuously converts validated and promising discoveries into rule-based strategy candidates, tests them on chronological unseen data and rejects candidates that do not improve on their unfiltered baseline.</p>
+        </div>
+
+        <article class="panel strategy-worker-panel">
+          <div class="panel-head">
+            <div><p class="label">AUTONOMOUS STRATEGY WORKER</p><h2>Research → rules → robustness test</h2></div>
+            <span class="status-pill" id="strategyLabStatus">CHECKING</span>
+          </div>
+          <p class="backtest-message" id="strategyLabMessage">Checking Railway's Strategy Idea Factory.</p>
+          <div class="research-worker-current">
+            <small>CURRENT CANDIDATE</small>
+            <strong id="strategyCurrentCandidate">Waiting for worker heartbeat</strong>
+          </div>
+          <div class="research-worker-grid strategy-worker-grid">
+            <div><small>WORKER HEARTBEAT</small><strong id="strategyHeartbeat">—</strong></div>
+            <div><small>QUEUED</small><strong id="strategyQueued">0</strong></div>
+            <div><small>COMPLETED</small><strong id="strategyCompleted">0</strong></div>
+            <div><small>STATES SCANNED</small><strong id="strategyRowsScanned">0</strong></div>
+            <div><small>REJECTED</small><strong id="strategyRejected">0</strong></div>
+            <div><small>PROMISING</small><strong id="strategyPromising">0</strong></div>
+            <div><small>VALIDATED</small><strong id="strategyValidated">0</strong></div>
+            <div><small>ELITE</small><strong id="strategyElite">0</strong></div>
+          </div>
+          <div class="foundation-note compact-note" id="strategyLastResult">Candidates are tested with non-overlapping trades, conservative stop-first ambiguity handling and locked chronological data.</div>
+          <div class="actions">
+            <button class="button" id="wakeStrategyLab">Wake Strategy Lab now</button>
+            <button class="button button-quiet" id="refreshStrategyLab">Refresh</button>
+          </div>
+        </article>
+
+        <article class="panel strategy-explorer-panel">
+          <div class="panel-head">
+            <div><p class="label">STRATEGY CANDIDATE EXPLORER</p><h2>Open the bot ideas EVE has tested</h2></div>
+            <span class="status-pill" id="strategyExplorerStatus">WAITING</span>
+          </div>
+          <p class="backtest-message" id="strategyExplorerMessage">Candidates will appear after EVE converts research findings into complete entry, filter, direction, stop and target rules.</p>
+          <div class="discovery-toolbar">
+            <div class="discovery-filter-group" role="group" aria-label="Strategy result filter">
+              <button class="strategy-filter active" type="button" data-strategy-filter="all">All</button>
+              <button class="strategy-filter" type="button" data-strategy-filter="elite">Elite</button>
+              <button class="strategy-filter" type="button" data-strategy-filter="validated">Validated</button>
+              <button class="strategy-filter" type="button" data-strategy-filter="promising">Promising</button>
+              <button class="strategy-filter" type="button" data-strategy-filter="rejected">Rejected</button>
+            </div>
+            <label class="discovery-sort-label">SORT
+              <select id="strategySort">
+                <option value="profit_factor">Highest profit factor</option>
+                <option value="expectancy">Highest expectancy</option>
+                <option value="drawdown">Lowest drawdown</option>
+                <option value="trades">Most trades</option>
+                <option value="recent">Most recent</option>
+              </select>
+            </label>
+          </div>
+          <div class="strategy-summary-grid">
+            <div><small>TESTED</small><strong id="strategyTestedCount">0</strong></div>
+            <div><small>REJECTED</small><strong id="strategyRejectedCount">0</strong></div>
+            <div><small>PROMISING</small><strong id="strategyPromisingCount">0</strong></div>
+            <div><small>VALIDATED + ELITE</small><strong id="strategyStrongCount">0</strong></div>
+          </div>
+          <div class="discovery-explorer-layout strategy-explorer-layout">
+            <div class="discovery-explorer-list" id="strategyCandidateList"><div class="empty-state">Loading strategy candidates…</div></div>
+            <aside class="discovery-detail strategy-detail" id="strategyCandidateDetail" aria-live="polite">
+              <div class="discovery-detail-empty"><small>SELECT A CANDIDATE</small><strong>Click a strategy idea to inspect its rules</strong><p>You will see its entry direction, filters, stop, target, chronological validation, locked-test metrics, baseline comparison and forward-test status.</p></div>
+            </aside>
+          </div>
+          <p class="foundation-note compact-note"><strong>Research grade:</strong> these are evidence-backed strategy specifications, not finished MT5 EAs. A validated or elite candidate must still pass M1/tick replay and live forward testing before deployment.</p>
+        </article>
+      </section>
+
       <section id="backtester" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">RESEARCH BACKTESTER v1.7.3</p><h2>EVE Fixed Ladder v2.61</h2></div>
+          <div><p class="eyebrow">RESEARCH BACKTESTER v2.0</p><h2>EVE Fixed Ladder v2.61</h2></div>
           <p>The existing M5 approximation and M1 high-resolution replay remain available while the broader research memory is expanded.</p>
         </div>
 
@@ -360,7 +435,7 @@
 
       <section id="pipeline" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">PROJECT ROADMAP</p><h2>Autonomy before conversation</h2></div>
+          <div><p class="eyebrow">PROJECT ROADMAP</p><h2>Research before automation</h2></div>
           <p>The next research engines will use the same clean multi-timeframe memory rather than rebuilding historical context for every experiment.</p>
         </div>
         <div class="pipeline">
@@ -370,7 +445,8 @@
           <article class="pipeline-card current"><div class="stage">v1.5</div><span>04</span><h3>Learning Foundation</h3><p>Feature snapshots, forward outcomes, calendar intelligence and EVE’s research-question queue.</p></article>
           <article class="pipeline-card current"><div class="stage">v1.6</div><span>05</span><h3>Autonomous Learning</h3><p>Background candle learning, prediction grading and controlled challenger training.</p></article>
           <article class="pipeline-card current"><div class="stage">v1.7</div><span>06</span><h3>Continuous Historical Research</h3><p>A dedicated 24/7 worker generates, tests and challenges past-data questions regardless of market hours.</p></article>
-          <article class="pipeline-card"><div class="stage">NEXT</div><span>07</span><h3>Ask EVE + Pattern Match</h3><p>Natural-language research, similar historical structures and evidence-led likely outcomes.</p></article>
+          <article class="pipeline-card current"><div class="stage">v2.0</div><span>07</span><h3>Strategy Idea Factory</h3><p>Validated research is converted into entry, filter, risk and exit rules, then challenged on locked chronological data.</p></article>
+          <article class="pipeline-card"><div class="stage">NEXT</div><span>08</span><h3>Ask EVE + Pattern Match</h3><p>Natural-language research, similar historical structures and evidence-led likely outcomes.</p></article>
         </div>
       </section>
 
@@ -382,11 +458,11 @@
         <div class="activity-list" id="activityList"><div class="empty-state">Waiting for Supabase activity…</div></div>
       </section>
 
-      <footer><span>EVE ALGO LAB · v1.7.3</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
+      <footer><span>EVE ALGO LAB · v2.0.0</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
     </main>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=1.7.3" defer></script>
+  <script src="app.js?v=2.0.0" defer></script>
 </body>
 </html>

@@ -57,6 +57,14 @@ class Settings(BaseSettings):
     historical_research_seed_batch: int = Field(default=250, ge=25, le=1000)
     historical_research_cache_minutes: int = Field(default=180, ge=15, le=1440)
 
+    # v2.0 autonomous Strategy Lab. Defaults are active and require no new Railway variables.
+    strategy_lab_enabled: bool = True
+    strategy_lab_startup_delay_seconds: int = Field(default=240, ge=15, le=1800)
+    strategy_lab_job_delay_seconds: float = Field(default=30.0, ge=2.0, le=900.0)
+    strategy_lab_idle_seconds: float = Field(default=45.0, ge=5.0, le=900.0)
+    strategy_lab_queue_floor: int = Field(default=12, ge=2, le=500)
+    strategy_lab_cache_minutes: int = Field(default=180, ge=15, le=1440)
+
     @field_validator("supabase_url", "twelve_data_base_url")
     @classmethod
     def strip_trailing_slash(cls, value: str) -> str:

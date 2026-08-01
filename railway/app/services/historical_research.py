@@ -450,6 +450,10 @@ class ContinuousHistoricalResearchService:
         )
         await self.repo.refresh_historical_research_state("XAU/USD", SNAPSHOT_INTERVAL)
 
+    async def load_complete_rows(self) -> list[dict[str, Any]]:
+        """Return the shared complete-snapshot cache for downstream research workers."""
+        return await self._load_rows()
+
     async def _load_rows(self) -> list[dict[str, Any]]:
         learning_state = await self.repo.get_learning_state("XAU/USD", SNAPSHOT_INTERVAL) or {}
         latest_snapshot = as_utc(learning_state.get("last_snapshot_time"))

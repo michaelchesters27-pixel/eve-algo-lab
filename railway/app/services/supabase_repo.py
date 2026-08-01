@@ -511,7 +511,7 @@ class SupabaseRepository:
     ) -> list[dict[str, Any]]:
         safe_limit = max(1, min(1000, int(limit)))
         filters = [
-            "select=symbol,snapshot_interval,candle_time,weekday,month,quarter,week_of_month,hour_utc,session,direction,compression_ratio,trend_12_atr,trend_48_atr,streak,regime,alignment_score,outcomes,outcome_complete",
+            "select=symbol,snapshot_interval,candle_time,close,atr_14,weekday,month,quarter,week_of_month,hour_utc,session,direction,compression_ratio,trend_12_atr,trend_48_atr,streak,regime,alignment_score,outcomes,outcome_complete",
             f"symbol=eq.{quote(symbol, safe='')}",
             f"snapshot_interval=eq.{quote(snapshot_interval, safe='')}",
         ]
@@ -764,6 +764,95 @@ class SupabaseRepository:
             filters.append(f"result_status=eq.{result_status}")
         filters.extend([f"order={order_clause}", f"limit={safe_limit}"])
         return await self.select("historical_research_jobs", "&".join(filters))
+
+    async def get_strategy_lab_state(self, symbol: str, snapshot_interval: str) -> dict[str, Any] | None:
+        rows = await self.select(
+            "strategy_lab_state",
+            "select=*&symbol=eq.{}&snapshot_interval=eq.{}&limit=1".format(
+                quote(symbol, safe=""), quote(snapshot_interval, safe="")
+            ),
+        )
+        return rows[0] if rows else None
+
+    async def upsert_strategy_lab_state(self, symbol: str, snapshot_interval: str, **changes: Any) -> None:
+        existing = await self.get_strategy_lab_state(symbol, snapshot_interval)
+        if existing:
+            await self.update(
+                "strategy_lab_state",
+                "symbol=eq.{}&snapshot_interval=eq.{}".format(
+                    quote(symbol, safe=""), quote(snapshot_interval, safe="")
+                ),
+                changes,
+            )
+            return
+        await self.insert("strategy_lab_state", {"symbol": symbol, "snapshot_interval": snapshot_interval, **changes})
+
+    async def refresh_strategy_lab_state(self, symbol: str, snapshot_interval: str) -> None:
+        await self.rpc("refresh_strategy_lab_state", {"p_symbol": symbol, "p_snapshot_interval": snapshot_interval})
+
+    async def strategy_lab_dashboard(self, symbol: str, snapshot_interval: str) -> dict[str, Any]:
+        result = await self.rpc("get_strategy_lab_dashboard", {"p_symbol": symbol, "p_snapshot_interval": snapshot_interval})
+        return result or {}
+
+    async def list_strategy_source_research(self, symbol: str, snapshot_interval: str, limit: int = 250) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(500, int(limit)))
+        return await self.select(
+            "historical_research_jobs",
+            "select=id,job_key,symbol,snapshot_interval,question,test_definition,result_status,effect_size,confidence_score,stability_score,evidence"
+            f"&symbol=eq.{quote(symbol, safe='')}&snapshot_interval=eq.{quote(snapshot_interval, safe='')}"
+            f"&status=eq.complete&result_status=in.(validated,promising)&order=confidence_score.desc.nullslast&limit={safe_limit}",
+        )
+
+    async def upsert_strategy_candidates(self, rows: list[dict[str, Any]]) -> None:
+        # Candidate keys are immutable experiment identities. Ignore duplicates so
+        # a queue refill can never reset a completed candidate back to queued.
+        for start in range(0, len(rows), 250):
+            await self._request(
+                "POST",
+                "strategy_candidates?on_conflict=candidate_key",
+                json=rows[start:start + 250],
+                headers={"Prefer": "resolution=ignore-duplicates,return=minimal"},
+            )
+
+    async def claim_next_strategy_candidate(self, worker_id: str) -> dict[str, Any] | None:
+        result = await self.rpc("claim_next_strategy_candidate", {"p_worker_id": worker_id})
+        if isinstance(result, list) and result:
+            return result[0]
+        return None
+
+    async def complete_strategy_candidate(self, candidate_id: str, result: dict[str, Any]) -> None:
+        await self.update(
+            "strategy_candidates", f"id=eq.{quote(candidate_id, safe='')}",
+            {"status": "complete", "finished_at": datetime.now(timezone.utc).isoformat(), "heartbeat_at": datetime.now(timezone.utc).isoformat(), "error": None, **result},
+        )
+
+    async def fail_strategy_candidate(self, candidate_id: str, error: str) -> None:
+        await self.update(
+            "strategy_candidates", f"id=eq.{quote(candidate_id, safe='')}",
+            {"status": "failed", "finished_at": datetime.now(timezone.utc).isoformat(), "heartbeat_at": datetime.now(timezone.utc).isoformat(), "error": error[:4000]},
+        )
+
+    async def list_strategy_candidates(
+        self, symbol: str, snapshot_interval: str, result_status: str = "all", order: str = "profit_factor", limit: int = 100
+    ) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(500, int(limit)))
+        order_map = {
+            "profit_factor": "profit_factor.desc.nullslast,expectancy_r.desc.nullslast",
+            "expectancy": "expectancy_r.desc.nullslast,profit_factor.desc.nullslast",
+            "drawdown": "max_drawdown_r.asc.nullslast,profit_factor.desc.nullslast",
+            "trades": "trades_total.desc,profit_factor.desc.nullslast",
+            "recent": "finished_at.desc.nullslast",
+        }
+        filters = [
+            "select=id,candidate_key,generation,source_question,name,family,hypothesis,rules,backtest_config,result_status,rows_scanned,trades_total,profit_factor,expectancy_r,max_drawdown_r,win_rate,stability_score,baseline_profit_factor,improvement_score,metrics,evidence,requested_at,started_at,finished_at",
+            f"symbol=eq.{quote(symbol, safe='')}",
+            f"snapshot_interval=eq.{quote(snapshot_interval, safe='')}",
+            "status=eq.complete",
+        ]
+        if result_status in {"elite", "validated", "promising", "rejected"}:
+            filters.append(f"result_status=eq.{result_status}")
+        filters.extend([f"order={order_map.get(order, order_map['profit_factor'])}", f"limit={safe_limit}"])
+        return await self.select("strategy_candidates", "&".join(filters))
 
     async def fail_interrupted_backtests(self) -> None:
         await self.update(
