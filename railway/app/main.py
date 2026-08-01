@@ -28,7 +28,7 @@ from app.services.supabase_repo import SupabaseRepository
 from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
 from app.settings import Settings, get_settings
 
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.0.1"
 
 settings = get_settings()
 logging.basicConfig(

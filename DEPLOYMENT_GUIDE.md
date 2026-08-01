@@ -1,4 +1,4 @@
-# Deploy EVE Algo Lab v2.0.0
+# Deploy EVE Algo Lab v2.0.1
 
 ## 1. Supabase
 

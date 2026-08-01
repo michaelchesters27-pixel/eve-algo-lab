@@ -1,4 +1,4 @@
-# EVE Algo Lab v2.0.0
+# EVE Algo Lab v2.0.1
 
 EVE Algo Lab is a private XAU/USD market-research platform running on Supabase, Railway, Netlify and Twelve Data.
 

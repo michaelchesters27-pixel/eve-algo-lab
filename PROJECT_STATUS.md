@@ -1,6 +1,6 @@
 # EVE Algo Lab — Project Status
 
-## Current release: v2.0.0
+## Current release: v2.0.1
 
 ### Operational
 
