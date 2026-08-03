@@ -1,0 +1,14 @@
+EVE COMMAND CENTRE v3.1.1 — SIDEBAR VIEWPORT HOTFIX
+
+Validation completed in the build environment:
+- Railway/Python test suite: 59 passed
+- Frontend/Netlify test suite: 14 passed
+- Python syntax compilation: passed
+- Desktop sidebar viewport regression tests: passed
+- Mobile navigation regression test: passed
+
+Scope:
+- Frontend sidebar layout only
+- No research, strategy, mutation, validation, MT5 generation or fleet logic changed
+- No Supabase SQL changes
+- No Railway or Netlify environment-variable changes
