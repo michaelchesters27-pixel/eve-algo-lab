@@ -1,11 +1,11 @@
-# Deploy EVE Algo Lab v2.5
+# Deploy EVE Command Centre v3.0
 
-1. Unzip the v2.5 GitHub-ready package.
+1. Unzip the v3.0 GitHub-ready package.
 2. Open the inner `eve-algo-lab` folder.
 3. Replace the full contents of the existing EVE Algo Lab GitHub repository.
 4. Wait for Railway and Netlify to redeploy.
-5. Open EVE Algo Lab and press `Ctrl + F5` on desktop, or fully refresh the page on mobile.
-6. Open **Demo Lab**.
+5. Open EVE and press `Ctrl + F5` on desktop, or fully refresh the page on mobile.
+6. The site now opens on **Home**. Use **Demo Testing** for bot-attachment guidance.
 
 ## Do not change
 
@@ -14,4 +14,4 @@
 - Do not add or change Netlify variables.
 - Do not rebuild the learning foundation.
 
-Existing v2.4 database objects are reused.
+v3.0 is a frontend experience redesign and reuses the existing v2.5 backend and database.

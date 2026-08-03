@@ -1,0 +1,2 @@
+EVE Command Centre v3.0 requires no Supabase SQL update.
+The existing v2.5 database schema and stored data are reused unchanged.

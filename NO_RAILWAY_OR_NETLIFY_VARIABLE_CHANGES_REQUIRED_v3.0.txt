@@ -1,0 +1,2 @@
+EVE Command Centre v3.0 requires no Railway or Netlify environment-variable changes.
+Deploy the complete repository replacement and allow both services to redeploy normally.

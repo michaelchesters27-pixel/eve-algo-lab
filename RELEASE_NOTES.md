@@ -1,22 +1,26 @@
-# EVE Algo Lab v2.5 — Demo Eligibility Lab
+# EVE Command Centre v3.0 — Experience Redesign
 
 ## Added
 
-- New **Demo Lab** page.
-- Dynamic bot labels: TEST NOW, ATTACH AND LEAVE, WAIT FOR TIME, WAIT FOR PERIOD and MARKET CLOSED.
-- Current UTC and UK time display.
-- Latest stored M5 context and freshness checks.
-- Plain-English frozen rule summaries.
-- Next estimated eligible window in UK time.
-- Practical ranking that prioritises bots that can operate now.
-- Exact instructions for chart, timeframe, demo input and Algo Trading.
-- New API route: `GET /api/mt5/eligibility`.
-- New generated-package README guidance directing users to Demo Lab.
+- New action-first **Home** briefing.
+- One practical recommendation sourced from Demo Testing.
+- Plain-English output totals for research, strategies, MT5-ready proof and generated bots.
+- System health summary for market memory, Railway and latest M5 data.
+- Visual research-to-demo journey showing completed, current and pending stages.
+- Simplified six-item navigation.
+- Unified **Strategy Factory** journey: Build → Improve → Prove.
+- Renamed **Bot Factory** and **Demo Testing** workspaces.
+- New **Advanced** directory for technical screens and logs.
+- Improved desktop, tablet and mobile navigation.
+- Group-aware navigation highlighting across Strategy Factory and Advanced sections.
 
 ## Preserved
 
-All historical candles, learning data, research results, strategy lineages, validation results, frozen strategies and MT5 packages remain unchanged.
+- All API routes and autonomous workers.
+- All historical candles and Supabase data.
+- Research findings, strategies, lineages, validation results and MT5 packages.
+- Demo eligibility logic and download routes.
 
-## Database
+## Database and variables
 
-No Supabase SQL update is required for v2.5.
+No Supabase SQL, Railway variable or Netlify variable changes are required.

@@ -1,0 +1,10 @@
+EVE Command Centre v3.0 release validation
+
+- 52 Python automated tests passed.
+- 4 frontend/Netlify automated tests passed.
+- Frontend JavaScript passed Node syntax validation.
+- Netlify proxy routes remained unchanged and passed.
+- HTML contains no duplicate IDs.
+- Six-item navigation and Command Centre data wiring were tested.
+- No Supabase SQL update is required.
+- No Railway or Netlify variable changes are required.

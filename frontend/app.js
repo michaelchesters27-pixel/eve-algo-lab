@@ -78,10 +78,137 @@ let mt5Dashboard = null;
 let mt5PackageItems = [];
 let mt5RefreshTimer;
 let demoEligibilityDashboard = null;
+let serviceOnline = false;
 let demoRefreshTimer;
 const activeBackfillJobIds = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
 const historicalReady = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, false]));
 const marketStates = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
+
+
+
+function londonClockParts() {
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    hour: "2-digit",
+    hourCycle: "h23",
+  });
+  return Object.fromEntries(formatter.formatToParts(new Date()).map((part) => [part.type, part.value]));
+}
+
+function setJourneyState(selector, state, detail) {
+  const node = $(selector);
+  if (!node) return;
+  node.classList.remove("complete", "current", "pending", "attention");
+  node.classList.add(state);
+  if (detail) node.title = detail;
+}
+
+function homeStatusClass(status) {
+  if (status === "active_now") return "test-now";
+  if (status === "attach_now_waiting_market_condition") return "attach-leave";
+  if (status === "waiting_for_trading_window") return "wait-time";
+  if (status === "waiting_for_period") return "wait-period";
+  if (status === "market_closed") return "market-closed";
+  return "waiting";
+}
+
+function updateCommandCentre() {
+  const clock = londonClockParts();
+  const hour = Number(clock.hour || 12);
+  const greeting = hour < 12 ? "Good morning." : hour < 18 ? "Good afternoon." : "Good evening.";
+  setText("#briefingGreeting", greeting);
+  setText("#briefingDate", `${clock.weekday || "Today"} ${clock.day || ""} ${clock.month || ""}`.trim().toUpperCase());
+
+  const learningState = learningDashboard?.state || {};
+  const strategyState = strategyLabDashboard?.state || {};
+  const evolutionState = evolutionDashboard?.state || {};
+  const validationState = validationDashboard?.state || {};
+  const mt5State = mt5Dashboard?.state || {};
+  const demo = demoEligibilityDashboard || {};
+  const recommended = demo.recommended || {};
+  const readyDatasets = TIMEFRAMES.filter((item) => historicalReady[item.interval]).length;
+  const latestM5 = marketStates["5min"]?.latest_candle || {};
+
+  const researchTests = Number(learningState.questions_tested_total || 0);
+  const strategiesTested = Number(strategyState.completed_count || 0);
+  const mt5Ready = Number(validationState.mt5_ready_count || 0);
+  const botsGenerated = Number(mt5State.generated_count || mt5PackageItems.length || 0);
+
+  setText("#homeResearchCount", formatNumber(researchTests));
+  setText("#homeStrategyCount", formatNumber(strategiesTested));
+  setText("#homeValidatedCount", formatNumber(mt5Ready));
+  setText("#homeBotCount", formatNumber(botsGenerated));
+  setText("#homeResearchState", learningState.autonomous_learning_enabled !== false && learningState.initial_build_complete ? "Working automatically" : "Foundation check");
+  setText("#homeStrategyState", strategiesTested ? `${formatNumber(Number(strategyState.validated_count || 0) + Number(strategyState.elite_count || 0))} strong survivors` : "Waiting for evidence");
+  setText("#homeProofState", mt5Ready ? "Rules frozen for bots" : "No rules frozen yet");
+  setText("#homeBotState", botsGenerated ? "Available in Bot Factory" : "Waiting for proof");
+
+  const actionStatus = recommended.status || "waiting";
+  const actionLabel = recommended.status_label || (recommended.package_id ? "NEXT TEST" : "NO ACTION");
+  const actionTitle = recommended.strategy_name || "EVE is working in the background";
+  const actionCopy = recommended.headline || recommended.next_action || "No manual action is needed while EVE checks research, strategies and generated bots.";
+  const actionMeta = recommended.next_action || (recommended.package_id ? `Attach to ${recommended.attach_to || "XAUUSD M5"}. Demo only.` : "Open the detailed pages only when you need to inspect the work.");
+
+  setText("#homeActionStatus", actionLabel);
+  setClass("#homeActionStatus", `status-pill ${homeStatusClass(actionStatus)}`);
+  setText("#homeActionTitle", actionTitle);
+  setText("#homeActionCopy", actionCopy);
+  setText("#homeActionMeta", actionMeta);
+  const actionCard = $("#homeActionCard");
+  if (actionCard) actionCard.dataset.status = actionStatus;
+  const download = $("#homeActionDownload");
+  if (download) {
+    if (recommended.package_id) {
+      download.href = `/api/mt5/packages/${encodeURIComponent(recommended.package_id)}/download`;
+      download.removeAttribute("aria-disabled");
+      download.classList.remove("disabled-link");
+    } else {
+      download.href = "#";
+      download.setAttribute("aria-disabled", "true");
+      download.classList.add("disabled-link");
+    }
+  }
+
+  const activeAction = ["active_now", "attach_now_waiting_market_condition"].includes(actionStatus);
+  const futureAction = ["waiting_for_trading_window", "waiting_for_period", "market_closed"].includes(actionStatus);
+  if (activeAction) {
+    setText("#briefingStatus", "ACTION AVAILABLE");
+    setText("#briefingHeadline", recommended.headline || `${actionTitle} can be prepared for demo testing.`);
+    setText("#briefingCopy", actionMeta);
+  } else if (futureAction && recommended.package_id) {
+    setText("#briefingStatus", "NEXT TEST IDENTIFIED");
+    setText("#briefingHeadline", recommended.headline || `${actionTitle} is the next practical bot to test.`);
+    setText("#briefingCopy", actionMeta);
+  } else {
+    setText("#briefingStatus", "EVE IS WORKING");
+    setText("#briefingHeadline", "EVE is researching, testing and building in the background.");
+    setText("#briefingCopy", botsGenerated ? `${formatNumber(botsGenerated)} MT5 bot package${botsGenerated === 1 ? " is" : "s are"} available. Demo Testing will tell you when each one is practical to attach.` : "No intervention is required while the autonomous workers continue.");
+  }
+
+  const allDataReady = readyDatasets === TIMEFRAMES.length;
+  setText("#homeDataHealth", allDataReady ? "All 6 datasets ready" : `${readyDatasets} of ${TIMEFRAMES.length} datasets ready`);
+  setText("#homeRailwayHealth", serviceOnline ? "Online and responding" : "Needs attention");
+  setText("#homeMarketHealth", latestM5.candle_time ? `M5 stored ${formatDate(latestM5.candle_time, true)}` : "No stored M5 candle yet");
+  setText("#homeLastUpdate", new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Europe/London" }).format(new Date()));
+  const healthy = serviceOnline && readyDatasets >= 5;
+  setText("#homeOverallHealth", healthy ? "RUNNING" : serviceOnline ? "BUILDING" : "CHECK");
+  setClass("#homeOverallHealth", `status-pill ${healthy ? "complete" : serviceOnline ? "queued" : "error"}`);
+
+  const learningActive = learningState.initial_build_complete;
+  const strategiesActive = strategiesTested > 0 || ["active", "testing", "generating"].includes(strategyState.status);
+  const evolutionActive = Number(evolutionState.completed_count || 0) > 0 || Number(evolutionState.lineages_total || 0) > 0;
+  const proofActive = mt5Ready > 0 || Number(validationState.replay_validated_count || 0) > 0;
+  const botActive = botsGenerated > 0;
+  setJourneyState("#journeyResearch", learningActive ? "complete" : "current", learningActive ? "Autonomous research is active" : "Research foundation is still building");
+  setJourneyState("#journeyBuild", strategiesActive ? "complete" : learningActive ? "current" : "pending", `${formatNumber(strategiesTested)} strategies tested`);
+  setJourneyState("#journeyImprove", evolutionActive ? "complete" : strategiesActive ? "current" : "pending", `${formatNumber(evolutionState.completed_count || 0)} mutations tested`);
+  setJourneyState("#journeyProof", proofActive ? "complete" : evolutionActive ? "current" : "pending", `${formatNumber(mt5Ready)} strategies ready for MT5`);
+  setJourneyState("#journeyBot", botActive ? "complete" : proofActive ? "current" : "pending", `${formatNumber(botsGenerated)} generated packages`);
+  setJourneyState("#journeyDemo", activeAction ? "attention" : botActive ? "current" : "pending", recommended.status_label || "Waiting for a generated bot");
+}
 
 function showToast(message, isError = false) {
   const toast = $("#toast");
@@ -109,8 +236,10 @@ async function api(path, options = {}) {
 }
 
 function setService(online, label) {
+  serviceOnline = Boolean(online);
   $("#serviceStatus").textContent = label;
   $("#servicePulse").className = `pulse ${online ? "online" : "error"}`;
+  updateCommandCentre();
 }
 
 function escapeHtml(value) {
@@ -272,6 +401,7 @@ function renderFoundationSummary() {
   $("#syncAllFrames").disabled = batchActionRunning;
   $("#scanAllFrames").disabled = batchActionRunning || totalRows < 2;
   updateBacktestAvailability();
+  updateCommandCentre();
 }
 
 async function refreshMarketStatus(meta, silent = false) {
@@ -759,6 +889,7 @@ function renderLearning(data = {}) {
   renderDiscoveries(data.discoveries || []);
   renderResearchReport(data.research_reports || []);
   renderHistoricalResearch(data.historical_research || {});
+  updateCommandCentre();
 }
 
 async function refreshLearning(silent = false) {
@@ -1018,6 +1149,7 @@ function renderStrategyLabStatus(data = {}) {
   setText("#strategyRejectedCount", formatNumber(state.rejected_count));
   setText("#strategyPromisingCount", formatNumber(state.promising_count));
   setText("#strategyStrongCount", formatNumber(Number(state.validated_count || 0) + Number(state.elite_count || 0)));
+  updateCommandCentre();
 }
 
 function strategyStatusExplanation(item) {
@@ -1128,7 +1260,7 @@ async function wakeStrategyLab(button) {
   button.disabled = true;
   try {
     const payload = await api("strategy-lab/wake", { method: "POST", body: "{}" });
-    showToast(payload.message || "Strategy Lab wake requested");
+    showToast(payload.message || "Strategy Factory wake requested");
     await refreshStrategyLab(true);
   } catch (error) {
     showToast(error.message, true);
@@ -1151,7 +1283,7 @@ function renderEvolutionBest(lineage = {}) {
   setText("#evolutionBestName", lineage.champion_name || lineage.name || "Waiting for a strategy lineage");
   setText("#evolutionBestStatus", status.toUpperCase());
   setClass("#evolutionBestStatus", `status-pill ${["elite", "champion", "validated", "promising"].includes(status) ? "complete" : "waiting"}`);
-  setText("#evolutionBestMessage", lineage.last_result || "The best lineage will appear after EVE seeds strong Strategy Lab candidates.");
+  setText("#evolutionBestMessage", lineage.last_result || "The best lineage will appear after EVE seeds strong Strategy Factory candidates.");
   setText("#evolutionBestPF", lineage.champion_profit_factor == null ? "—" : Number(lineage.champion_profit_factor).toFixed(2));
   setText("#evolutionBestExpectancy", lineage.champion_expectancy_r == null ? "—" : formatR(lineage.champion_expectancy_r));
   setText("#evolutionBestDrawdown", lineage.champion_max_drawdown_r == null ? "—" : `${Number(lineage.champion_max_drawdown_r).toFixed(1)}R`);
@@ -1171,7 +1303,7 @@ function renderEvolutionLineages(lineages = []) {
   const host = $("#evolutionLineageList");
   if (!host) return;
   if (!lineages.length) {
-    host.innerHTML = '<div class="empty-state">Waiting for strong Strategy Lab candidates to seed evolution lineages.</div>';
+    host.innerHTML = '<div class="empty-state">Waiting for strong Strategy Factory candidates to seed evolution lineages.</div>';
     return;
   }
   host.innerHTML = lineages.map((lineage, index) => `
@@ -1212,6 +1344,7 @@ function renderEvolutionStatus(data = {}) {
   setText("#evolutionStrongCount", formatNumber(Number(state.champion_count || 0) + Number(state.elite_count || 0)));
   renderEvolutionBest(data.best_lineage || {});
   renderEvolutionLineages(data.lineages || []);
+  updateCommandCentre();
 }
 
 function evolutionChangesText(item) {
@@ -1393,6 +1526,7 @@ function renderValidationStatus(data = {}) {
   setText("#validationPassedCount", formatNumber(state.replay_validated_count));
   setText("#validationReadyCount", formatNumber(state.mt5_ready_count));
   renderValidationBest(data.best_ready || {});
+  updateCommandCentre();
 }
 
 function validationExplanation(item) {
@@ -1510,7 +1644,7 @@ async function wakeValidation(button) {
   button.disabled = true;
   try {
     const payload = await api("validation/wake", { method: "POST", body: "{}" });
-    showToast(payload.message || "Validation Lab wake requested");
+    showToast(payload.message || "Proof worker wake requested");
     await refreshValidation(true);
   } catch (error) {
     showToast(error.message, true);
@@ -1575,6 +1709,7 @@ function renderMt5Status(data = {}) {
   setText("#mt5Failed", formatNumber(state.failed_count));
   setText("#mt5LastResult", state.last_result || "Only frozen rules can enter this worker.");
   renderMt5Best(data.best_package || {});
+  updateCommandCentre();
 }
 
 function renderMt5Packages(items = []) {
@@ -1714,6 +1849,7 @@ function renderDemoEligibility(data = {}) {
   setText("#demoListStatus", "READY");
   setClass("#demoListStatus", "status-pill complete");
   setText("#demoDisclaimer", data.disclaimer || "Demo only.");
+  updateCommandCentre();
 }
 
 async function refreshDemoEligibility(silent = false) {
@@ -1849,14 +1985,26 @@ listen("#validationJobList", "click", (event) => {
 });
 
 const navLinks = [...document.querySelectorAll(".nav-link")];
-const sections = navLinks.map((link) => document.querySelector(link.getAttribute("href"))).filter(Boolean);
+const sections = [...document.querySelectorAll("[data-nav-section]")];
 const observer = new IntersectionObserver((entries) => {
-  entries.forEach((entry) => {
-    if (entry.isIntersecting) navLinks.forEach((link) => link.classList.toggle("active", link.getAttribute("href") === `#${entry.target.id}`));
-  });
-}, { rootMargin: "-35% 0px -55%" });
+  const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+  if (!visible) return;
+  const target = visible.target.dataset.navSection || `#${visible.target.id}`;
+  navLinks.forEach((link) => link.classList.toggle("active", link.getAttribute("href") === target));
+}, { rootMargin: "-28% 0px -62%", threshold: [0, .05, .15] });
 sections.forEach((section) => observer.observe(section));
+navLinks.forEach((link) => link.addEventListener("click", () => navLinks.forEach((item) => item.classList.toggle("active", item === link))));
 
+const factoryLinks = [...document.querySelectorAll(".factory-tabs a")];
+const factorySections = ["strategy-lab", "evolution", "validation"].map((id) => document.getElementById(id)).filter(Boolean);
+const factoryObserver = new IntersectionObserver((entries) => {
+  const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+  if (!visible) return;
+  factoryLinks.forEach((link) => link.classList.toggle("active", link.getAttribute("href") === `#${visible.target.id}`));
+}, { rootMargin: "-30% 0px -58%", threshold: [0, .05, .15] });
+factorySections.forEach((section) => factoryObserver.observe(section));
+
+updateCommandCentre();
 (async () => {
   createTimeframeCards();
   await refreshDashboard(true);
@@ -1868,6 +2016,7 @@ sections.forEach((section) => observer.observe(section));
   await refreshMt5(true);
   await refreshDemoEligibility(true);
   await refreshBacktests(true);
+  updateCommandCentre();
 })();
 refreshTimer = setInterval(async () => {
   await refreshDashboard(true);

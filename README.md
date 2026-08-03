@@ -1,28 +1,31 @@
-# EVE Algo Lab v2.5
+# EVE Command Centre v3.0
 
-EVE Algo Lab is a private XAU/USD research platform using Supabase, Railway, Netlify and Twelve Data.
+EVE is a private XAU/USD research and MT5 bot-development platform using Supabase, Railway, Netlify and Twelve Data.
 
-## v2.5 Demo Eligibility Lab
+## What changed in v3.0
 
-v2.5 reads every generated EA's immutable frozen rules and labels the practical demo-testing action:
+v3.0 does not change EVE's research or trading logic. It reorganises the platform around the decisions a person needs to make.
 
-- **TEST NOW** — the current tested calendar window and latest stored M5 context are eligible.
-- **ATTACH AND LEAVE** — attach to an XAUUSD M5 demo chart; the EA is waiting for its market condition.
-- **WAIT FOR TIME** — the required UTC hour or session is not active yet.
-- **WAIT FOR PERIOD** — the required weekday, week, month or quarter is not active.
-- **MARKET CLOSED** — wait for the estimated gold-market reopen.
+The new primary navigation is:
 
-The Demo Lab ranks bots by practical availability first, then locked-test profit factor and expectancy. A higher-profit seasonal EA no longer outranks a sound EA that can actually be tested now.
+1. **Home** — one briefing, one recommended action and system health.
+2. **Research** — what EVE is learning and the evidence behind it.
+3. **Strategy Factory** — build rules, improve survivors and demand high-resolution proof.
+4. **Bot Factory** — generated MT5 packages and compilation instructions.
+5. **Demo Testing** — which bot can be tested now, later today or in a future period.
+6. **Advanced** — market memory, the legacy backtester, build history and activity logs.
+
+The Home page now combines existing Railway and Supabase status into a plain-English briefing. It does not invent confidence scores or claim an MT5 bot is attached; it only reports information EVE can verify from its own data.
 
 ## Existing autonomous pipeline
 
-1. Multi-timeframe market memory: M1, M5, M15, H1, H4 and D1.
-2. Autonomous learning and historical research.
-3. Strategy generation and evolution.
-4. M1 replay, cost stress and immutable rule freezing.
-5. MT5 `.mq5` package generation.
-6. Demo eligibility guidance.
+- Multi-timeframe market memory: M1, M5, M15, H1, H4 and D1.
+- Autonomous learning and continuous historical research.
+- Strategy generation and controlled evolution.
+- M1 replay, execution-cost stress and immutable rule freezing.
+- MT5 `.mq5` package generation.
+- Demo eligibility guidance based on frozen rules, UK/UTC time and stored M5 context.
 
 ## Safety
 
-All generated EAs default to `InpEnableTrading=false`. Demo Lab cannot see whether an EA is physically attached in MT5 or whether its Inputs were changed. Use a demo account only.
+All generated EAs default to `InpEnableTrading=false`. EVE cannot yet verify that an EA is physically attached to an MT5 terminal or receive completed demo-trade telemetry. Use a demo account only.
