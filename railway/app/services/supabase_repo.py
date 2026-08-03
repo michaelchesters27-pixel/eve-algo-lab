@@ -278,6 +278,13 @@ class SupabaseRepository:
         safe_limit = max(1, min(100, int(limit)))
         return await self.select("backtest_runs", f"select=*&order=created_at.desc&limit={safe_limit}")
 
+    async def list_active_backtest_runs(self, limit: int = 5) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(20, int(limit)))
+        return await self.select(
+            "backtest_runs",
+            f"select=*&status=in.(queued,running)&order=created_at.desc&limit={safe_limit}",
+        )
+
     async def has_active_backtest(self) -> bool:
         rows = await self.select("backtest_runs", "select=id&status=in.(queued,running)&limit=1")
         return bool(rows)

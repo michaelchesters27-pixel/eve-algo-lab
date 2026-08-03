@@ -1,0 +1,1 @@
+EVE Command Centre v3.0.2 requires no Railway or Netlify environment variable changes.

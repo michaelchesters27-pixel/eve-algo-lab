@@ -1,0 +1,1 @@
+EVE Command Centre v3.0.1 requires no Supabase SQL changes. Do not run a migration for this release.

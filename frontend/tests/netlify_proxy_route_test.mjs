@@ -76,3 +76,8 @@ response = await proxy(new Request("https://eve.example/api/mt5/eligibility?symb
 assert.equal(response.status, 200);
 assert.equal(calls[14].url, "https://railway.example/api/mt5/eligibility?symbol=XAU%2FUSD&limit=100");
 console.log("Netlify proxy Demo Eligibility route: PASS");
+
+response = await proxy(new Request("https://eve.example/api/backtests/active?limit=5"));
+assert.equal(response.status, 200);
+assert.equal(calls.at(-1).url, "https://railway.example/api/backtests/active?limit=5");
+console.log("Netlify proxy active-backtest route: PASS");

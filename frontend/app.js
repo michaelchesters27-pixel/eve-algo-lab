@@ -48,6 +48,11 @@ const TIMEFRAMES = [
 let refreshTimer;
 let toastTimer;
 let activeBacktestId = null;
+let legacyBacktesterOpen = false;
+let legacyBacktestHistoryOpen = false;
+let legacyBacktestRuns = [];
+let selectedLegacyBacktestId = null;
+let backtestViewMode = "current";
 let activeLearningRunId = null;
 let learningDashboard = null;
 let batchActionRunning = false;
@@ -988,15 +993,28 @@ async function runBacktest(button) {
   }
   button.disabled = true;
   button.textContent = "Starting…";
+  selectedLegacyBacktestId = null;
+  backtestViewMode = "current";
+  setLegacyHistoryOpen(false);
+  clearBacktestWorkspace({ message: "Starting a new test. Previous results remain archived and are not being reused." });
   try {
     const payload = await api("backtests/fixed-ladder-v2-61", {
       method: "POST",
       body: JSON.stringify(payloadBody),
     });
     activeBacktestId = payload.data.id;
+    renderBacktest({
+      id: activeBacktestId,
+      name: payloadBody.name,
+      status: payload.data.status || "queued",
+      resolution: payloadBody.resolution,
+      reliability: { progress_percent: 0, message: "Railway accepted this new test and is preparing the replay." },
+      created_at: new Date().toISOString(),
+    });
     showToast(payload.message || "Backtest started");
     await refreshBacktests(true);
   } catch (error) {
+    clearBacktestWorkspace({ message: error.message });
     showToast(error.message, true);
   } finally {
     updateBacktestAvailability();
@@ -1018,30 +1036,69 @@ async function cancelBacktest(button) {
   }
 }
 
-function renderBacktest(run = null) {
+function clearBacktestMetrics() {
+  $("#resultNet").textContent = "—";
+  $("#resultPF").textContent = "—";
+  $("#resultDD").textContent = "—";
+  $("#resultBasketWin").textContent = "—";
+  $("#resultPositions").textContent = "—";
+  $("#resultBaskets").textContent = "—";
+  $("#resultBalance").textContent = "—";
+  $("#resultAmbiguous").textContent = "—";
+}
+
+function clearBacktestWorkspace({ message = "This panel will show only the test you start now, or an archived test you deliberately select." } = {}) {
+  activeBacktestId = null;
+  selectedLegacyBacktestId = null;
+  backtestViewMode = "current";
+  $("#backtestContextLabel").textContent = "CURRENT TEST";
+  $("#backtestTitle").textContent = "No test running";
+  $("#backtestStatus").textContent = "READY";
+  $("#backtestStatus").className = "status-pill";
+  $("#backtestRunMeta").textContent = "Choose your settings and press Run. No previous result is loaded automatically.";
+  $("#backtestProgress").textContent = "0%";
+  $("#backtestProgressBar").style.width = "0%";
+  $("#backtestMessage").textContent = message;
+  $("#cancelBacktest").hidden = true;
+  $("#clearLegacySelection").hidden = true;
+  $("#accuracyWarning").textContent = "No result selected. M5 is an approximation; M1 is higher resolution; MT5 real-tick testing remains the execution standard.";
+  clearBacktestMetrics();
+  renderBaskets([], { hidden: true });
+  updateBacktestAvailability();
+}
+
+function backtestResolutionLabel(run = {}) {
+  return run.resolution === "m1_replay" ? "M1 high-resolution replay" : "M5 approximation";
+}
+
+function renderBacktest(run = null, { archived = false } = {}) {
   if (!run || !run.id) {
-    activeBacktestId = null;
-    $("#backtestTitle").textContent = "Not started";
-    $("#backtestStatus").textContent = "WAITING";
-    $("#backtestStatus").className = "status-pill";
-    $("#backtestProgress").textContent = "0%";
-    $("#backtestProgressBar").style.width = "0%";
-    $("#cancelBacktest").hidden = true;
-    updateBacktestAvailability();
+    clearBacktestWorkspace();
     return;
   }
   const reliability = run.reliability || {};
   const status = run.status || "queued";
-  const active = ["queued", "running"].includes(status);
-  activeBacktestId = active ? run.id : null;
+  const active = !archived && ["queued", "running"].includes(status);
+  if (active) activeBacktestId = run.id;
+  else if (!archived) activeBacktestId = null;
+  backtestViewMode = archived ? "archive" : "current";
+  selectedLegacyBacktestId = archived ? run.id : null;
   const progress = Number(reliability.progress_percent || (status === "complete" ? 100 : 0));
+  $("#backtestContextLabel").textContent = archived ? "ARCHIVED TEST" : (status === "complete" ? "CURRENT TEST RESULT" : "CURRENT TEST");
   $("#backtestTitle").textContent = run.name || "Fixed Ladder v2.61";
   $("#backtestStatus").textContent = status.toUpperCase();
   $("#backtestStatus").className = `status-pill ${status}`;
+  const timestamp = run.finished_at || run.created_at || run.started_at;
+  const archivePrefix = archived ? "Stored historical result" : "Test started in this workspace";
+  $("#backtestRunMeta").textContent = `${archivePrefix} · ${backtestResolutionLabel(run)} · ${formatDate(timestamp, true)}`;
   $("#backtestProgress").textContent = `${progress.toFixed(progress > 0 && progress < 10 ? 1 : 0)}%`;
   $("#backtestProgressBar").style.width = `${Math.min(100, progress)}%`;
-  $("#backtestMessage").textContent = run.error || reliability.message || "Waiting for Railway";
+  const baseMessage = run.error || reliability.message || "Waiting for Railway";
+  $("#backtestMessage").textContent = archived
+    ? `ARCHIVED: ${baseMessage} This is not a new or current result.`
+    : baseMessage;
   $("#cancelBacktest").hidden = !active;
+  $("#clearLegacySelection").hidden = !archived;
 
   $("#resultNet").textContent = formatMoney(run.net_profit);
   $("#resultPF").textContent = run.profit_factor == null ? "—" : Number(run.profit_factor).toFixed(3);
@@ -1052,14 +1109,28 @@ function renderBacktest(run = null) {
   $("#resultBalance").textContent = formatMoney(run.ending_balance);
   $("#resultAmbiguous").textContent = reliability.ambiguous_candles == null ? "—" : formatNumber(reliability.ambiguous_candles);
   $("#ambiguousLabel").textContent = run.resolution === "m1_replay" ? "AMBIGUOUS M1 BARS" : "AMBIGUOUS M5 BARS";
-  $("#accuracyWarning").textContent = reliability.warning || "M5 is an approximation. M1 reduces uncertainty but tick replay remains the final execution standard.";
+  $("#accuracyWarning").textContent = archived
+    ? "Archived diagnostic result. Do not treat it as current live evidence or as proof of profitability."
+    : (reliability.warning || "M5 is an approximation. M1 reduces uncertainty but MT5 real-tick testing remains the execution standard.");
   updateBacktestAvailability();
 }
 
-function renderBaskets(baskets = []) {
+function renderBaskets(baskets = [], { archived = false, hidden = false, run = null } = {}) {
+  const panel = $("#legacyBasketPanel");
   const host = $("#basketRows");
+  if (hidden || !run || run.status !== "complete") {
+    panel.hidden = true;
+    host.innerHTML = '<tr><td colspan="7">No test selected.</td></tr>';
+    return;
+  }
+  panel.hidden = false;
+  $("#basketReportLabel").textContent = archived ? "ARCHIVED TEST BASKETS" : "CURRENT TEST BASKETS";
+  $("#basketReportTitle").textContent = run.name || "Completed baskets";
+  $("#basketReportNote").textContent = archived
+    ? `Stored baskets from ${formatDate(run.finished_at || run.created_at, true)}. These are not today’s trades.`
+    : "Baskets generated by the new test started in this workspace.";
   if (!baskets.length) {
-    host.innerHTML = '<tr><td colspan="7">No completed baskets are available yet.</td></tr>';
+    host.innerHTML = '<tr><td colspan="7">This completed test has no stored baskets.</td></tr>';
     return;
   }
   host.innerHTML = baskets.slice(0, 100).map((basket) => {
@@ -1082,13 +1153,13 @@ function renderComparison(runs = []) {
 
   $("#m5ComparePF").textContent = m5?.profit_factor == null ? "—" : Number(m5.profit_factor).toFixed(3);
   $("#m5CompareMeta").textContent = m5
-    ? `${formatMoney(m5.net_profit)} net · ${formatPercent(m5.max_drawdown_percent)} drawdown`
-    : "Run the M5 baseline";
+    ? `${formatDate(m5.finished_at || m5.created_at, true)} · ${formatMoney(m5.net_profit)} net`
+    : "No archived M5 run";
 
   $("#m1ComparePF").textContent = m1?.profit_factor == null ? "—" : Number(m1.profit_factor).toFixed(3);
   $("#m1CompareMeta").textContent = m1
-    ? `${formatMoney(m1.net_profit)} net · ${formatPercent(m1.max_drawdown_percent)} drawdown`
-    : historicalReady["1min"] ? "Run the M1 replay" : "Download M1 history first";
+    ? `${formatDate(m1.finished_at || m1.created_at, true)} · ${formatMoney(m1.net_profit)} net`
+    : "No archived M1 run";
 
   if (m5 && m1) {
     const delta = Number(m1.net_profit || 0) - Number(m5.net_profit || 0);
@@ -1098,25 +1169,112 @@ function renderComparison(runs = []) {
     $("#compareReliability").textContent = `${formatNumber(m5Ambiguous)} ambiguous M5 bars versus ${formatNumber(m1Ambiguous)} ambiguous M1 bars`;
   } else {
     $("#compareProfitDelta").textContent = "—";
-    $("#compareReliability").textContent = "Waiting for both completed runs";
+    $("#compareReliability").textContent = "Archive comparison only";
+  }
+}
+
+function renderLegacyHistory(runs = []) {
+  const host = $("#legacyHistoryList");
+  if (!runs.length) {
+    host.innerHTML = '<div class="empty-state">No previous Fixed Ladder tests are stored.</div>';
+    return;
+  }
+  host.innerHTML = runs.map((run) => {
+    const selected = selectedLegacyBacktestId === run.id;
+    const status = String(run.status || "unknown").toUpperCase();
+    return `<button type="button" class="legacy-history-card${selected ? " selected" : ""}" data-legacy-run-id="${escapeHtml(run.id)}">
+      <span class="legacy-history-date">${formatDate(run.finished_at || run.created_at, true)}</span>
+      <strong>${escapeHtml(run.name || "Fixed Ladder v2.61")}</strong>
+      <span>${backtestResolutionLabel(run)} · ${status}</span>
+      <span class="legacy-history-metrics">PF ${run.profit_factor == null ? "—" : Number(run.profit_factor).toFixed(3)} · ${formatMoney(run.net_profit)}</span>
+    </button>`;
+  }).join("");
+}
+
+async function fetchLegacyHistory(silent = false) {
+  try {
+    const payload = await api("backtests?limit=20");
+    legacyBacktestRuns = payload.data || [];
+    renderLegacyHistory(legacyBacktestRuns);
+    renderComparison(legacyBacktestRuns);
+    return legacyBacktestRuns;
+  } catch (error) {
+    if (!silent) showToast(error.message, true);
+    return [];
+  }
+}
+
+async function loadLegacyBacktest(runId, { archived = true, silent = false } = {}) {
+  try {
+    const detail = await api(`backtests/${runId}`);
+    const run = detail.data?.run || detail.data || {};
+    const baskets = detail.data?.baskets || [];
+    renderBacktest(run, { archived });
+    renderBaskets(baskets, { archived, run });
+    if (archived) renderLegacyHistory(legacyBacktestRuns);
+    return run;
+  } catch (error) {
+    if (!silent) showToast(error.message, true);
+    return null;
+  }
+}
+
+async function restoreActiveBacktest(silent = true) {
+  try {
+    const payload = await api("backtests/active?limit=5");
+    const active = (payload.data || [])[0] || null;
+    if (active) {
+      selectedLegacyBacktestId = null;
+      backtestViewMode = "current";
+      await loadLegacyBacktest(active.id, { archived: false, silent });
+    }
+  } catch (error) {
+    if (!silent) showToast(error.message, true);
   }
 }
 
 async function refreshBacktests(silent = false) {
-  try {
-    const payload = await api("backtests?limit=20");
-    const runs = payload.data || [];
-    const latest = runs[0] || null;
-    renderBacktest(latest);
-    renderComparison(runs);
-    if (latest && latest.status === "complete") {
-      const detail = await api(`backtests/${latest.id}`);
-      renderBaskets(detail.data.baskets || []);
-    } else {
-      renderBaskets([]);
-    }
-  } catch (error) {
-    if (!silent) showToast(error.message, true);
+  if (activeBacktestId) {
+    const currentId = activeBacktestId;
+    await loadLegacyBacktest(currentId, { archived: false, silent });
+    return;
+  }
+  if (legacyBacktestHistoryOpen) {
+    await fetchLegacyHistory(silent);
+    if (selectedLegacyBacktestId) await loadLegacyBacktest(selectedLegacyBacktestId, { archived: true, silent });
+  }
+}
+
+function setLegacyHistoryOpen(open) {
+  legacyBacktestHistoryOpen = Boolean(open);
+  const panel = $("#legacyHistoryPanel");
+  panel.hidden = !legacyBacktestHistoryOpen;
+  panel.setAttribute("aria-hidden", String(!legacyBacktestHistoryOpen));
+  $("#showLegacyHistory").textContent = legacyBacktestHistoryOpen ? "Archive open" : "View previous tests";
+  $("#showLegacyHistory").disabled = legacyBacktestHistoryOpen;
+  if (legacyBacktestHistoryOpen) fetchLegacyHistory(true);
+}
+
+function setLegacyBacktesterOpen(open, { scroll = true, updateHash = true } = {}) {
+  const section = $("#backtester");
+  const trigger = $("#openLegacyBacktester");
+  if (!section || !trigger) return;
+  legacyBacktesterOpen = Boolean(open);
+  section.hidden = !legacyBacktesterOpen;
+  section.setAttribute("aria-hidden", String(!legacyBacktesterOpen));
+  trigger.setAttribute("aria-expanded", String(legacyBacktesterOpen));
+
+  if (legacyBacktesterOpen) {
+    clearBacktestWorkspace();
+    setLegacyHistoryOpen(false);
+    restoreActiveBacktest(true);
+    if (updateHash && window.location.hash !== "#backtester") history.replaceState(null, "", "#backtester");
+    if (scroll) requestAnimationFrame(() => section.scrollIntoView({ behavior: "smooth", block: "start" }));
+  } else {
+    setLegacyHistoryOpen(false);
+    clearBacktestWorkspace();
+    if (updateHash && window.location.hash === "#backtester") history.replaceState(null, "", "#advanced");
+    if (scroll) requestAnimationFrame(() => $("#advanced")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 }
 
@@ -1879,7 +2037,20 @@ listen("#refreshLearning", "click", async () => { await refreshLearning(); await
 listen("#resolutionMode", "change", updateBacktestAvailability);
 listen("#runBacktest", "click", (event) => runBacktest(event.currentTarget));
 listen("#cancelBacktest", "click", (event) => cancelBacktest(event.currentTarget));
-listen("#refreshBacktest", "click", () => refreshBacktests());
+listen("#showLegacyHistory", "click", () => setLegacyHistoryOpen(true));
+listen("#hideLegacyHistory", "click", () => setLegacyHistoryOpen(false));
+listen("#refreshLegacyHistory", "click", () => fetchLegacyHistory());
+listen("#clearLegacySelection", "click", () => {
+  clearBacktestWorkspace();
+  if (legacyBacktestHistoryOpen) renderLegacyHistory(legacyBacktestRuns);
+});
+listen("#legacyHistoryList", "click", async (event) => {
+  const card = event.target.closest("[data-legacy-run-id]");
+  if (!card) return;
+  selectedLegacyBacktestId = card.dataset.legacyRunId;
+  await loadLegacyBacktest(selectedLegacyBacktestId, { archived: true });
+  $("#backtestTitle")?.scrollIntoView({ behavior: "smooth", block: "center" });
+});
 listen("#refreshButton", "click", async () => {
   await refreshDashboard();
   await refreshLearning(true);
@@ -1889,7 +2060,7 @@ listen("#refreshButton", "click", async () => {
   await refreshValidation(true);
   await refreshMt5(true);
   await refreshDemoEligibility(true);
-  await refreshBacktests(true);
+  if (legacyBacktesterOpen && (activeBacktestId || legacyBacktestHistoryOpen)) await refreshBacktests(true);
 });
 listen("#discoverySort", "change", async (event) => {
   discoveryExplorerOrder = event.currentTarget.value || "confidence";
@@ -1984,6 +2155,12 @@ listen("#validationJobList", "click", (event) => {
   renderValidationJobs(validationJobItems);
 });
 
+listen("#openLegacyBacktester", "click", () => setLegacyBacktesterOpen(true));
+listen("#closeLegacyBacktester", "click", () => setLegacyBacktesterOpen(false));
+window.addEventListener("hashchange", () => {
+  if (window.location.hash === "#backtester") setLegacyBacktesterOpen(true, { scroll: true, updateHash: false });
+});
+
 const navLinks = [...document.querySelectorAll(".nav-link")];
 const sections = [...document.querySelectorAll("[data-nav-section]")];
 const observer = new IntersectionObserver((entries) => {
@@ -2015,7 +2192,7 @@ updateCommandCentre();
   await refreshValidation(true);
   await refreshMt5(true);
   await refreshDemoEligibility(true);
-  await refreshBacktests(true);
+  if (window.location.hash === "#backtester") setLegacyBacktesterOpen(true, { scroll: false, updateHash: false });
   updateCommandCentre();
 })();
 refreshTimer = setInterval(async () => {
@@ -2026,7 +2203,7 @@ refreshTimer = setInterval(async () => {
   await refreshValidation(true);
   await refreshMt5(true);
   await refreshDemoEligibility(true);
-  await refreshBacktests(true);
+  if (legacyBacktesterOpen && (activeBacktestId || legacyBacktestHistoryOpen)) await refreshBacktests(true);
 }, 10_000);
 
 discoveryRefreshTimer = setInterval(() => refreshDiscoveryExplorer(true), 30_000);

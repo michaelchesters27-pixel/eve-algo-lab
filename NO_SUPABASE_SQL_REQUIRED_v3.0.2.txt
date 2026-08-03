@@ -1,0 +1,1 @@
+EVE Command Centre v3.0.2 requires no Supabase SQL changes. Existing legacy backtest records remain stored and are now shown only through the explicit archive.

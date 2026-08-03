@@ -1184,3 +1184,122 @@ tr:last-child td { border-bottom: 0; }
   .home-health-list strong { text-align: left; }
   .factory-tabs a { font-size: 9px; }
 }
+
+/* v3.0.1 — optional legacy Fixed Ladder tool */
+.advanced-tool-card {
+  width: 100%;
+  min-height: 145px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  color: var(--text);
+  background: var(--panel-soft);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: .2s ease;
+}
+.advanced-tool-card:hover { transform: translateY(-2px); border-color: rgba(142,240,197,.28); }
+.advanced-tool-card small { display: block; color: var(--accent); font: 500 8px "DM Mono"; }
+.advanced-tool-card strong { display: block; margin-top: 24px; font-size: 13px; }
+.advanced-tool-card span { display: block; margin-top: 9px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.legacy-backtester-shell[hidden] { display: none !important; }
+.legacy-tool-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid rgba(242,194,95,.22);
+  border-radius: 14px;
+  background: rgba(242,194,95,.045);
+}
+.legacy-tool-toolbar > div { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.legacy-tool-toolbar strong { font-size: 12px; }
+.legacy-scope-panel {
+  display: grid;
+  grid-template-columns: minmax(0,1.25fr) minmax(280px,.75fr);
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.legacy-scope-copy h2 { margin: 8px 0 10px; }
+.legacy-scope-copy p:last-child { color: var(--muted); line-height: 1.7; }
+.legacy-scope-actions { display: grid; gap: 10px; }
+.legacy-scope-actions > div {
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255,255,255,.018);
+}
+.legacy-scope-actions small { display: block; color: var(--muted); font: 500 8px "DM Mono"; letter-spacing: .09em; }
+.legacy-scope-actions strong { display: block; margin-top: 7px; font-size: 12px; }
+.mt5-test-guide {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+.mt5-test-guide summary { cursor: pointer; color: var(--accent); font-weight: 700; }
+.mt5-test-guide ol { margin: 14px 0 0 20px; color: var(--muted); line-height: 1.8; }
+.mt5-test-guide code { color: var(--text); }
+@media (max-width: 760px) {
+  .legacy-tool-toolbar { align-items: stretch; flex-direction: column; }
+  .legacy-scope-panel { grid-template-columns: 1fr; }
+}
+
+
+/* v3.0.2 — clean legacy history separation */
+.legacy-clean-start-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 18px;
+  padding: 22px 24px;
+  border-color: rgba(142,240,197,.2);
+  background: linear-gradient(135deg, rgba(142,240,197,.045), rgba(255,255,255,.012));
+}
+.legacy-clean-start-panel h2 { margin: 7px 0 8px; }
+.legacy-clean-start-panel p:last-child { max-width: 760px; color: var(--muted); line-height: 1.65; }
+.legacy-clean-actions { display: flex; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+.legacy-run-meta, .archive-explanation {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+.legacy-history-panel[hidden], #legacyBasketPanel[hidden] { display: none !important; }
+.legacy-history-panel { display: grid; gap: 18px; margin-top: 18px; }
+.archive-head-actions { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.legacy-history-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+.legacy-history-card {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  padding: 15px 16px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  color: var(--text);
+  background: rgba(255,255,255,.015);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: .18s ease;
+}
+.legacy-history-card:hover, .legacy-history-card.selected {
+  border-color: rgba(142,240,197,.35);
+  background: rgba(142,240,197,.055);
+}
+.legacy-history-card strong { font-size: 12px; }
+.legacy-history-card span { color: var(--muted); font-size: 9px; line-height: 1.4; }
+.legacy-history-card .legacy-history-date { color: var(--accent); font: 500 8px "DM Mono"; letter-spacing: .05em; }
+.legacy-history-card .legacy-history-metrics { color: var(--text); font: 500 9px "DM Mono"; }
+@media (max-width: 760px) {
+  .legacy-clean-start-panel { align-items: stretch; flex-direction: column; }
+  .legacy-history-list { grid-template-columns: 1fr; }
+}

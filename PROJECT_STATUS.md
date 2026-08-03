@@ -1,18 +1,16 @@
-# EVE Command Centre Project Status — v3.0
+# Project Status — EVE Command Centre v3.0.2
 
-## Complete
+## Current state
 
-- Six-timeframe permanent market memory.
-- Autonomous learning and continuous historical research.
-- Strategy creation, controlled evolution and M1 proof.
-- Immutable frozen rules and automatic MT5 `.mq5` generation.
-- Demo eligibility labels and next-window guidance.
-- Action-first Home briefing and simplified end-to-end navigation.
+- Command Centre workflow is active.
+- Strategy Factory, Bot Factory and Demo Testing remain unchanged.
+- Legacy Fixed Ladder replay is available only through Advanced.
+- The legacy workspace opens clean and does not display completed history automatically.
+- Completed legacy tests are retained only as an explicit archive.
+- Only queued or running backtests are restored automatically after refresh.
+- Legacy replay supports the built-in Fixed Ladder v2.61 Python reconstruction only.
+- Arbitrary MQ5/EX5 upload and execution are not claimed or supported.
 
-## Current limitation
+## Next meaningful milestone
 
-EVE can determine whether frozen rules are currently eligible from stored data and time. It cannot yet receive live telemetry from the user's MT5 terminal, confirm that an EA is attached, or compare broker-side demo fills with historical expectations.
-
-## Next evidence stage
-
-Demo forward-test telemetry: EA heartbeats, trade logs, spread, slippage, entry/exit reasons and expected-versus-actual performance. This should be added only after the current generated bots have been observed safely on demo.
+A genuine automated MT5 test runner would require a Windows machine or VPS running MetaTrader 5, MetaEditor compilation and Strategy Tester. It is not part of this release.

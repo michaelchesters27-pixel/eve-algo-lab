@@ -1,0 +1,22 @@
+EVE Command Centre v3.0.2 validation
+
+Validated on 03 August 2026.
+
+Frontend
+- JavaScript syntax: PASS (node --check frontend/app.js)
+- Frontend/Netlify tests: 7 PASS
+- Duplicate HTML ids: none
+- Netlify proxy permits the dedicated read-only backtests/active route
+- Completed legacy history is not auto-rendered as the current test
+- Archive and basket panels are hidden by default
+
+Railway
+- Pytest: 52 PASS
+- Existing backtest execution routes preserved
+- New GET /api/backtests/active endpoint returns queued/running runs only
+- No database migration required
+
+Package
+- Full repository replacement package
+- No patch files
+- No environment-variable changes required

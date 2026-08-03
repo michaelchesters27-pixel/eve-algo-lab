@@ -1,0 +1,10 @@
+EVE Command Centre v3.0.1 validation
+
+- Railway Python suite: 52 passed
+- Frontend / Netlify Node tests: 6 passed
+- JavaScript syntax: passed
+- Duplicate HTML id check: passed through frontend test
+- Legacy tool hidden-by-default behaviour: passed
+- Backtest refresh gated to open state: passed
+
+No Supabase SQL or environment-variable changes are required.

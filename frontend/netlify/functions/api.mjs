@@ -26,6 +26,7 @@ const ALLOWED = [
   /^mt5\/packages\/[0-9a-f-]+\/(download|source)$/i,
   /^mt5\/wake$/,
   /^backtests$/,
+  /^backtests\/active$/,
   /^backtests\/[0-9a-f-]+$/i,
   /^backtests\/[0-9a-f-]+\/cancel$/i,
   /^backtests\/fixed-ladder-v2-61$/,

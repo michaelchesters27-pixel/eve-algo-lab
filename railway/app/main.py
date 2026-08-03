@@ -541,6 +541,11 @@ async def list_backtests(limit: int = Query(default=20, ge=1, le=100)) -> ApiEnv
     return ApiEnvelope(data=await repo.list_backtest_runs(limit))
 
 
+@app.get("/api/backtests/active", response_model=ApiEnvelope)
+async def list_active_backtests(limit: int = Query(default=5, ge=1, le=20)) -> ApiEnvelope:
+    return ApiEnvelope(data=await repo.list_active_backtest_runs(limit))
+
+
 @app.get("/api/backtests/{run_id}", response_model=ApiEnvelope)
 async def get_backtest(run_id: str) -> ApiEnvelope:
     run = await repo.get_backtest_run(run_id)

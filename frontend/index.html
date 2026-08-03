@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3.0">
+  <link rel="stylesheet" href="styles.css?v=3.0.2">
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -41,7 +41,7 @@
     <main>
       <header class="topbar command-topbar">
         <div>
-          <p class="eyebrow">EVE COMMAND CENTRE · v3.0</p>
+          <p class="eyebrow">EVE COMMAND CENTRE · v3.0.2</p>
           <h1 id="briefingGreeting">Good afternoon.</h1>
           <p class="topbar-summary">Here is what EVE has done, what matters now and the one action worth your attention.</p>
         </div>
@@ -698,7 +698,7 @@
         <div class="advanced-link-grid">
           <a href="#foundation"><small>01</small><strong>Foundation status</strong><span>Latest price, dataset readiness and gap count.</span></a>
           <a href="#memory"><small>02</small><strong>Market memory</strong><span>Inspect each stored timeframe from M1 to D1.</span></a>
-          <a href="#backtester"><small>03</small><strong>Legacy backtester</strong><span>Run the imported fixed-ladder replay.</span></a>
+          <button type="button" class="advanced-tool-card" id="openLegacyBacktester" aria-controls="backtester" aria-expanded="false"><small>03</small><strong>Legacy Fixed Ladder backtester</strong><span>Optional tool. Click to open the v2.61-only historical replay.</span></button>
           <a href="#pipeline"><small>04</small><strong>Build history</strong><span>See how the platform reached its current stage.</span></a>
           <a href="#activity"><small>05</small><strong>System activity</strong><span>Read recent Supabase and worker events.</span></a>
         </div>
@@ -755,16 +755,53 @@
           <strong>Safe queueing:</strong> the four new historical downloads can be queued together. Railway processes one ingestion job at a time, so Twelve Data is not hit by four large downloads simultaneously.
         </div>
       </section>
-      <section id="backtester" class="section-block technical-section" data-nav-section="#advanced">
+      <section id="backtester" class="section-block technical-section legacy-backtester-shell" data-nav-section="#advanced" hidden aria-hidden="true">
+        <div class="legacy-tool-toolbar">
+          <div><span class="status-pill waiting">OPTIONAL LEGACY TOOL</span><strong>Fixed Ladder v2.61 only</strong></div>
+          <button type="button" class="button button-quiet" id="closeLegacyBacktester">Close backtester</button>
+        </div>
         <div class="section-title">
           <div><p class="eyebrow">ADVANCED · LEGACY BACKTESTER</p><h2>EVE Fixed Ladder v2.61</h2></div>
-          <p>The existing M5 approximation and M1 high-resolution replay remain available while the broader research memory is expanded.</p>
+          <p>This is a manually recreated Python replay for one supported strategy. It is kept as an optional diagnostic tool and does not test arbitrary MQ5 files.</p>
         </div>
+
+        <article class="panel legacy-scope-panel">
+          <div class="legacy-scope-copy">
+            <p class="label">WHAT THIS TOOL ACCEPTS</p>
+            <h2>One built-in strategy — no file upload</h2>
+            <p>The replay is permanently connected to <strong>EVE_Twelve_Data_Fixed_Ladder_v2.61.mq5</strong>. Selecting another MQ5 file would not work because Railway is running a Python reconstruction, not MetaTrader 5.</p>
+          </div>
+          <div class="legacy-scope-actions">
+            <div><small>SUPPORTED</small><strong>Fixed Ladder v2.61</strong></div>
+            <div><small>NOT SUPPORTED</small><strong>Uploaded MQ5 / EX5 files</strong></div>
+          </div>
+          <details class="mt5-test-guide">
+            <summary>How to test a different EVE bot</summary>
+            <ol>
+              <li>Copy its <code>.mq5</code> file into MT5’s <code>MQL5\Experts</code> folder.</li>
+              <li>Open it in MetaEditor and press <strong>F7</strong> to compile.</li>
+              <li>Return to MT5 and press <strong>Ctrl + R</strong> to open Strategy Tester.</li>
+              <li>Select the EA, <strong>XAUUSD</strong>, its required timeframe and <strong>Every tick based on real ticks</strong> where available.</li>
+            </ol>
+          </details>
+        </article>
+
+        <article class="panel legacy-clean-start-panel">
+          <div>
+            <p class="label">CLEAN START</p>
+            <h2>Old tests stay out of the way</h2>
+            <p>This workspace opens blank. A test from last week is never presented as today’s result. Previous runs remain available only when you deliberately open the archive.</p>
+          </div>
+          <div class="legacy-clean-actions">
+            <button type="button" class="button" id="showLegacyHistory">View previous tests</button>
+            <button type="button" class="button button-quiet" id="clearLegacySelection" hidden>Return to clean workspace</button>
+          </div>
+        </article>
 
         <div class="backtest-layout">
           <article class="panel backtest-form-panel">
             <div class="panel-head">
-              <div><p class="label">RUN CONFIGURATION</p><h2>Test the full available history</h2></div>
+              <div><p class="label">RUN A NEW TEST</p><h2>Test the full available history</h2></div>
               <span class="status-pill complete">SOURCE VERIFIED</span>
             </div>
             <div class="strategy-source">
@@ -794,11 +831,12 @@
 
           <article class="panel backtest-status-panel">
             <div class="panel-head">
-              <div><p class="label">LATEST RUN</p><h2 id="backtestTitle">Not started</h2></div>
-              <span class="status-pill" id="backtestStatus">WAITING</span>
+              <div><p class="label" id="backtestContextLabel">CURRENT TEST</p><h2 id="backtestTitle">No test running</h2></div>
+              <span class="status-pill" id="backtestStatus">READY</span>
             </div>
+            <p class="legacy-run-meta" id="backtestRunMeta">Choose your settings and press Run. No previous result is loaded automatically.</p>
             <div class="backtest-progress"><div class="progress-track"><span id="backtestProgressBar"></span></div><strong id="backtestProgress">0%</strong></div>
-            <p class="backtest-message" id="backtestMessage">Choose a resolution and start the replay.</p>
+            <p class="backtest-message" id="backtestMessage">This panel will show only the test you start now, or an archived test you deliberately select.</p>
             <div class="result-grid">
               <div><small>NET PROFIT</small><strong id="resultNet">—</strong></div>
               <div><small>BASKET PROFIT FACTOR</small><strong id="resultPF">—</strong></div>
@@ -809,30 +847,44 @@
               <div><small>ENDING BALANCE</small><strong id="resultBalance">—</strong></div>
               <div><small id="ambiguousLabel">AMBIGUOUS INPUT BARS</small><strong id="resultAmbiguous">—</strong></div>
             </div>
-            <div class="accuracy-warning" id="accuracyWarning">M5 is an approximation. M1 reduces uncertainty but tick replay remains the final execution standard.</div>
+            <div class="accuracy-warning" id="accuracyWarning">No result selected. M5 is an approximation; M1 is higher resolution; MT5 real-tick testing remains the execution standard.</div>
           </article>
         </div>
 
-        <article class="panel report-panel comparison-panel">
-          <div class="panel-head">
-            <div><p class="label">RESOLUTION COMPARISON</p><h2>M5 baseline versus M1 replay</h2></div>
-            <button class="text-button" id="refreshBacktest">Refresh ↗</button>
-          </div>
-          <div class="comparison-grid">
-            <div class="comparison-card"><small>M5 APPROXIMATION</small><strong id="m5ComparePF">—</strong><span>Profit factor</span><p id="m5CompareMeta">Run available</p></div>
-            <div class="comparison-card"><small>M1 HIGH-RESOLUTION</small><strong id="m1ComparePF">—</strong><span>Profit factor</span><p id="m1CompareMeta">Checking M1 memory</p></div>
-            <div class="comparison-card"><small>PROFIT DIFFERENCE</small><strong id="compareProfitDelta">—</strong><span>M1 minus M5</span><p id="compareReliability">Waiting for both completed runs</p></div>
-          </div>
-        </article>
+        <section id="legacyHistoryPanel" class="legacy-history-panel" hidden aria-hidden="true">
+          <article class="panel report-panel">
+            <div class="panel-head">
+              <div><p class="label">ARCHIVED TESTS</p><h2>Previous Fixed Ladder runs</h2></div>
+              <div class="archive-head-actions">
+                <button class="text-button" id="refreshLegacyHistory">Refresh archive ↗</button>
+                <button class="text-button" id="hideLegacyHistory">Hide archive</button>
+              </div>
+            </div>
+            <p class="archive-explanation">These are stored historical tests. They are not today’s result and they do not load until you select one.</p>
+            <div class="legacy-history-list" id="legacyHistoryList"><div class="empty-state">Open the archive to load previous tests.</div></div>
+          </article>
 
-        <article class="panel report-panel">
+          <article class="panel report-panel comparison-panel">
+            <div class="panel-head">
+              <div><p class="label">ARCHIVED RESOLUTION COMPARISON</p><h2>M5 baseline versus M1 replay</h2></div>
+            </div>
+            <div class="comparison-grid">
+              <div class="comparison-card"><small>M5 APPROXIMATION</small><strong id="m5ComparePF">—</strong><span>Profit factor</span><p id="m5CompareMeta">No archived run loaded</p></div>
+              <div class="comparison-card"><small>M1 HIGH-RESOLUTION</small><strong id="m1ComparePF">—</strong><span>Profit factor</span><p id="m1CompareMeta">No archived run loaded</p></div>
+              <div class="comparison-card"><small>PROFIT DIFFERENCE</small><strong id="compareProfitDelta">—</strong><span>M1 minus M5</span><p id="compareReliability">Archive comparison only</p></div>
+            </div>
+          </article>
+        </section>
+
+        <article class="panel report-panel" id="legacyBasketPanel" hidden>
           <div class="panel-head">
-            <div><p class="label">BASKET REPORT</p><h2>Most recent completed baskets</h2></div>
+            <div><p class="label" id="basketReportLabel">SELECTED TEST</p><h2 id="basketReportTitle">Completed baskets</h2></div>
           </div>
+          <p class="archive-explanation" id="basketReportNote">Baskets appear after a current test completes or when you select an archived test.</p>
           <div class="table-wrap">
             <table>
               <thead><tr><th>Opened</th><th>Side</th><th>Positions</th><th>Net P/L</th><th>Peak</th><th>Worst</th><th>Exit</th></tr></thead>
-              <tbody id="basketRows"><tr><td colspan="7">No completed backtest yet.</td></tr></tbody>
+              <tbody id="basketRows"><tr><td colspan="7">No test selected.</td></tr></tbody>
             </table>
           </div>
         </article>
@@ -865,7 +917,7 @@
         <div class="activity-list" id="activityList"><div class="empty-state">Waiting for Supabase activity…</div></div>
       </section>
 
-      <footer><span>EVE COMMAND CENTRE · v3.0</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
+      <footer><span>EVE COMMAND CENTRE · v3.0.2</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
     </main>
   </div>
 
