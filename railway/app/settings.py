@@ -74,6 +74,14 @@ class Settings(BaseSettings):
     strategy_evolution_queue_floor: int = Field(default=20, ge=2, le=1000)
     strategy_evolution_cache_minutes: int = Field(default=180, ge=15, le=1440)
 
+    # v2.3 automatic high-resolution validation. Strong strategies are replayed
+    # on M1 data with conservative order resolution and execution-cost stress.
+    high_resolution_validation_enabled: bool = True
+    high_resolution_validation_startup_delay_seconds: int = Field(default=480, ge=30, le=7200)
+    high_resolution_validation_job_delay_seconds: float = Field(default=90.0, ge=10.0, le=3600.0)
+    high_resolution_validation_idle_seconds: float = Field(default=90.0, ge=10.0, le=3600.0)
+    high_resolution_validation_queue_floor: int = Field(default=3, ge=1, le=100)
+
     @field_validator("supabase_url", "twelve_data_base_url")
     @classmethod
     def strip_trailing_slash(cls, value: str) -> str:

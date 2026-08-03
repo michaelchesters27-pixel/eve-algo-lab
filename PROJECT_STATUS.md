@@ -1,24 +1,18 @@
-# EVE Algo Lab Project Status — v2.2
+# EVE Algo Lab Project Status — v2.3
 
 ## Complete
 
-- Six-timeframe XAU/USD market memory.
-- Autonomous candle syncing and learning.
-- Continuous 24/7 historical research.
-- Discovery Explorer.
-- Autonomous Strategy Idea Factory.
-- Strategy candidate robustness testing.
-- Controlled Strategy Evolution Engine.
-
-## Current autonomous workers
-
-- Multi-timeframe ingestion.
-- Learning foundation updates.
-- Autonomous learning and prediction grading.
+- Six-timeframe XAU/USD historical memory.
+- Automatic candle synchronisation.
+- Learning foundation and forward outcome labels.
+- Autonomous learning and challenger control.
 - Continuous historical research.
+- Discovery Explorer.
 - Strategy Idea Factory.
 - Strategy Evolution Engine.
+- Automatic M1 validation, execution-cost stress and parameter-neighbourhood testing.
+- Immutable rule freezing for MT5-ready candidates.
 
-## Next scientific milestone
+## Next
 
-Automatic high-resolution validation: M1 replay, execution-cost stress, parameter-neighbourhood robustness and readiness grading before demo forward testing.
+v2.4 — MT5 EA Generator. Only a frozen strategy marked `ready_for_mt5_generation` may be converted into a versioned `.mq5` Expert Advisor.

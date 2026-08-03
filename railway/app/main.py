@@ -25,11 +25,12 @@ from app.services.historical_research import ContinuousHistoricalResearchService
 from app.services.learning import LearningService, SNAPSHOT_INTERVAL
 from app.services.strategy_lab import StrategyLabService
 from app.services.strategy_evolution import StrategyEvolutionService
+from app.services.high_resolution_validation import HighResolutionValidationService
 from app.services.supabase_repo import SupabaseRepository
 from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
 from app.settings import Settings, get_settings
 
-APP_VERSION = "2.2"
+APP_VERSION = "2.3"
 
 settings = get_settings()
 logging.basicConfig(
@@ -52,6 +53,7 @@ autonomy = AutonomousLearningService(settings, repo)
 historical_research = ContinuousHistoricalResearchService(settings, repo)
 strategy_lab = StrategyLabService(settings, repo, historical_research.load_complete_rows)
 strategy_evolution = StrategyEvolutionService(settings, repo, historical_research.load_complete_rows)
+high_resolution_validation = HighResolutionValidationService(settings, repo, historical_research.load_complete_rows)
 background_tasks: list[asyncio.Task[Any]] = []
 
 
@@ -65,6 +67,7 @@ async def lifespan(_: FastAPI):
     background_tasks.append(asyncio.create_task(historical_research.loop(), name="continuous-historical-research"))
     background_tasks.append(asyncio.create_task(strategy_lab.loop(), name="strategy-idea-factory"))
     background_tasks.append(asyncio.create_task(strategy_evolution.loop(), name="strategy-evolution-engine"))
+    background_tasks.append(asyncio.create_task(high_resolution_validation.loop(), name="high-resolution-validation"))
     for sync_index, interval in enumerate(settings.auto_sync_interval_list):
         if interval not in INTERVAL_SECONDS:
             logger.warning("Skipping unsupported AUTO_SYNC_INTERVALS value: %s", interval)
@@ -79,6 +82,7 @@ async def lifespan(_: FastAPI):
     await historical_research.stop()
     await strategy_lab.stop()
     await strategy_evolution.stop()
+    await high_resolution_validation.stop()
     for task in background_tasks:
         task.cancel()
     for task in list(backtests.tasks.values()):
@@ -91,7 +95,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="EVE Algo Lab API",
     version=APP_VERSION,
-    description="Permanent multi-timeframe XAU/USD memory with autonomous learning, continuous historical research, an autonomous Strategy Idea Factory, controlled strategy evolution and high-resolution backtesting.",
+    description="Permanent multi-timeframe XAU/USD memory with autonomous learning, continuous historical research, an autonomous Strategy Idea Factory, controlled strategy evolution, automatic M1 validation and high-resolution backtesting.",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -378,6 +382,38 @@ async def wake_strategy_evolution() -> ApiEnvelope:
     return ApiEnvelope(
         data={"status": "requested"},
         message="Strategy Evolution wake requested. Normal mutation and selection already run automatically.",
+    )
+
+
+@app.get("/api/validation/status", response_model=ApiEnvelope)
+async def high_resolution_validation_status(
+    symbol: str = Query(default="XAU/USD", min_length=3, max_length=40),
+) -> ApiEnvelope:
+    dashboard = await repo.validation_dashboard(symbol, SNAPSHOT_INTERVAL)
+    dashboard["service"] = "online"
+    dashboard["version"] = APP_VERSION
+    return ApiEnvelope(data=dashboard)
+
+
+@app.get("/api/validation/jobs", response_model=ApiEnvelope)
+async def list_high_resolution_validation_jobs(
+    symbol: str = Query(default="XAU/USD", min_length=3, max_length=40),
+    result_status: str = Query(default="all", pattern="^(all|rejected|needs_more_evidence|replay_validated|ready_for_mt5_generation)$"),
+    order: str = Query(default="profit_factor", pattern="^(profit_factor|expectancy|drawdown|robustness|recent)$"),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> ApiEnvelope:
+    items = await repo.list_validation_jobs(
+        symbol, SNAPSHOT_INTERVAL, result_status=result_status, order=order, limit=limit
+    )
+    return ApiEnvelope(data={"items": items, "result_status": result_status, "order": order})
+
+
+@app.post("/api/validation/wake", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])
+async def wake_high_resolution_validation() -> ApiEnvelope:
+    await high_resolution_validation.request_wake()
+    return ApiEnvelope(
+        data={"status": "requested"},
+        message="High-resolution validation wake requested. Normal M1 replay validation runs automatically.",
     )
 
 

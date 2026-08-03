@@ -1,8 +1,8 @@
-# Deploy EVE Algo Lab v2.2
+# Deploy EVE Algo Lab v2.3
 
 ## 1. Supabase
 
-Open the existing EVE Algo Lab Supabase project and SQL Editor. Paste the complete contents of `SUPABASE_UPDATE_v2.2.sql` and run it once.
+Open the existing EVE Algo Lab Supabase project and SQL Editor. Paste the complete contents of `SUPABASE_UPDATE_v2.3.sql` and run it once.
 
 Wait for:
 
@@ -10,7 +10,7 @@ Wait for:
 Success. No rows returned
 ```
 
-The update creates the Evolution state, lineage and child-experiment tables. It preserves all candles, learning snapshots, discoveries, Strategy Lab candidates, models and backtests.
+The update creates Validation Lab state, job and frozen-strategy tables. It preserves all candles, learning snapshots, discoveries, Strategy Lab candidates, evolution lineages, models and backtests.
 
 ## 2. GitHub
 
@@ -20,20 +20,20 @@ Unzip the GitHub-ready package. Open the inner `eve-algo-lab` folder and replace
 
 Allow the existing GitHub deployments to finish.
 
-Do not add or change Railway or Netlify variables. v2.2 is enabled through safe code defaults.
+Do not add or change Railway or Netlify variables. v2.3 is enabled through code defaults.
 
 ## 4. Verify
 
-Open EVE, press `Ctrl + F5`, and select **Evolution Lab**.
+Open EVE, press `Ctrl + F5`, and select **Validation Lab**.
 
-Allow approximately 6–8 minutes after Railway starts. Verify:
+Allow approximately 8–10 minutes after Railway starts. Verify:
 
-- Evolution worker status becomes ACTIVE.
+- Validation worker status becomes ACTIVE.
 - Worker heartbeat shows a recent time.
-- Active lineages becomes greater than zero when strong Strategy Lab candidates exist.
-- Mutations are queued.
-- Current mutation is populated.
-- Completed and states-scanned counts begin increasing.
-- The lineage leaderboard and evolution history populate.
+- Surviving strategies are queued automatically.
+- Current strategy changes to an M1 replay progress message.
+- M1 windows scanned and completed counts increase.
+- Completed results appear as Rejected, Needs Evidence, Replay Validated or Ready for MT5.
+- A Ready strategy shows frozen rules and a rule hash.
 
-The worker continues on Railway with the computer and browser switched off.
+The worker continues on Railway with the computer and browser switched off. The Wake button is only a diagnostic trigger.

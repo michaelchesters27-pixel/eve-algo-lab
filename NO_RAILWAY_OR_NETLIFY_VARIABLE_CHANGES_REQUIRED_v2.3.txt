@@ -1,0 +1,3 @@
+EVE Algo Lab v2.3 requires no new or changed Railway or Netlify variables.
+
+Deploy the code after SUPABASE_UPDATE_v2.3.sql succeeds. The high-resolution validation worker is enabled by safe defaults.

@@ -1,25 +1,30 @@
-# EVE Algo Lab v2.2 — Strategy Evolution Engine
+# EVE Algo Lab v2.3 — Automatic High-Resolution Validation Pipeline
 
 ## Added
 
-- Dedicated autonomous Strategy Evolution worker on Railway.
-- Strategy lineages seeded from the strongest Strategy Lab survivors.
-- Controlled stop, target, cooldown, direction and filter-mode mutations.
-- Compatible multi-discovery condition combinations.
-- Direct parent-versus-child evaluation on identical chronological data.
-- Validation-only development-champion selection.
-- Sealed locked-test readiness audit and catastrophic-loss safety veto.
-- Persistent generation history, lineage champions and mutation evidence.
-- New Evolution Lab dashboard with worker monitor, current champion, lineage leaderboard and detailed mutation explorer.
-- Netlify proxy routes for Evolution status, results and manual diagnostic wake.
+- Dedicated autonomous M1 validation worker on Railway.
+- Automatic queueing of Champion, Elite and validated strategies.
+- Look-ahead-safe M5-snapshot to M1-entry protocol.
+- Conservative M1 stop-versus-target resolution.
+- Standard, elevated and severe execution-cost stress profiles.
+- Nearby stop, target, holding-period and cooldown robustness challenges.
+- Chronological validation and locked-test M1 reporting.
+- Year, month, weekday, session and regime breakdowns.
+- Immutable SHA-256 rule freezing for strategies that become Ready for MT5 Generation.
+- New Validation Lab dashboard with worker monitor, automatic promotion path, best-ready strategy and detailed result explorer.
+- Netlify proxy routes for validation status, results and diagnostic wake.
 
-## Anti-overfitting rule
+## Anti-overfitting controls
 
-Locked-test results are not used to choose parameter values. Evolution uses training and validation data for selection. The locked period grades readiness and can block a catastrophic child, but it does not steer the mutation search.
+- The exact evolved rule set is replayed first.
+- Nearby parameters are challenged; v2.3 does not optimise them against the locked period.
+- A single M1 bar that can touch both stop and target is recorded as a stop.
+- Entries are placed only after the source M5 candle has closed.
+- Frozen rule versions are immutable and identified by SHA-256.
 
 ## Not included yet
 
-- M1/tick replay promotion pipeline.
-- Automatic MT5 EA generation.
+- Automatic `.mq5` Expert Advisor generation.
+- Broker tick-data testing.
 - Demo forward testing.
 - Live deployment.

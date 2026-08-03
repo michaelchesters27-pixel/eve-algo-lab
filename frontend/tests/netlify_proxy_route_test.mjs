@@ -35,3 +35,17 @@ assert.equal(response.status, 200);
 assert.equal(calls[5].url, "https://railway.example/api/evolution/wake");
 assert.equal(calls[5].options.headers["X-EVE-ADMIN-TOKEN"], "test-token");
 console.log("Netlify proxy Evolution routes: PASS");
+
+response = await proxy(new Request("https://eve.example/api/validation/status?symbol=XAU%2FUSD"));
+assert.equal(response.status, 200);
+assert.equal(calls[6].url, "https://railway.example/api/validation/status?symbol=XAU%2FUSD");
+
+response = await proxy(new Request("https://eve.example/api/validation/jobs?symbol=XAU%2FUSD&result_status=all&order=profit_factor&limit=150"));
+assert.equal(response.status, 200);
+assert.equal(calls[7].url, "https://railway.example/api/validation/jobs?symbol=XAU%2FUSD&result_status=all&order=profit_factor&limit=150");
+
+response = await proxy(new Request("https://eve.example/api/validation/wake", { method: "POST", body: "{}", headers: { "Content-Type": "application/json" } }));
+assert.equal(response.status, 200);
+assert.equal(calls[8].url, "https://railway.example/api/validation/wake");
+assert.equal(calls[8].options.headers["X-EVE-ADMIN-TOKEN"], "test-token");
+console.log("Netlify proxy Validation Lab routes: PASS");

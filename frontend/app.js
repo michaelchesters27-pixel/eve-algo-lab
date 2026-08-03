@@ -68,6 +68,12 @@ let evolutionCandidateFilter = "all";
 let evolutionCandidateOrder = "validation_improvement";
 let selectedEvolutionCandidateId = null;
 let evolutionRefreshTimer;
+let validationDashboard = null;
+let validationJobItems = [];
+let validationJobFilter = "all";
+let validationJobOrder = "profit_factor";
+let selectedValidationJobId = null;
+let validationRefreshTimer;
 const activeBackfillJobIds = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
 const historicalReady = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, false]));
 const marketStates = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
@@ -1329,6 +1335,185 @@ if (timeframeGrid) timeframeGrid.addEventListener("click", async (event) => {
   else if (action === "gap-scan") await queueJob("gap-scan", interval, button, `${meta.label} gap scan queued`);
 });
 
+
+function validationStatusLabel(status) {
+  const labels = {
+    ready_for_mt5_generation: "READY FOR MT5",
+    replay_validated: "REPLAY VALIDATED",
+    needs_more_evidence: "NEEDS EVIDENCE",
+    rejected: "REJECTED",
+  };
+  return labels[status] || String(status || "WAITING").replaceAll("_", " ").toUpperCase();
+}
+
+function renderValidationBest(item = {}) {
+  const ready = item && item.id;
+  setText("#validationBestName", ready ? item.name : "Waiting for a strategy to pass");
+  setText("#validationBestStatus", ready ? "READY FOR MT5" : "WAITING");
+  setClass("#validationBestStatus", `status-pill ${ready ? "complete" : "waiting"}`);
+  setText("#validationBestVerdict", ready ? (item.evidence?.verdict || "The rules passed M1 validation and are frozen for MT5 generation.") : "EVE will freeze a rule set only after M1 replay, elevated-cost stress and parameter-neighbourhood checks pass.");
+  setText("#validationBestPF", ready ? Number(item.profit_factor || 0).toFixed(2) : "—");
+  setText("#validationBestExpectancy", ready ? formatR(item.expectancy_r) : "—");
+  setText("#validationBestDrawdown", ready ? `${Number(item.max_drawdown_r || 0).toFixed(1)}R` : "—");
+  setText("#validationBestTrades", ready ? formatNumber(item.trades_total) : "—");
+  setText("#validationBestRobustness", ready ? `${Number(item.robust_profile_ratio || 0).toFixed(0)}%` : "—");
+  setText("#validationBestStability", ready ? `${Number(item.year_stability || 0).toFixed(0)}%` : "—");
+  const rulesHost = $("#validationBestRules");
+  if (rulesHost) {
+    const chips = ready ? strategyRulesText({ rules: item.frozen_rules || item.rules || {} }) : ["Waiting for frozen rules"];
+    rulesHost.innerHTML = chips.map((rule) => `<span class="condition-chip">${escapeHtml(rule)}</span>`).join("");
+  }
+}
+
+function renderValidationStatus(data = {}) {
+  validationDashboard = data;
+  const state = data.state || {};
+  const current = data.current_job || {};
+  const status = state.status || "waiting";
+  setText("#validationStatus", status.toUpperCase());
+  setClass("#validationStatus", `status-pill ${["active", "loading", "replaying"].includes(status) ? "complete" : status}`);
+  setText("#validationMessage", state.last_error || "EVE automatically replays surviving strategies on stored M1 candles and challenges their execution assumptions.");
+  setText("#validationCurrentJob", current.name || state.current_job_name || "Waiting for the next surviving strategy");
+  setText("#validationHeartbeat", formatDate(state.heartbeat_at, true));
+  setText("#validationQueued", formatNumber(state.queue_count));
+  setText("#validationCompleted", formatNumber(state.completed_count));
+  setText("#validationWindows", formatNumber(state.m1_windows_scanned_total));
+  setText("#validationRejected", formatNumber(state.rejected_count));
+  setText("#validationNeedsEvidence", formatNumber(state.needs_evidence_count));
+  setText("#validationReplayValidated", formatNumber(state.replay_validated_count));
+  setText("#validationMt5Ready", formatNumber(state.mt5_ready_count));
+  setText("#validationLastResult", state.last_result || "Waiting for a Champion, Elite or validated strategy.");
+  setText("#validationTestedCount", formatNumber(state.completed_count));
+  setText("#validationRejectedCount", formatNumber(state.rejected_count));
+  setText("#validationPassedCount", formatNumber(state.replay_validated_count));
+  setText("#validationReadyCount", formatNumber(state.mt5_ready_count));
+  renderValidationBest(data.best_ready || {});
+}
+
+function validationExplanation(item) {
+  const status = String(item?.result_status || "rejected");
+  if (status === "ready_for_mt5_generation") return "Passed: M1 replay, elevated execution-cost stress and enough nearby parameter settings stayed healthy. EVE froze the exact rules for the MT5-generator stage.";
+  if (status === "replay_validated") return "M1 replay passed, but one or more final MT5-readiness thresholds still need stronger evidence.";
+  if (status === "needs_more_evidence") return "The high-resolution trades stayed positive, but the sample is still too small for a final decision.";
+  return "Rejected: the strategy failed M1 replay, execution-cost stress, data completeness, stability or parameter-neighbourhood safeguards.";
+}
+
+function validationProfileRows(item) {
+  const profiles = item.metrics?.parameter_neighbourhood || {};
+  return Object.entries(profiles).map(([name, result]) => {
+    const label = name.replaceAll("_", " ");
+    const locked = result.locked_test || {};
+    return `<div><span>${escapeHtml(label)}</span><strong>${result.passed ? "PASS" : "FAIL"} · PF ${Number(locked.profit_factor || 0).toFixed(2)}</strong></div>`;
+  }).join("");
+}
+
+function renderValidationJobDetail(item) {
+  const host = $("#validationJobDetail");
+  if (!host) return;
+  if (!item) {
+    host.innerHTML = '<div class="discovery-detail-empty"><small>SELECT A VALIDATION</small><strong>Click any result to inspect the M1 evidence</strong><p>You will see the exact rules, M1 result, cost stresses, parameter robustness and EVE\'s next action.</p></div>';
+    return;
+  }
+  const standard = item.metrics?.standard_cost || {};
+  const validation = standard.validation || {};
+  const locked = standard.locked_test || {};
+  const elevated = item.metrics?.elevated_cost?.locked_test || {};
+  const severe = item.metrics?.severe_cost?.locked_test || {};
+  const reasons = item.evidence?.reasons || [];
+  const status = String(item.result_status || "rejected");
+  host.innerHTML = `
+    <small class="discovery-detail-label">${escapeHtml(validationStatusLabel(status))} · M1 VALIDATION</small>
+    <h2>${escapeHtml(item.name || "Validated strategy")}</h2>
+    <p class="discovery-detail-summary">${escapeHtml(item.evidence?.entry_protocol || "The strategy was replayed using the stored M1 execution path.")}</p>
+    <div class="discovery-verdict">${escapeHtml(item.evidence?.verdict || validationExplanation(item))}</div>
+    <div class="discovery-detail-metrics strategy-detail-metrics">
+      <div><small>M1 LOCKED PF</small><strong>${Number(item.profit_factor || 0).toFixed(2)}</strong></div>
+      <div><small>EXPECTANCY</small><strong>${formatR(item.expectancy_r)}</strong></div>
+      <div><small>MAX DRAWDOWN</small><strong>${Number(item.max_drawdown_r || 0).toFixed(1)}R</strong></div>
+      <div><small>WIN RATE</small><strong>${Number(item.win_rate || 0).toFixed(1)}%</strong></div>
+      <div><small>M1 TRADES</small><strong>${formatNumber(item.trades_total)}</strong></div>
+      <div><small>YEAR STABILITY</small><strong>${Number(item.year_stability || 0).toFixed(1)}%</strong></div>
+      <div><small>RESOLVED ENTRIES</small><strong>${Number(item.resolved_rate || 0).toFixed(1)}%</strong></div>
+      <div><small>ROBUST PROFILES</small><strong>${Number(item.robust_profile_ratio || 0).toFixed(1)}%</strong></div>
+    </div>
+    <div class="discovery-subsection"><small>EXACT RULES TESTED</small><div class="condition-chip-list">${strategyRulesText(item).map((rule) => `<span class="condition-chip">${escapeHtml(rule)}</span>`).join("")}</div></div>
+    <div class="discovery-subsection"><small>M1 CHRONOLOGICAL EVIDENCE</small><div class="evidence-list">
+      <div><span>Validation PF</span><strong>${Number(validation.profit_factor || 0).toFixed(2)}</strong></div>
+      <div><span>Locked PF</span><strong>${Number(locked.profit_factor || 0).toFixed(2)}</strong></div>
+      <div><span>Locked net result</span><strong>${formatR(locked.net_r)}</strong></div>
+      <div><span>Locked expectancy</span><strong>${formatR(locked.expectancy_r)}</strong></div>
+      <div><span>M1 windows fetched</span><strong>${formatNumber(item.m1_windows_scanned)}</strong></div>
+      <div><span>Rules SHA-256</span><strong>${escapeHtml(String(item.rules_hash || "—").slice(0, 16))}…</strong></div>
+    </div></div>
+    <div class="discovery-subsection"><small>EXECUTION-COST STRESS</small><div class="evidence-list">
+      <div><span>Standard-cost locked PF</span><strong>${Number(locked.profit_factor || 0).toFixed(2)}</strong></div>
+      <div><span>Elevated-cost locked PF</span><strong>${Number(elevated.profit_factor || 0).toFixed(2)}</strong></div>
+      <div><span>Elevated-cost expectancy</span><strong>${formatR(elevated.expectancy_r)}</strong></div>
+      <div><span>Severe-cost locked PF</span><strong>${Number(severe.profit_factor || 0).toFixed(2)}</strong></div>
+    </div></div>
+    <div class="discovery-subsection"><small>NEARBY PARAMETER CHALLENGE</small><div class="evidence-list validation-profile-list">${validationProfileRows(item) || '<div><span>No profiles stored</span><strong>—</strong></div>'}</div></div>
+    ${reasons.length ? `<div class="discovery-subsection"><small>WHY IT DID NOT FULLY PASS</small><ul class="strategy-caveat-list">${reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul></div>` : ""}
+    <div class="discovery-subsection"><small>NEXT ACTION</small><p>${escapeHtml(item.evidence?.next_action || "Keep this result in research.")}</p></div>
+    <p class="discovery-warning">Ready for MT5 means eligible for code generation and independent MT5 testing. It is not permission to trade real money.</p>`;
+}
+
+function renderValidationJobs(items = []) {
+  validationJobItems = items;
+  const host = $("#validationJobList");
+  if (!host) return;
+  if (!items.length) {
+    host.innerHTML = `<div class="empty-state">No ${escapeHtml(validationJobFilter === "all" ? "completed" : validationJobFilter.replaceAll("_", " "))} M1 validation results are available yet. EVE will queue surviving strategies automatically.</div>`;
+    renderValidationJobDetail(null);
+    return;
+  }
+  if (!selectedValidationJobId || !items.some((item) => item.id === selectedValidationJobId)) selectedValidationJobId = items[0].id;
+  host.innerHTML = items.map((item) => `
+    <button class="discovery-result-card validation-result-card ${escapeHtml(String(item.result_status || "rejected"))} ${item.id === selectedValidationJobId ? "selected" : ""}" type="button" data-validation-id="${escapeHtml(item.id)}">
+      <div class="discovery-result-head"><span class="discovery-result-status">${escapeHtml(validationStatusLabel(item.result_status))}</span><span class="discovery-result-date">${escapeHtml(formatDate(item.finished_at))}</span></div>
+      <h3>${escapeHtml(item.name || "M1 validation")}</h3>
+      <p>${escapeHtml(item.evidence?.verdict || validationExplanation(item))}</p>
+      <div class="discovery-result-metrics strategy-result-metrics">
+        <div><small>M1 PF</small><strong>${Number(item.profit_factor || 0).toFixed(2)}</strong></div>
+        <div><small>EXPECTANCY</small><strong>${formatR(item.expectancy_r)}</strong></div>
+        <div><small>TRADES</small><strong>${formatNumber(item.trades_total)}</strong></div>
+        <div><small>ROBUST</small><strong>${Number(item.robust_profile_ratio || 0).toFixed(0)}%</strong></div>
+      </div>
+    </button>`).join("");
+  renderValidationJobDetail(items.find((item) => item.id === selectedValidationJobId) || items[0]);
+}
+
+async function refreshValidation(silent = false) {
+  try {
+    const [statusPayload, jobsPayload] = await Promise.all([
+      api("validation/status?symbol=XAU%2FUSD"),
+      api(`validation/jobs?symbol=XAU%2FUSD&result_status=${encodeURIComponent(validationJobFilter)}&order=${encodeURIComponent(validationJobOrder)}&limit=150`),
+    ]);
+    renderValidationStatus(statusPayload.data || {});
+    renderValidationJobs(jobsPayload.data?.items || []);
+    setText("#validationExplorerStatus", "READY");
+    setClass("#validationExplorerStatus", "status-pill complete");
+    setText("#validationExplorerMessage", `Showing ${formatNumber(jobsPayload.data?.items?.length || 0)} completed high-resolution validations. Railway continues automatically.`);
+  } catch (error) {
+    setText("#validationExplorerStatus", "ERROR");
+    setClass("#validationExplorerStatus", "status-pill error");
+    setText("#validationExplorerMessage", error.message);
+    if (!silent) showToast(error.message, true);
+  }
+}
+
+async function wakeValidation(button) {
+  button.disabled = true;
+  try {
+    const payload = await api("validation/wake", { method: "POST", body: "{}" });
+    showToast(payload.message || "Validation Lab wake requested");
+    await refreshValidation(true);
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function listen(selector, eventName, handler) {
   const node = $(selector);
   if (node) node.addEventListener(eventName, handler);
@@ -1351,6 +1536,7 @@ listen("#refreshButton", "click", async () => {
   await refreshDiscoveryExplorer(true);
   await refreshStrategyLab(true);
   await refreshEvolution(true);
+  await refreshValidation(true);
   await refreshBacktests(true);
 });
 listen("#discoverySort", "change", async (event) => {
@@ -1420,6 +1606,29 @@ listen("#evolutionCandidateList", "click", (event) => {
   renderEvolutionCandidates(evolutionCandidateItems);
 });
 
+
+listen("#wakeValidation", "click", (event) => wakeValidation(event.currentTarget));
+listen("#refreshValidation", "click", () => refreshValidation());
+listen("#validationSort", "change", async (event) => {
+  validationJobOrder = event.currentTarget.value || "profit_factor";
+  selectedValidationJobId = null;
+  await refreshValidation();
+});
+document.querySelectorAll("[data-validation-filter]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    validationJobFilter = button.dataset.validationFilter || "all";
+    selectedValidationJobId = null;
+    document.querySelectorAll("[data-validation-filter]").forEach((item) => item.classList.toggle("active", item === button));
+    await refreshValidation();
+  });
+});
+listen("#validationJobList", "click", (event) => {
+  const card = event.target.closest("[data-validation-id]");
+  if (!card) return;
+  selectedValidationJobId = card.dataset.validationId;
+  renderValidationJobs(validationJobItems);
+});
+
 const navLinks = [...document.querySelectorAll(".nav-link")];
 const sections = navLinks.map((link) => document.querySelector(link.getAttribute("href"))).filter(Boolean);
 const observer = new IntersectionObserver((entries) => {
@@ -1436,6 +1645,7 @@ sections.forEach((section) => observer.observe(section));
   await refreshDiscoveryExplorer(true);
   await refreshStrategyLab(true);
   await refreshEvolution(true);
+  await refreshValidation(true);
   await refreshBacktests(true);
 })();
 refreshTimer = setInterval(async () => {
@@ -1443,9 +1653,11 @@ refreshTimer = setInterval(async () => {
   await refreshLearning(true);
   await refreshStrategyLab(true);
   await refreshEvolution(true);
+  await refreshValidation(true);
   await refreshBacktests(true);
 }, 10_000);
 
 discoveryRefreshTimer = setInterval(() => refreshDiscoveryExplorer(true), 30_000);
 strategyRefreshTimer = setInterval(() => refreshStrategyLab(true), 30_000);
 evolutionRefreshTimer = setInterval(() => refreshEvolution(true), 30_000);
+validationRefreshTimer = setInterval(() => refreshValidation(true), 30_000);

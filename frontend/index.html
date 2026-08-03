@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#07110f">
-  <meta name="description" content="EVE Algo Lab — permanent market memory, autonomous research, strategy generation and controlled strategy evolution for XAU/USD.">
+  <meta name="description" content="EVE Algo Lab — permanent market memory, autonomous research, strategy evolution and automatic M1 validation for XAU/USD.">
   <title>EVE Algo Lab</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=2.2">
+  <link rel="stylesheet" href="styles.css?v=2.3">
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -28,9 +28,10 @@
         <a class="nav-link" href="#learning"><span>03</span> Learning centre</a>
         <a class="nav-link" href="#strategy-lab"><span>04</span> Strategy Lab</a>
         <a class="nav-link" href="#evolution"><span>05</span> Evolution Lab</a>
-        <a class="nav-link" href="#backtester"><span>06</span> Backtester</a>
-        <a class="nav-link" href="#pipeline"><span>07</span> Build pipeline</a>
-        <a class="nav-link" href="#activity"><span>08</span> Activity</a>
+        <a class="nav-link" href="#validation"><span>06</span> Validation Lab</a>
+        <a class="nav-link" href="#backtester"><span>07</span> Backtester</a>
+        <a class="nav-link" href="#pipeline"><span>08</span> Build pipeline</a>
+        <a class="nav-link" href="#activity"><span>09</span> Activity</a>
       </nav>
       <div class="side-status">
         <span class="pulse" id="servicePulse"></span>
@@ -96,7 +97,7 @@
 
       <section id="memory" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">DATA FOUNDATION v2.2</p><h2>Six layers of market memory</h2></div>
+          <div><p class="eyebrow">DATA FOUNDATION v2.3</p><h2>Six layers of market memory</h2></div>
           <p>Railway downloads each timeframe in sequence and stores it permanently in Supabase. Each dataset has independent progress, resumable history, latest-candle sync and gap review.</p>
         </div>
         <div class="timeframe-grid" id="timeframeGrid" aria-live="polite"></div>
@@ -107,7 +108,7 @@
 
       <section id="learning" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">AUTONOMOUS LEARNING v2.2</p><h2>EVE now works without waiting for you</h2></div>
+          <div><p class="eyebrow">AUTONOMOUS LEARNING v2.3</p><h2>EVE now works without waiting for you</h2></div>
           <p>Two Railway workers now run in parallel: live learning keeps new candles current, while a dedicated historical researcher continuously mines stored data whether the market is open or closed.</p>
         </div>
 
@@ -235,7 +236,7 @@
 
         <article class="panel discovery-explorer-panel" id="discoveryExplorer">
           <div class="panel-head">
-            <div><p class="label">DISCOVERY EXPLORER v2.2</p><h2>Open what EVE has actually learned</h2></div>
+            <div><p class="label">DISCOVERY EXPLORER v2.3</p><h2>Open what EVE has actually learned</h2></div>
             <span class="status-pill complete" id="discoveryExplorerStatus">READY</span>
           </div>
           <p class="backtest-message" id="discoveryExplorerMessage">Inspect validated, promising and rejected historical tests. Every result shows the locked-test evidence behind it.</p>
@@ -280,7 +281,7 @@
 
       <section id="strategy-lab" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">STRATEGY IDEA FACTORY v2.2</p><h2>Turn research into testable bot rules</h2></div>
+          <div><p class="eyebrow">STRATEGY IDEA FACTORY v2.3</p><h2>Turn research into testable bot rules</h2></div>
           <p>EVE continuously converts validated and promising discoveries into rule-based strategy candidates, tests them on chronological unseen data and rejects candidates that do not improve on their unfiltered baseline.</p>
         </div>
 
@@ -454,9 +455,113 @@
         </article>
       </section>
 
+
+      <section id="validation" class="section-block">
+        <div class="section-title">
+          <div><p class="eyebrow">AUTOMATIC HIGH-RESOLUTION VALIDATION v2.3</p><h2>Make surviving strategies prove they can survive M1 execution</h2></div>
+          <p>EVE automatically replays Champion, Elite and validated strategies on stored M1 candles, stresses execution costs and challenges nearby parameters before freezing any rule set for MT5 generation.</p>
+        </div>
+
+        <article class="panel validation-worker-panel">
+          <div class="panel-head">
+            <div><p class="label">AUTONOMOUS VALIDATION WORKER</p><h2>M1 replay → cost stress → robustness → frozen rules</h2></div>
+            <span class="status-pill" id="validationStatus">CHECKING</span>
+          </div>
+          <p class="backtest-message" id="validationMessage">Checking Railway's automatic validation worker.</p>
+          <div class="research-worker-current">
+            <small>CURRENT STRATEGY</small>
+            <strong id="validationCurrentJob">Waiting for the worker heartbeat</strong>
+          </div>
+          <div class="research-worker-grid validation-worker-grid">
+            <div><small>WORKER HEARTBEAT</small><strong id="validationHeartbeat">—</strong></div>
+            <div><small>QUEUED</small><strong id="validationQueued">0</strong></div>
+            <div><small>COMPLETED</small><strong id="validationCompleted">0</strong></div>
+            <div><small>M1 WINDOWS SCANNED</small><strong id="validationWindows">0</strong></div>
+            <div><small>REJECTED</small><strong id="validationRejected">0</strong></div>
+            <div><small>NEEDS EVIDENCE</small><strong id="validationNeedsEvidence">0</strong></div>
+            <div><small>REPLAY VALIDATED</small><strong id="validationReplayValidated">0</strong></div>
+            <div><small>READY FOR MT5</small><strong id="validationMt5Ready">0</strong></div>
+          </div>
+          <div class="foundation-note compact-note" id="validationLastResult">The exact evolved rules are replayed first. Nearby settings are challenged, not optimised, and any same-M1-bar stop/target ambiguity is counted as a stop.</div>
+          <div class="actions">
+            <button class="button" id="wakeValidation">Wake Validation Lab now</button>
+            <button class="button button-quiet" id="refreshValidation">Refresh</button>
+          </div>
+        </article>
+
+        <div class="validation-top-grid">
+          <article class="panel validation-ready-panel">
+            <div class="panel-head">
+              <div><p class="label">BEST MT5-READY STRATEGY</p><h2 id="validationBestName">Waiting for a strategy to pass</h2></div>
+              <span class="status-pill" id="validationBestStatus">WAITING</span>
+            </div>
+            <p class="backtest-message" id="validationBestVerdict">EVE will freeze a rule set only after M1 replay, elevated-cost stress and parameter-neighbourhood checks pass.</p>
+            <div class="strategy-summary-grid validation-best-metrics">
+              <div><small>M1 LOCKED PF</small><strong id="validationBestPF">—</strong></div>
+              <div><small>EXPECTANCY</small><strong id="validationBestExpectancy">—</strong></div>
+              <div><small>DRAWDOWN</small><strong id="validationBestDrawdown">—</strong></div>
+              <div><small>M1 TRADES</small><strong id="validationBestTrades">—</strong></div>
+              <div><small>ROBUST PROFILES</small><strong id="validationBestRobustness">—</strong></div>
+              <div><small>YEAR STABILITY</small><strong id="validationBestStability">—</strong></div>
+            </div>
+            <div class="discovery-subsection"><small>FROZEN BOT RULES</small><div class="condition-chip-list" id="validationBestRules"><span class="condition-chip">Waiting for frozen rules</span></div></div>
+          </article>
+
+          <article class="panel validation-progress-panel">
+            <div class="panel-head"><div><p class="label">AUTOMATIC PROMOTION PATH</p><h2>You do not run these tests yourself</h2></div><span class="status-pill complete">CONTROLLED</span></div>
+            <div class="validation-path">
+              <div class="done"><span>1</span><strong>Research finding</strong><small>Historical relationship survives validation.</small></div>
+              <div class="done"><span>2</span><strong>Strategy + evolution</strong><small>Rules are generated, tested and improved.</small></div>
+              <div class="active"><span>3</span><strong>M1 validation</strong><small>Execution path, costs and nearby settings are challenged automatically.</small></div>
+              <div><span>4</span><strong>MT5 generation</strong><small>The next stage creates an EA only from frozen rules.</small></div>
+              <div><span>5</span><strong>Demo forward test</strong><small>No real-money promotion without live evidence.</small></div>
+            </div>
+          </article>
+        </div>
+
+        <article class="panel validation-explorer-panel">
+          <div class="panel-head">
+            <div><p class="label">VALIDATION HISTORY</p><h2>See exactly why a strategy passed or failed</h2></div>
+            <span class="status-pill" id="validationExplorerStatus">WAITING</span>
+          </div>
+          <p class="backtest-message" id="validationExplorerMessage">Completed M1 validations will appear here.</p>
+          <div class="discovery-toolbar">
+            <div class="discovery-filter-group" role="group" aria-label="Validation result filter">
+              <button class="validation-filter active" type="button" data-validation-filter="all">All</button>
+              <button class="validation-filter" type="button" data-validation-filter="ready_for_mt5_generation">Ready for MT5</button>
+              <button class="validation-filter" type="button" data-validation-filter="replay_validated">Replay validated</button>
+              <button class="validation-filter" type="button" data-validation-filter="needs_more_evidence">Needs evidence</button>
+              <button class="validation-filter" type="button" data-validation-filter="rejected">Rejected</button>
+            </div>
+            <label class="discovery-sort-label">SORT
+              <select id="validationSort">
+                <option value="profit_factor">Highest M1 profit factor</option>
+                <option value="expectancy">Highest expectancy</option>
+                <option value="robustness">Best parameter robustness</option>
+                <option value="drawdown">Lowest drawdown</option>
+                <option value="recent">Most recent</option>
+              </select>
+            </label>
+          </div>
+          <div class="strategy-summary-grid validation-summary-grid">
+            <div><small>TESTED</small><strong id="validationTestedCount">0</strong></div>
+            <div><small>REJECTED</small><strong id="validationRejectedCount">0</strong></div>
+            <div><small>REPLAY VALIDATED</small><strong id="validationPassedCount">0</strong></div>
+            <div><small>READY FOR MT5</small><strong id="validationReadyCount">0</strong></div>
+          </div>
+          <div class="discovery-explorer-layout validation-explorer-layout">
+            <div class="discovery-explorer-list" id="validationJobList"><div class="empty-state">Loading validation results…</div></div>
+            <aside class="discovery-detail validation-detail" id="validationJobDetail" aria-live="polite">
+              <div class="discovery-detail-empty"><small>SELECT A VALIDATION</small><strong>Click any result to inspect the M1 evidence</strong><p>You will see the exact rule set, M1 locked result, cost stresses, parameter-neighbourhood survival and EVE's next action.</p></div>
+            </aside>
+          </div>
+          <p class="foundation-note compact-note"><strong>Still not a trading instruction:</strong> “Ready for MT5” means the rules are frozen and eligible for EA generation. It does not permit live trading; MT5 testing and demo forward validation still come next.</p>
+        </article>
+      </section>
+
       <section id="backtester" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">RESEARCH BACKTESTER v2.2</p><h2>EVE Fixed Ladder v2.61</h2></div>
+          <div><p class="eyebrow">RESEARCH BACKTESTER v2.3</p><h2>EVE Fixed Ladder v2.61</h2></div>
           <p>The existing M5 approximation and M1 high-resolution replay remain available while the broader research memory is expanded.</p>
         </div>
 
@@ -551,7 +656,8 @@
           <article class="pipeline-card current"><div class="stage">v1.7</div><span>06</span><h3>Continuous Historical Research</h3><p>A dedicated 24/7 worker generates, tests and challenges past-data questions regardless of market hours.</p></article>
           <article class="pipeline-card current"><div class="stage">v2.0</div><span>07</span><h3>Strategy Idea Factory</h3><p>Validated research is converted into entry, filter, risk and exit rules, then challenged on locked chronological data.</p></article>
           <article class="pipeline-card current"><div class="stage">v2.2</div><span>08</span><h3>Strategy Evolution Engine</h3><p>Surviving strategies form lineages. EVE mutates and combines their rules, compares every child with its parent and keeps stronger development champions.</p></article>
-          <article class="pipeline-card"><div class="stage">NEXT</div><span>09</span><h3>Automatic Validation Pipeline</h3><p>High-resolution M1 replay, execution-cost stress, parameter-neighbourhood testing and readiness grading before demo forward testing.</p></article>
+          <article class="pipeline-card current"><div class="stage">v2.3</div><span>09</span><h3>Automatic Validation Pipeline</h3><p>High-resolution M1 replay, execution-cost stress, parameter-neighbourhood testing and immutable rule freezing before MT5 generation.</p></article>
+          <article class="pipeline-card"><div class="stage">NEXT</div><span>10</span><h3>MT5 EA Generator</h3><p>Only frozen strategies marked Ready for MT5 can be converted into a complete versioned Expert Advisor for independent MT5 testing.</p></article>
         </div>
       </section>
 
@@ -563,11 +669,11 @@
         <div class="activity-list" id="activityList"><div class="empty-state">Waiting for Supabase activity…</div></div>
       </section>
 
-      <footer><span>EVE ALGO LAB · v2.2</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
+      <footer><span>EVE ALGO LAB · v2.3</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
     </main>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=2.2" defer></script>
+  <script src="app.js?v=2.3" defer></script>
 </body>
 </html>

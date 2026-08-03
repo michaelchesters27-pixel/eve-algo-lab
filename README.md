@@ -1,31 +1,33 @@
-# EVE Algo Lab v2.2
+# EVE Algo Lab v2.3
 
 EVE Algo Lab is a private XAU/USD research platform running on Supabase, Railway, Netlify and Twelve Data.
 
-It stores M1, M5, M15, H1, H4 and D1 history, maintains autonomous learning, researches past market states continuously, converts discoveries into strategy candidates and now evolves the strongest candidates through controlled parent-versus-child experiments.
+It stores M1, M5, M15, H1, H4 and D1 market history, learns automatically, researches historical relationships continuously, creates strategy candidates, evolves stronger descendants and now validates surviving strategies on stored M1 execution paths.
 
-## v2.2 Strategy Evolution Engine
+## v2.3 Automatic High-Resolution Validation
 
-The autonomous Evolution Lab:
+The autonomous Validation Lab:
 
-1. Seeds up to 20 active lineages from the strongest Elite, Validated and Promising Strategy Lab candidates.
-2. Mutates one rule at a time: ATR stop, ATR target, cooldown, direction or filter mode.
-3. Combines compatible conditions from two strong lineages without creating contradictory filters.
-4. Compares every child with its direct parent on the same chronological training and validation rows.
-5. Selects the next development champion using validation evidence only.
-6. Keeps the locked period sealed from parameter selection; it supplies a readiness grade and catastrophic-loss veto.
-7. Records every generation, mutation, rejection, development champion, champion and elite result.
-8. Continues on Railway while the browser and computer are off.
+1. Finds Champion, Elite and validated strategies that have not yet received M1 validation.
+2. Recreates every eligible entry without same-candle look-ahead: an M5 feature snapshot can only enter on the first available M1 bar after the source M5 candle closes.
+3. Replays the stop, target and maximum holding period on stored M1 candles.
+4. Counts the stop first whenever one M1 candle could have reached both stop and target.
+5. Tests standard, elevated and severe execution-cost assumptions.
+6. Challenges nearby stop, target, holding-period and cooldown settings without choosing a new parameter from the locked period.
+7. Reports yearly, monthly, weekday, session and regime behaviour.
+8. Rejects weak strategies, requests more evidence for undersized samples, or marks a strategy Replay Validated.
+9. Freezes an immutable SHA-256 rule version only when every MT5-readiness threshold passes.
+10. Continues automatically on Railway while the browser and computer are off.
 
-## Status meanings
+## Validation statuses
 
-- **Rejected** — did not improve its parent on validation, or triggered the locked-period safety veto.
-- **Development** — improved validation and may seed the next generation, but locked evidence is not ready.
-- **Champion** — improved validation and remained positive and stable on locked data.
-- **Elite** — a champion with stronger locked-test thresholds.
+- **Rejected** — failed M1 replay, cost stress, data completeness, stability or parameter-neighbourhood safeguards.
+- **Needs more evidence** — M1 result stayed positive but the high-resolution sample is too small.
+- **Replay validated** — passed the core M1 replay but did not clear every final MT5-readiness threshold.
+- **Ready for MT5 generation** — passed M1 replay, elevated-cost stress, parameter robustness and rule-freezing requirements.
 
 ## Important
 
-This remains research-grade M5 outcome replay. No Evolution result is ready for real-money deployment until it passes M1/tick replay, realistic broker-cost stress and forward testing.
+“Ready for MT5 generation” does not mean live-ready. It means the exact rules are frozen and eligible for the next build: a versioned `.mq5` Expert Advisor, independent MT5 testing and demo forward validation.
 
 See `DEPLOYMENT_GUIDE.md`.
