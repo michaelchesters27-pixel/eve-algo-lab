@@ -1,26 +1,28 @@
-# EVE Algo Lab v2.4
+# EVE Algo Lab v2.5
 
-EVE Algo Lab is a private XAU/USD research and strategy-development platform running on Supabase, Railway, Netlify and Twelve Data.
+EVE Algo Lab is a private XAU/USD research platform using Supabase, Railway, Netlify and Twelve Data.
 
-It stores six timeframes of history, learns automatically, researches historical relationships, generates strategy candidates, evolves stronger descendants, validates survivors on M1 execution paths and now creates versioned MT5 Expert Advisor source packages from immutable frozen rules.
+## v2.5 Demo Eligibility Lab
 
-## v2.4 Automatic MT5 EA Generator
+v2.5 reads every generated EA's immutable frozen rules and labels the practical demo-testing action:
 
-The autonomous MT5 Generator:
+- **TEST NOW** — the current tested calendar window and latest stored M5 context are eligible.
+- **ATTACH AND LEAVE** — attach to an XAUUSD M5 demo chart; the EA is waiting for its market condition.
+- **WAIT FOR TIME** — the required UTC hour or session is not active yet.
+- **WAIT FOR PERIOD** — the required weekday, week, month or quarter is not active.
+- **MARKET CLOSED** — wait for the estimated gold-market reopen.
 
-1. Finds frozen strategies marked `ready_for_mt5_generation`.
-2. Refuses unsupported or mutable rule definitions.
-3. Translates EVE's calendar, session, volatility, trend, alignment and candle-state conditions into MQL5.
-4. Embeds the strategy code, frozen version and SHA-256 rule hash in the source.
-5. Generates ATR-based stop, target, maximum-hold and cooldown enforcement.
-6. Adds risk sizing, spread protection, one-position control, daily-loss protection and persistent cooldown state.
-7. Defaults every EA to `InpEnableTrading=false`.
-8. Stores the `.mq5` source, frozen rules, validation report, manifest and checksums.
-9. Makes a complete ZIP and the standalone `.mq5` source downloadable from MT5 Lab.
-10. Continues automatically on Railway with the browser and computer switched off.
+The Demo Lab ranks bots by practical availability first, then locked-test profit factor and expectancy. A higher-profit seasonal EA no longer outranks a sound EA that can actually be tested now.
 
-## Important
+## Existing autonomous pipeline
 
-A generated EA is **ready for MetaEditor compilation and demo testing**, not ready for live money. MetaEditor must compile the `.mq5` file into an `.ex5`, and broker-side demo forward testing must confirm that execution resembles EVE's historical expectations.
+1. Multi-timeframe market memory: M1, M5, M15, H1, H4 and D1.
+2. Autonomous learning and historical research.
+3. Strategy generation and evolution.
+4. M1 replay, cost stress and immutable rule freezing.
+5. MT5 `.mq5` package generation.
+6. Demo eligibility guidance.
 
-See `DEPLOYMENT_GUIDE.md`.
+## Safety
+
+All generated EAs default to `InpEnableTrading=false`. Demo Lab cannot see whether an EA is physically attached in MT5 or whether its Inputs were changed. Use a demo account only.

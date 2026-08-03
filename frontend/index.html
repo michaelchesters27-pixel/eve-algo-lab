@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#07110f">
-  <meta name="description" content="EVE Algo Lab — permanent market memory, autonomous research, strategy evolution and automatic M1 validation and frozen-rule MT5 EA generation for XAU/USD.">
+  <meta name="description" content="EVE Algo Lab — permanent market memory, autonomous research, strategy evolution and automatic M1 validation, frozen-rule MT5 EA generation and demo eligibility guidance for XAU/USD.">
   <title>EVE Algo Lab</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=2.4">
+  <link rel="stylesheet" href="styles.css?v=2.5">
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -30,9 +30,10 @@
         <a class="nav-link" href="#evolution"><span>05</span> Evolution Lab</a>
         <a class="nav-link" href="#validation"><span>06</span> Validation Lab</a>
         <a class="nav-link" href="#mt5-lab"><span>07</span> MT5 Lab</a>
-        <a class="nav-link" href="#backtester"><span>08</span> Backtester</a>
-        <a class="nav-link" href="#pipeline"><span>09</span> Build pipeline</a>
-        <a class="nav-link" href="#activity"><span>10</span> Activity</a>
+        <a class="nav-link" href="#demo-lab"><span>08</span> Demo Lab</a>
+        <a class="nav-link" href="#backtester"><span>09</span> Backtester</a>
+        <a class="nav-link" href="#pipeline"><span>10</span> Build pipeline</a>
+        <a class="nav-link" href="#activity"><span>11</span> Activity</a>
       </nav>
       <div class="side-status">
         <span class="pulse" id="servicePulse"></span>
@@ -98,7 +99,7 @@
 
       <section id="memory" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">DATA FOUNDATION v2.4</p><h2>Six layers of market memory</h2></div>
+          <div><p class="eyebrow">DATA FOUNDATION v2.5</p><h2>Six layers of market memory</h2></div>
           <p>Railway downloads each timeframe in sequence and stores it permanently in Supabase. Each dataset has independent progress, resumable history, latest-candle sync and gap review.</p>
         </div>
         <div class="timeframe-grid" id="timeframeGrid" aria-live="polite"></div>
@@ -109,7 +110,7 @@
 
       <section id="learning" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">AUTONOMOUS LEARNING v2.4</p><h2>EVE now works without waiting for you</h2></div>
+          <div><p class="eyebrow">AUTONOMOUS LEARNING v2.5</p><h2>EVE now works without waiting for you</h2></div>
           <p>Two Railway workers now run in parallel: live learning keeps new candles current, while a dedicated historical researcher continuously mines stored data whether the market is open or closed.</p>
         </div>
 
@@ -563,7 +564,7 @@
 
       <section id="mt5-lab" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">AUTOMATIC MT5 EA GENERATOR v2.4</p><h2>Turn frozen evidence into a downloadable Expert Advisor package</h2></div>
+          <div><p class="eyebrow">AUTOMATIC MT5 EA GENERATOR v2.5</p><h2>Turn frozen evidence into a downloadable Expert Advisor package</h2></div>
           <p>EVE only generates code from immutable strategies marked Ready for MT5. Every package contains the .mq5 source, frozen rules, validation evidence, checksums and demo-only installation instructions.</p>
         </div>
 
@@ -637,9 +638,69 @@
         </article>
       </section>
 
+
+      <section id="demo-lab" class="section-block">
+        <div class="section-title">
+          <div><p class="eyebrow">DEMO ELIGIBILITY LAB v2.5</p><h2>Know which EA to attach now — and which ones to leave alone</h2></div>
+          <p>EVE reads every frozen bot rule, compares it with the current UTC/UK time and latest stored M5 market context, then labels the practical next action in plain English.</p>
+        </div>
+
+        <article class="panel demo-overview-panel">
+          <div class="panel-head">
+            <div><p class="label">CURRENT DEMO-TESTING WINDOW</p><h2 id="demoMarketHeadline">Checking the gold market and EVE's latest M5 context</h2></div>
+            <span class="status-pill" id="demoMarketStatus">CHECKING</span>
+          </div>
+          <p class="backtest-message" id="demoMessage">Loading generated bots and current eligibility.</p>
+          <div class="research-worker-grid demo-time-grid">
+            <div><small>UTC NOW</small><strong id="demoUtcNow">—</strong></div>
+            <div><small>UK NOW</small><strong id="demoUkNow">—</strong></div>
+            <div><small>LATEST M5 CONTEXT</small><strong id="demoSnapshotTime">—</strong></div>
+            <div><small>TEST NOW</small><strong id="demoTestNowCount">0</strong></div>
+            <div><small>ATTACH &amp; LEAVE</small><strong id="demoAttachCount">0</strong></div>
+            <div><small>WAITING</small><strong id="demoWaitingCount">0</strong></div>
+          </div>
+          <div class="actions">
+            <button class="button button-quiet" id="refreshDemoLab">Refresh eligibility</button>
+          </div>
+        </article>
+
+        <article class="panel demo-recommended-panel">
+          <div class="panel-head">
+            <div><p class="label">EVE'S PRACTICAL RECOMMENDATION</p><h2 id="demoRecommendedName">Waiting for generated EAs</h2></div>
+            <span class="status-pill" id="demoRecommendedStatus">WAITING</span>
+          </div>
+          <p class="demo-recommendation-headline" id="demoRecommendedHeadline">EVE will prioritise bots that can actually operate in the current period.</p>
+          <p class="backtest-message" id="demoRecommendedRule">Frozen rule summary will appear here.</p>
+          <div class="strategy-summary-grid demo-recommended-metrics">
+            <div><small>LOCKED PF</small><strong id="demoRecommendedPF">—</strong></div>
+            <div><small>EXPECTANCY</small><strong id="demoRecommendedExpectancy">—</strong></div>
+            <div><small>TRADES</small><strong id="demoRecommendedTrades">—</strong></div>
+            <div><small>ATTACH TO</small><strong id="demoRecommendedChart">XAUUSD M5</strong></div>
+          </div>
+          <div class="demo-action-box">
+            <small>WHAT YOU DO</small>
+            <strong id="demoRecommendedAction">Wait for EVE to finish checking the packages.</strong>
+          </div>
+          <div class="actions">
+            <a class="button button-primary disabled-link" id="demoRecommendedDownload" href="#" aria-disabled="true">Download recommended package</a>
+            <a class="button disabled-link" id="demoRecommendedSource" href="#" aria-disabled="true">Download .mq5 only</a>
+          </div>
+          <p class="discovery-warning">Demo only. EVE cannot see whether you have physically attached the EA or changed its Inputs. After attaching, set <strong>InpEnableTrading=true</strong> and enable MT5 Algo Trading.</p>
+        </article>
+
+        <article class="panel demo-list-panel">
+          <div class="panel-head">
+            <div><p class="label">ALL GENERATED BOTS — LABELLED</p><h2>When each EA can be tested</h2></div>
+            <span class="status-pill" id="demoListStatus">CHECKING</span>
+          </div>
+          <div class="demo-bot-list" id="demoBotList"><div class="empty-state">Loading bot eligibility…</div></div>
+          <p class="foundation-note compact-note" id="demoDisclaimer">Eligibility uses frozen rules, UTC/UK time and EVE's latest stored M5 context. Broker session boundaries can differ slightly.</p>
+        </article>
+      </section>
+
       <section id="backtester" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">RESEARCH BACKTESTER v2.4</p><h2>EVE Fixed Ladder v2.61</h2></div>
+          <div><p class="eyebrow">RESEARCH BACKTESTER v2.5</p><h2>EVE Fixed Ladder v2.61</h2></div>
           <p>The existing M5 approximation and M1 high-resolution replay remain available while the broader research memory is expanded.</p>
         </div>
 
@@ -736,7 +797,8 @@
           <article class="pipeline-card current"><div class="stage">v2.2</div><span>08</span><h3>Strategy Evolution Engine</h3><p>Surviving strategies form lineages. EVE mutates and combines their rules, compares every child with its parent and keeps stronger development champions.</p></article>
           <article class="pipeline-card current"><div class="stage">v2.3</div><span>09</span><h3>Automatic Validation Pipeline</h3><p>High-resolution M1 replay, execution-cost stress, parameter-neighbourhood testing and immutable rule freezing before MT5 generation.</p></article>
           <article class="pipeline-card current"><div class="stage">v2.4</div><span>10</span><h3>MT5 EA Generator</h3><p>Frozen strategies are converted into versioned .mq5 packages with safety locks, evidence, checksums and demo-only handoff instructions.</p></article>
-          <article class="pipeline-card"><div class="stage">NEXT</div><span>11</span><h3>Demo Forward Test</h3><p>Broker-side execution is compared with EVE expectations before any strategy can be considered for a small controlled live trial.</p></article>
+          <article class="pipeline-card current"><div class="stage">v2.5</div><span>11</span><h3>Demo Eligibility Lab</h3><p>Every generated bot is labelled TEST NOW, ATTACH AND LEAVE, WAIT FOR TIME, WAIT FOR PERIOD or MARKET CLOSED from its exact frozen rules.</p></article>
+          <article class="pipeline-card"><div class="stage">NEXT</div><span>12</span><h3>Demo Forward Telemetry</h3><p>MT5 trade logs and execution data are compared with EVE expectations before any strategy can be considered for a controlled live trial.</p></article>
         </div>
       </section>
 
@@ -748,11 +810,11 @@
         <div class="activity-list" id="activityList"><div class="empty-state">Waiting for Supabase activity…</div></div>
       </section>
 
-      <footer><span>EVE ALGO LAB · v2.4</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
+      <footer><span>EVE ALGO LAB · v2.5</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
     </main>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=2.4" defer></script>
+  <script src="app.js?v=2.5" defer></script>
 </body>
 </html>

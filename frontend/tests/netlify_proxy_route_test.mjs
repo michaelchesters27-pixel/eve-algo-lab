@@ -71,3 +71,8 @@ assert.equal(response.status, 200);
 assert.equal(calls[13].url, "https://railway.example/api/mt5/wake");
 assert.equal(calls[13].options.headers["X-EVE-ADMIN-TOKEN"], "test-token");
 console.log("Netlify proxy MT5 Generator routes: PASS");
+
+response = await proxy(new Request("https://eve.example/api/mt5/eligibility?symbol=XAU%2FUSD&limit=100"));
+assert.equal(response.status, 200);
+assert.equal(calls[14].url, "https://railway.example/api/mt5/eligibility?symbol=XAU%2FUSD&limit=100");
+console.log("Netlify proxy Demo Eligibility route: PASS");

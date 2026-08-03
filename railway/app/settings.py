@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     high_resolution_validation_idle_seconds: float = Field(default=90.0, ge=10.0, le=3600.0)
     high_resolution_validation_queue_floor: int = Field(default=3, ge=1, le=100)
 
-    # v2.4 automatic MT5 source generator. Frozen strategies are converted into
+    # v2.5 automatic MT5 source generator and demo eligibility labelling. Frozen strategies are converted into
     # versioned .mq5 demo-testing packages without adding Railway variables.
     mt5_generator_enabled: bool = True
     mt5_generator_startup_delay_seconds: int = Field(default=120, ge=30, le=7200)

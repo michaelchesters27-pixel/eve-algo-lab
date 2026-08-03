@@ -28,11 +28,12 @@ from app.services.strategy_lab import StrategyLabService
 from app.services.strategy_evolution import StrategyEvolutionService
 from app.services.high_resolution_validation import HighResolutionValidationService
 from app.services.mt5_generator import MT5GeneratorService, build_package_zip
+from app.services.demo_eligibility import build_demo_dashboard
 from app.services.supabase_repo import SupabaseRepository
 from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
 from app.settings import Settings, get_settings
 
-APP_VERSION = "2.4"
+APP_VERSION = "2.5"
 
 settings = get_settings()
 logging.basicConfig(
@@ -100,7 +101,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="EVE Algo Lab API",
     version=APP_VERSION,
-    description="Permanent multi-timeframe XAU/USD memory with autonomous learning, continuous historical research, an autonomous Strategy Idea Factory, controlled strategy evolution, automatic M1 validation, frozen-rule MT5 EA generation and high-resolution backtesting.",
+    description="Permanent multi-timeframe XAU/USD memory with autonomous learning, continuous historical research, an autonomous Strategy Idea Factory, controlled strategy evolution, automatic M1 validation, frozen-rule MT5 EA generation, live eligibility labelling and high-resolution backtesting.",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -439,6 +440,20 @@ async def list_mt5_packages(
 ) -> ApiEnvelope:
     items = await repo.list_mt5_packages(symbol, limit=limit)
     return ApiEnvelope(data={"items": items})
+
+
+@app.get("/api/mt5/eligibility", response_model=ApiEnvelope)
+async def mt5_demo_eligibility(
+    symbol: str = Query(default="XAU/USD", min_length=3, max_length=40),
+    limit: int = Query(default=100, ge=1, le=200),
+) -> ApiEnvelope:
+    packages = await repo.list_mt5_packages(symbol, limit=limit)
+    snapshot = await repo.get_latest_learning_snapshot(symbol, SNAPSHOT_INTERVAL)
+    dashboard = build_demo_dashboard(packages, snapshot)
+    dashboard["service"] = "online"
+    dashboard["version"] = APP_VERSION
+    dashboard["symbol"] = symbol
+    return ApiEnvelope(data=dashboard)
 
 
 @app.get("/api/mt5/packages/{package_id}/download")

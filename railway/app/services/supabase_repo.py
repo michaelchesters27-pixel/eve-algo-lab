@@ -1360,7 +1360,7 @@ class SupabaseRepository:
         safe_limit = max(1, min(200, int(limit)))
         return await self.select(
             "mt5_packages",
-            "select=id,package_code,symbol,frozen_strategy_id,source_generation_job_id,strategy_code,strategy_name,frozen_version,rule_hash,file_name,source_sha256,static_validation,status,manifest,validation_report,generated_at,updated_at"
+            "select=id,package_code,symbol,frozen_strategy_id,source_generation_job_id,strategy_code,strategy_name,frozen_version,rule_hash,file_name,frozen_rules,source_sha256,static_validation,status,manifest,validation_report,generated_at,updated_at"
             f"&symbol=eq.{quote(symbol, safe='')}&order=generated_at.desc&limit={safe_limit}",
         )
 

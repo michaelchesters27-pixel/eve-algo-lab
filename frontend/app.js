@@ -77,6 +77,8 @@ let validationRefreshTimer;
 let mt5Dashboard = null;
 let mt5PackageItems = [];
 let mt5RefreshTimer;
+let demoEligibilityDashboard = null;
+let demoRefreshTimer;
 const activeBackfillJobIds = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
 const historicalReady = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, false]));
 const marketStates = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
@@ -1636,6 +1638,96 @@ async function wakeMt5(button) {
   }
 }
 
+
+function demoStatusClass(status) {
+  if (status === "active_now") return "test-now";
+  if (status === "attach_now_waiting_market_condition") return "attach-leave";
+  if (status === "waiting_for_trading_window") return "wait-time";
+  if (status === "waiting_for_period") return "wait-period";
+  if (status === "market_closed") return "market-closed";
+  return "waiting";
+}
+
+function renderDemoRecommended(item = {}) {
+  const hasItem = Boolean(item.package_id);
+  setText("#demoRecommendedName", item.strategy_name || "Waiting for generated EAs");
+  setText("#demoRecommendedStatus", hasItem ? item.status_label : "WAITING");
+  setClass("#demoRecommendedStatus", `status-pill ${hasItem ? demoStatusClass(item.status) : "waiting"}`);
+  setText("#demoRecommendedHeadline", item.headline || "EVE will prioritise bots that can actually operate in the current period.");
+  setText("#demoRecommendedRule", item.rule_summary || "Frozen rule summary will appear here.");
+  setText("#demoRecommendedPF", hasItem ? Number(item.locked_profit_factor || 0).toFixed(2) : "—");
+  setText("#demoRecommendedExpectancy", hasItem ? formatR(item.locked_expectancy_r) : "—");
+  setText("#demoRecommendedTrades", hasItem ? formatNumber(item.locked_trades) : "—");
+  setText("#demoRecommendedChart", item.attach_to || "XAUUSD M5");
+  setText("#demoRecommendedAction", item.next_action || "Wait for EVE to finish checking the packages.");
+  setDownloadLink("#demoRecommendedDownload", item.package_id, "download");
+  setDownloadLink("#demoRecommendedSource", item.package_id, "source");
+}
+
+function renderDemoBotList(items = []) {
+  const host = $("#demoBotList");
+  if (!host) return;
+  if (!items.length) {
+    host.innerHTML = '<div class="empty-state">No generated MT5 packages are available yet.</div>';
+    return;
+  }
+  host.innerHTML = items.map((item, index) => {
+    const chips = (item.conditions || []).map((condition) => `<span class="demo-condition-chip ${condition.matched ? "match" : "missing"}">${condition.matched ? "✓" : "○"} ${escapeHtml(condition.label)}</span>`).join("");
+    return `<article class="demo-bot-card ${escapeHtml(item.status || "")}">
+      <div class="demo-bot-head">
+        <div><small>${index === 0 ? "TOP PRACTICAL CHOICE" : escapeHtml(item.package_code || "GENERATED EA")}</small><h3>${escapeHtml(item.strategy_name || item.strategy_code || "EVE strategy")}</h3></div>
+        <span class="status-pill ${demoStatusClass(item.status)}">${escapeHtml(item.status_label || "WAITING")}</span>
+      </div>
+      <p class="demo-bot-rule">${escapeHtml(item.rule_summary || "Frozen strategy rules")}</p>
+      ${chips ? `<div class="demo-condition-list">${chips}</div>` : ""}
+      <div class="strategy-summary-grid demo-bot-metrics">
+        <div><small>LOCKED PF</small><strong>${Number(item.locked_profit_factor || 0).toFixed(2)}</strong></div>
+        <div><small>EXPECTANCY</small><strong>${formatR(item.locked_expectancy_r)}</strong></div>
+        <div><small>TRADES</small><strong>${formatNumber(item.locked_trades)}</strong></div>
+      </div>
+      <div class="demo-bot-action"><small>WHAT YOU DO</small><strong>${escapeHtml(item.next_action || "Wait for the next eligibility check.")}</strong></div>
+      <p><strong>Attach to:</strong> ${escapeHtml(item.attach_to || "XAUUSD M5")}<br><strong>Demo setting:</strong> ${escapeHtml(item.demo_switch || "Set InpEnableTrading=true")}</p>
+      <div class="actions compact-actions">
+        <a class="button button-primary" href="${escapeHtml(item.download_url || "#")}">Download package</a>
+        <a class="button" href="${escapeHtml(item.source_url || "#")}">Download .mq5</a>
+      </div>
+    </article>`;
+  }).join("");
+}
+
+function renderDemoEligibility(data = {}) {
+  demoEligibilityDashboard = data;
+  const counts = data.counts || {};
+  const open = Boolean(data.market_open_estimate);
+  setText("#demoMarketStatus", open ? "MARKET OPEN" : "MARKET CLOSED");
+  setClass("#demoMarketStatus", `status-pill ${open ? "complete" : "market-closed"}`);
+  setText("#demoMarketHeadline", open ? "Gold is open — EVE has ranked the bots you can test" : "Gold is closed — EVE has calculated the next practical windows");
+  setText("#demoMessage", data.disclaimer || "Eligibility is based on each bot's frozen rules and EVE's latest M5 context.");
+  setText("#demoUtcNow", data.time?.utc_label || "—");
+  setText("#demoUkNow", data.time?.uk_label || "—");
+  setText("#demoSnapshotTime", formatDate(data.latest_snapshot_time, true));
+  setText("#demoTestNowCount", formatNumber(counts.test_now));
+  setText("#demoAttachCount", formatNumber(counts.attach_and_leave));
+  setText("#demoWaitingCount", formatNumber(Number(counts.waiting_for_time || 0) + Number(counts.waiting_for_period || 0) + Number(counts.market_closed || 0)));
+  renderDemoRecommended(data.recommended || {});
+  renderDemoBotList(data.items || []);
+  setText("#demoListStatus", "READY");
+  setClass("#demoListStatus", "status-pill complete");
+  setText("#demoDisclaimer", data.disclaimer || "Demo only.");
+}
+
+async function refreshDemoEligibility(silent = false) {
+  try {
+    const payload = await api("mt5/eligibility?symbol=XAU%2FUSD&limit=100");
+    renderDemoEligibility(payload.data || {});
+  } catch (error) {
+    setText("#demoListStatus", "ERROR");
+    setClass("#demoListStatus", "status-pill error");
+    setText("#demoMessage", error.message);
+    if (!silent) showToast(error.message, true);
+  }
+}
+
 function listen(selector, eventName, handler) {
   const node = $(selector);
   if (node) node.addEventListener(eventName, handler);
@@ -1660,6 +1752,7 @@ listen("#refreshButton", "click", async () => {
   await refreshEvolution(true);
   await refreshValidation(true);
   await refreshMt5(true);
+  await refreshDemoEligibility(true);
   await refreshBacktests(true);
 });
 listen("#discoverySort", "change", async (event) => {
@@ -1734,6 +1827,7 @@ listen("#wakeValidation", "click", (event) => wakeValidation(event.currentTarget
 listen("#refreshValidation", "click", () => refreshValidation());
 listen("#wakeMt5", "click", (event) => wakeMt5(event.currentTarget));
 listen("#refreshMt5", "click", () => refreshMt5());
+listen("#refreshDemoLab", "click", () => refreshDemoEligibility());
 listen("#validationSort", "change", async (event) => {
   validationJobOrder = event.currentTarget.value || "profit_factor";
   selectedValidationJobId = null;
@@ -1772,6 +1866,7 @@ sections.forEach((section) => observer.observe(section));
   await refreshEvolution(true);
   await refreshValidation(true);
   await refreshMt5(true);
+  await refreshDemoEligibility(true);
   await refreshBacktests(true);
 })();
 refreshTimer = setInterval(async () => {
@@ -1781,6 +1876,7 @@ refreshTimer = setInterval(async () => {
   await refreshEvolution(true);
   await refreshValidation(true);
   await refreshMt5(true);
+  await refreshDemoEligibility(true);
   await refreshBacktests(true);
 }, 10_000);
 
@@ -1789,3 +1885,4 @@ strategyRefreshTimer = setInterval(() => refreshStrategyLab(true), 30_000);
 evolutionRefreshTimer = setInterval(() => refreshEvolution(true), 30_000);
 validationRefreshTimer = setInterval(() => refreshValidation(true), 30_000);
 mt5RefreshTimer = setInterval(() => refreshMt5(true), 30_000);
+demoRefreshTimer = setInterval(() => refreshDemoEligibility(true), 30_000);

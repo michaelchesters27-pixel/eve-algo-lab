@@ -22,6 +22,7 @@ const ALLOWED = [
   /^validation\/wake$/,
   /^mt5\/status$/,
   /^mt5\/packages$/,
+  /^mt5\/eligibility$/,
   /^mt5\/packages\/[0-9a-f-]+\/(download|source)$/i,
   /^mt5\/wake$/,
   /^backtests$/,

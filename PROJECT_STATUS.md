@@ -1,23 +1,18 @@
-# EVE Algo Lab Project Status — v2.4
+# EVE Algo Lab Project Status — v2.5
 
 ## Complete
 
-- Six-timeframe XAU/USD historical memory.
-- Automatic candle synchronisation.
-- Learning foundation and forward outcome labels.
-- Autonomous learning and challenger control.
-- Continuous historical research.
-- Discovery Explorer.
-- Strategy Idea Factory.
-- Strategy Evolution Engine.
-- Automatic M1 validation and execution-cost stress.
-- Immutable rule freezing.
-- Automatic versioned MT5 `.mq5` package generation.
+- Six-timeframe permanent market memory.
+- Autonomous learning and continuous historical research.
+- Strategy Idea Factory and Strategy Evolution Engine.
+- Automatic M1 validation and immutable frozen rules.
+- Automatic MT5 `.mq5` generation.
+- Demo Eligibility Lab with practical bot labels and next-window guidance.
 
-## Current handoff
+## Current limitation
 
-A generated package is ready for MetaEditor compilation and MT5 demo forward testing. It is not live-ready.
+EVE can determine whether frozen rules are currently eligible from stored data and time. It cannot yet receive live telemetry from the user's MT5 terminal, confirm that an EA is attached, or compare broker-side demo fills with historical expectations.
 
-## Next
+## Next stage
 
-v2.5 — Demo Forward-Test Control. Record expected signals and actual broker executions, compare slippage and performance with EVE's validation range, and promote or retire the EA from live evidence.
+Demo forward-test telemetry: EA heartbeats, trade logs, spread, slippage, entry/exit reasons and expected-versus-actual performance.
