@@ -1,0 +1,3 @@
+RUN SUPABASE_UPDATE_v2.4.sql ONCE BEFORE DEPLOYING THE v2.4 GITHUB FILES.
+
+Do not rerun older update files. Existing EVE data is preserved.

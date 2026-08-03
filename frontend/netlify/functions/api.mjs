@@ -20,6 +20,10 @@ const ALLOWED = [
   /^validation\/status$/,
   /^validation\/jobs$/,
   /^validation\/wake$/,
+  /^mt5\/status$/,
+  /^mt5\/packages$/,
+  /^mt5\/packages\/[0-9a-f-]+\/(download|source)$/i,
+  /^mt5\/wake$/,
   /^backtests$/,
   /^backtests\/[0-9a-f-]+$/i,
   /^backtests\/[0-9a-f-]+\/cancel$/i,
@@ -83,11 +87,12 @@ export default async (request) => {
       headers,
       body: request.method === "GET" || request.method === "HEAD" ? undefined : await request.text(),
     });
-    const body = await response.text();
+    const body = await response.arrayBuffer();
     return new Response(body, {
       status: response.status,
       headers: {
         "Content-Type": response.headers.get("content-type") || "application/json",
+        "Content-Disposition": response.headers.get("content-disposition") || "inline",
         "Cache-Control": "no-store",
       },
     });

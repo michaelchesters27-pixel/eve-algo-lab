@@ -1,4 +1,4 @@
-# EVE Algo Lab Project Status — v2.3
+# EVE Algo Lab Project Status — v2.4
 
 ## Complete
 
@@ -10,9 +10,14 @@
 - Discovery Explorer.
 - Strategy Idea Factory.
 - Strategy Evolution Engine.
-- Automatic M1 validation, execution-cost stress and parameter-neighbourhood testing.
-- Immutable rule freezing for MT5-ready candidates.
+- Automatic M1 validation and execution-cost stress.
+- Immutable rule freezing.
+- Automatic versioned MT5 `.mq5` package generation.
+
+## Current handoff
+
+A generated package is ready for MetaEditor compilation and MT5 demo forward testing. It is not live-ready.
 
 ## Next
 
-v2.4 — MT5 EA Generator. Only a frozen strategy marked `ready_for_mt5_generation` may be converted into a versioned `.mq5` Expert Advisor.
+v2.5 — Demo Forward-Test Control. Record expected signals and actual broker executions, compare slippage and performance with EVE's validation range, and promote or retire the EA from live evidence.

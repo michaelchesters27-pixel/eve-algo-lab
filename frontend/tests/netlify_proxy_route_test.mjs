@@ -49,3 +49,25 @@ assert.equal(response.status, 200);
 assert.equal(calls[8].url, "https://railway.example/api/validation/wake");
 assert.equal(calls[8].options.headers["X-EVE-ADMIN-TOKEN"], "test-token");
 console.log("Netlify proxy Validation Lab routes: PASS");
+
+response = await proxy(new Request("https://eve.example/api/mt5/status?symbol=XAU%2FUSD"));
+assert.equal(response.status, 200);
+assert.equal(calls[9].url, "https://railway.example/api/mt5/status?symbol=XAU%2FUSD");
+
+response = await proxy(new Request("https://eve.example/api/mt5/packages?symbol=XAU%2FUSD&limit=100"));
+assert.equal(response.status, 200);
+assert.equal(calls[10].url, "https://railway.example/api/mt5/packages?symbol=XAU%2FUSD&limit=100");
+
+response = await proxy(new Request("https://eve.example/api/mt5/packages/123e4567-e89b-12d3-a456-426614174000/download"));
+assert.equal(response.status, 200);
+assert.equal(calls[11].url, "https://railway.example/api/mt5/packages/123e4567-e89b-12d3-a456-426614174000/download");
+
+response = await proxy(new Request("https://eve.example/api/mt5/packages/123e4567-e89b-12d3-a456-426614174000/source"));
+assert.equal(response.status, 200);
+assert.equal(calls[12].url, "https://railway.example/api/mt5/packages/123e4567-e89b-12d3-a456-426614174000/source");
+
+response = await proxy(new Request("https://eve.example/api/mt5/wake", { method: "POST", body: "{}", headers: { "Content-Type": "application/json" } }));
+assert.equal(response.status, 200);
+assert.equal(calls[13].url, "https://railway.example/api/mt5/wake");
+assert.equal(calls[13].options.headers["X-EVE-ADMIN-TOKEN"], "test-token");
+console.log("Netlify proxy MT5 Generator routes: PASS");

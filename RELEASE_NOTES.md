@@ -1,30 +1,31 @@
-# EVE Algo Lab v2.3 — Automatic High-Resolution Validation Pipeline
+# EVE Algo Lab v2.4 — Automatic MT5 EA Generator
 
 ## Added
 
-- Dedicated autonomous M1 validation worker on Railway.
-- Automatic queueing of Champion, Elite and validated strategies.
-- Look-ahead-safe M5-snapshot to M1-entry protocol.
-- Conservative M1 stop-versus-target resolution.
-- Standard, elevated and severe execution-cost stress profiles.
-- Nearby stop, target, holding-period and cooldown robustness challenges.
-- Chronological validation and locked-test M1 reporting.
-- Year, month, weekday, session and regime breakdowns.
-- Immutable SHA-256 rule freezing for strategies that become Ready for MT5 Generation.
-- New Validation Lab dashboard with worker monitor, automatic promotion path, best-ready strategy and detailed result explorer.
-- Netlify proxy routes for validation status, results and diagnostic wake.
+- Dedicated autonomous MT5 source-generation worker on Railway.
+- Automatic queueing of immutable frozen strategies marked Ready for MT5 Generation.
+- Rule translation for EVE calendar, UTC hour, session, regime, direction, alignment, compression, trend and candle-streak conditions.
+- Locally calculated M5 ATR, compression, trend, regime, streak and multi-timeframe alignment features.
+- Versioned `.mq5` Expert Advisor source with embedded frozen-rule SHA-256.
+- Safety-first inputs: trading disabled by default, risk sizing, fixed-lot option, spread guard, slippage, daily-loss guard, one-position rule, cooldown and maximum hold.
+- UK and New York daylight-saving session calculations.
+- Downloadable ZIP containing `.mq5`, frozen rules, validation evidence, manifest, README and SHA-256 checksums.
+- Standalone `.mq5` download.
+- New MT5 Lab dashboard with worker monitor, latest package, package library and controlled handoff path.
+- Binary-safe Netlify proxy support for ZIP downloads.
 
-## Anti-overfitting controls
+## Safety controls
 
-- The exact evolved rule set is replayed first.
-- Nearby parameters are challenged; v2.3 does not optimise them against the locked period.
-- A single M1 bar that can touch both stop and target is recorded as a stop.
-- Entries are placed only after the source M5 candle has closed.
-- Frozen rule versions are immutable and identified by SHA-256.
+- Only frozen strategies can be generated.
+- Unsupported research fields fail safely instead of creating incomplete code.
+- The frozen rule hash is embedded in the EA and package manifest.
+- `InpEnableTrading` defaults to `false`.
+- Every package is labelled demo-only.
+- Source generation does not claim MetaEditor compilation or live readiness.
 
 ## Not included yet
 
-- Automatic `.mq5` Expert Advisor generation.
+- Automatic MetaEditor compilation to `.ex5`.
 - Broker tick-data testing.
-- Demo forward testing.
-- Live deployment.
+- Automatic demo account deployment.
+- Live-money promotion.

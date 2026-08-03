@@ -1,8 +1,8 @@
-# Deploy EVE Algo Lab v2.3
+# Deploy EVE Algo Lab v2.4
 
 ## 1. Supabase
 
-Open the existing EVE Algo Lab Supabase project and SQL Editor. Paste the complete contents of `SUPABASE_UPDATE_v2.3.sql` and run it once.
+Open the existing EVE Algo Lab Supabase project and SQL Editor. Paste the complete contents of `SUPABASE_UPDATE_v2.4.sql` and run it once.
 
 Wait for:
 
@@ -10,7 +10,7 @@ Wait for:
 Success. No rows returned
 ```
 
-The update creates Validation Lab state, job and frozen-strategy tables. It preserves all candles, learning snapshots, discoveries, Strategy Lab candidates, evolution lineages, models and backtests.
+The update creates MT5 generation state, jobs and package tables. It preserves all candles, learning snapshots, discoveries, strategies, evolution results, validation evidence, frozen rules and backtests.
 
 ## 2. GitHub
 
@@ -20,20 +20,25 @@ Unzip the GitHub-ready package. Open the inner `eve-algo-lab` folder and replace
 
 Allow the existing GitHub deployments to finish.
 
-Do not add or change Railway or Netlify variables. v2.3 is enabled through code defaults.
+Do not add or change Railway or Netlify variables. v2.4 is enabled through code defaults.
 
 ## 4. Verify
 
-Open EVE, press `Ctrl + F5`, and select **Validation Lab**.
+Open EVE, press `Ctrl + F5`, and select **MT5 Lab**.
 
-Allow approximately 8–10 minutes after Railway starts. Verify:
+Allow approximately 3–5 minutes after Railway starts. Verify:
 
-- Validation worker status becomes ACTIVE.
+- MT5 Generator status becomes ACTIVE or GENERATING.
 - Worker heartbeat shows a recent time.
-- Surviving strategies are queued automatically.
-- Current strategy changes to an M1 replay progress message.
-- M1 windows scanned and completed counts increase.
-- Completed results appear as Rejected, Needs Evidence, Replay Validated or Ready for MT5.
-- A Ready strategy shows frozen rules and a rule hash.
+- Frozen strategies are queued automatically.
+- A generated package appears in the package library.
+- The ZIP and standalone `.mq5` download buttons work.
+- The downloaded ZIP contains the EA source, frozen rules, validation report, manifest, README and checksums.
 
-The worker continues on Railway with the computer and browser switched off. The Wake button is only a diagnostic trigger.
+The Wake button is only a diagnostic trigger.
+
+## 5. After download
+
+Do not use the EA on a live account.
+
+Open MetaEditor, compile the `.mq5` source, attach it to an XAUUSD M5 chart on an MT5 demo account, verify the UTC offset and inputs, then enable trading only on demo.

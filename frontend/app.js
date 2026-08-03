@@ -74,6 +74,9 @@ let validationJobFilter = "all";
 let validationJobOrder = "profit_factor";
 let selectedValidationJobId = null;
 let validationRefreshTimer;
+let mt5Dashboard = null;
+let mt5PackageItems = [];
+let mt5RefreshTimer;
 const activeBackfillJobIds = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
 const historicalReady = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, false]));
 const marketStates = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
@@ -1514,6 +1517,125 @@ async function wakeValidation(button) {
   }
 }
 
+
+function mt5LockedMetrics(item = {}) {
+  const report = item.validation_report || {};
+  const metrics = report.validation_metrics || {};
+  return metrics.standard_cost?.locked_test || {};
+}
+
+function setDownloadLink(selector, packageId, suffix = "download") {
+  const link = $(selector);
+  if (!link) return;
+  if (!packageId) {
+    link.href = "#";
+    link.setAttribute("aria-disabled", "true");
+    link.classList.add("disabled-link");
+    return;
+  }
+  link.href = `/api/mt5/packages/${encodeURIComponent(packageId)}/${suffix}`;
+  link.removeAttribute("aria-disabled");
+  link.classList.remove("disabled-link");
+}
+
+function renderMt5Best(item = {}) {
+  const hasPackage = Boolean(item.id);
+  const locked = mt5LockedMetrics(item);
+  setText("#mt5BestName", item.strategy_name || "Waiting for the first package");
+  setText("#mt5BestStatus", hasPackage ? "READY TO COMPILE" : "WAITING");
+  setClass("#mt5BestStatus", `status-pill ${hasPackage ? "complete" : "waiting"}`);
+  setText("#mt5BestVerdict", hasPackage
+    ? "EVE generated guarded source from immutable frozen rules. Compile it in MetaEditor and use demo only."
+    : "A strategy must finish M1 replay and freeze its rules before code generation.");
+  setText("#mt5BestCode", item.strategy_code || "—");
+  setText("#mt5BestVersion", item.frozen_version || "—");
+  setText("#mt5BestPF", hasPackage ? Number(locked.profit_factor || 0).toFixed(2) : "—");
+  setText("#mt5BestExpectancy", hasPackage ? formatR(locked.expectancy_r) : "—");
+  setText("#mt5BestTrades", hasPackage ? formatNumber(locked.trades) : "—");
+  setText("#mt5BestSha", item.source_sha256 ? `${String(item.source_sha256).slice(0, 12)}…` : "—");
+  setDownloadLink("#mt5BestDownload", item.id, "download");
+  setDownloadLink("#mt5BestSource", item.id, "source");
+}
+
+function renderMt5Status(data = {}) {
+  mt5Dashboard = data;
+  const state = data.state || {};
+  const current = data.current_job || {};
+  const status = String(state.status || "waiting");
+  setText("#mt5Status", status.toUpperCase());
+  setClass("#mt5Status", `status-pill ${["active", "generating"].includes(status) ? "complete" : status}`);
+  setText("#mt5Message", state.last_error || "EVE generates versioned MT5 source packages only from frozen strategies.");
+  setText("#mt5CurrentJob", current.strategy_name || state.current_job_name || "Waiting for a frozen strategy");
+  setText("#mt5Heartbeat", formatDate(state.heartbeat_at, true));
+  setText("#mt5Queued", formatNumber(state.queue_count));
+  setText("#mt5Completed", formatNumber(state.completed_count));
+  setText("#mt5Generated", formatNumber(state.generated_count));
+  setText("#mt5Failed", formatNumber(state.failed_count));
+  setText("#mt5LastResult", state.last_result || "Only frozen rules can enter this worker.");
+  renderMt5Best(data.best_package || {});
+}
+
+function renderMt5Packages(items = []) {
+  mt5PackageItems = items;
+  const host = $("#mt5PackageList");
+  if (!host) return;
+  if (!items.length) {
+    host.innerHTML = '<div class="empty-state">No MT5 packages have been generated yet. EVE will build one automatically when a frozen strategy is ready.</div>';
+    return;
+  }
+  host.innerHTML = items.map((item) => {
+    const locked = mt5LockedMetrics(item);
+    return `<article class="mt5-package-card">
+      <div class="mt5-package-head"><div><small>READY FOR METAEDITOR COMPILE</small><h3>${escapeHtml(item.strategy_name || item.strategy_code || "EVE strategy")}</h3></div><span class="status-pill complete">DEMO ONLY</span></div>
+      <p>${escapeHtml(item.package_code || "Versioned MT5 package")}</p>
+      <div class="strategy-summary-grid mt5-package-metrics">
+        <div><small>LOCKED PF</small><strong>${Number(locked.profit_factor || 0).toFixed(2)}</strong></div>
+        <div><small>EXPECTANCY</small><strong>${formatR(locked.expectancy_r)}</strong></div>
+        <div><small>TRADES</small><strong>${formatNumber(locked.trades)}</strong></div>
+        <div><small>VERSION</small><strong>${escapeHtml(item.frozen_version || "1.0")}</strong></div>
+      </div>
+      <div class="mt5-package-identity"><span>Rule hash</span><strong>${escapeHtml(String(item.rule_hash || "").slice(0, 16))}…</strong><span>Source SHA-256</span><strong>${escapeHtml(String(item.source_sha256 || "").slice(0, 16))}…</strong></div>
+      <div class="actions compact-actions">
+        <a class="button button-primary" href="/api/mt5/packages/${encodeURIComponent(item.id)}/download">Download package</a>
+        <a class="button" href="/api/mt5/packages/${encodeURIComponent(item.id)}/source">Download .mq5</a>
+      </div>
+    </article>`;
+  }).join("");
+}
+
+async function refreshMt5(silent = false) {
+  try {
+    const [statusPayload, packagesPayload] = await Promise.all([
+      api("mt5/status?symbol=XAU%2FUSD"),
+      api("mt5/packages?symbol=XAU%2FUSD&limit=100"),
+    ]);
+    renderMt5Status(statusPayload.data || {});
+    const items = packagesPayload.data?.items || [];
+    renderMt5Packages(items);
+    setText("#mt5ExplorerStatus", "READY");
+    setClass("#mt5ExplorerStatus", "status-pill complete");
+    setText("#mt5ExplorerMessage", `Showing ${formatNumber(items.length)} generated MT5 packages. Frozen rules and checksums are included in every download.`);
+  } catch (error) {
+    setText("#mt5ExplorerStatus", "ERROR");
+    setClass("#mt5ExplorerStatus", "status-pill error");
+    setText("#mt5ExplorerMessage", error.message);
+    if (!silent) showToast(error.message, true);
+  }
+}
+
+async function wakeMt5(button) {
+  button.disabled = true;
+  try {
+    const payload = await api("mt5/wake", { method: "POST", body: "{}" });
+    showToast(payload.message || "MT5 generator wake requested");
+    await refreshMt5(true);
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function listen(selector, eventName, handler) {
   const node = $(selector);
   if (node) node.addEventListener(eventName, handler);
@@ -1537,6 +1659,7 @@ listen("#refreshButton", "click", async () => {
   await refreshStrategyLab(true);
   await refreshEvolution(true);
   await refreshValidation(true);
+  await refreshMt5(true);
   await refreshBacktests(true);
 });
 listen("#discoverySort", "change", async (event) => {
@@ -1609,6 +1732,8 @@ listen("#evolutionCandidateList", "click", (event) => {
 
 listen("#wakeValidation", "click", (event) => wakeValidation(event.currentTarget));
 listen("#refreshValidation", "click", () => refreshValidation());
+listen("#wakeMt5", "click", (event) => wakeMt5(event.currentTarget));
+listen("#refreshMt5", "click", () => refreshMt5());
 listen("#validationSort", "change", async (event) => {
   validationJobOrder = event.currentTarget.value || "profit_factor";
   selectedValidationJobId = null;
@@ -1646,6 +1771,7 @@ sections.forEach((section) => observer.observe(section));
   await refreshStrategyLab(true);
   await refreshEvolution(true);
   await refreshValidation(true);
+  await refreshMt5(true);
   await refreshBacktests(true);
 })();
 refreshTimer = setInterval(async () => {
@@ -1654,6 +1780,7 @@ refreshTimer = setInterval(async () => {
   await refreshStrategyLab(true);
   await refreshEvolution(true);
   await refreshValidation(true);
+  await refreshMt5(true);
   await refreshBacktests(true);
 }, 10_000);
 
@@ -1661,3 +1788,4 @@ discoveryRefreshTimer = setInterval(() => refreshDiscoveryExplorer(true), 30_000
 strategyRefreshTimer = setInterval(() => refreshStrategyLab(true), 30_000);
 evolutionRefreshTimer = setInterval(() => refreshEvolution(true), 30_000);
 validationRefreshTimer = setInterval(() => refreshValidation(true), 30_000);
+mt5RefreshTimer = setInterval(() => refreshMt5(true), 30_000);

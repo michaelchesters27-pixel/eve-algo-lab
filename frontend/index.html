@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#07110f">
-  <meta name="description" content="EVE Algo Lab — permanent market memory, autonomous research, strategy evolution and automatic M1 validation for XAU/USD.">
+  <meta name="description" content="EVE Algo Lab — permanent market memory, autonomous research, strategy evolution and automatic M1 validation and frozen-rule MT5 EA generation for XAU/USD.">
   <title>EVE Algo Lab</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=2.3">
+  <link rel="stylesheet" href="styles.css?v=2.4">
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -29,9 +29,10 @@
         <a class="nav-link" href="#strategy-lab"><span>04</span> Strategy Lab</a>
         <a class="nav-link" href="#evolution"><span>05</span> Evolution Lab</a>
         <a class="nav-link" href="#validation"><span>06</span> Validation Lab</a>
-        <a class="nav-link" href="#backtester"><span>07</span> Backtester</a>
-        <a class="nav-link" href="#pipeline"><span>08</span> Build pipeline</a>
-        <a class="nav-link" href="#activity"><span>09</span> Activity</a>
+        <a class="nav-link" href="#mt5-lab"><span>07</span> MT5 Lab</a>
+        <a class="nav-link" href="#backtester"><span>08</span> Backtester</a>
+        <a class="nav-link" href="#pipeline"><span>09</span> Build pipeline</a>
+        <a class="nav-link" href="#activity"><span>10</span> Activity</a>
       </nav>
       <div class="side-status">
         <span class="pulse" id="servicePulse"></span>
@@ -97,7 +98,7 @@
 
       <section id="memory" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">DATA FOUNDATION v2.3</p><h2>Six layers of market memory</h2></div>
+          <div><p class="eyebrow">DATA FOUNDATION v2.4</p><h2>Six layers of market memory</h2></div>
           <p>Railway downloads each timeframe in sequence and stores it permanently in Supabase. Each dataset has independent progress, resumable history, latest-candle sync and gap review.</p>
         </div>
         <div class="timeframe-grid" id="timeframeGrid" aria-live="polite"></div>
@@ -108,7 +109,7 @@
 
       <section id="learning" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">AUTONOMOUS LEARNING v2.3</p><h2>EVE now works without waiting for you</h2></div>
+          <div><p class="eyebrow">AUTONOMOUS LEARNING v2.4</p><h2>EVE now works without waiting for you</h2></div>
           <p>Two Railway workers now run in parallel: live learning keeps new candles current, while a dedicated historical researcher continuously mines stored data whether the market is open or closed.</p>
         </div>
 
@@ -559,9 +560,86 @@
         </article>
       </section>
 
+
+      <section id="mt5-lab" class="section-block">
+        <div class="section-title">
+          <div><p class="eyebrow">AUTOMATIC MT5 EA GENERATOR v2.4</p><h2>Turn frozen evidence into a downloadable Expert Advisor package</h2></div>
+          <p>EVE only generates code from immutable strategies marked Ready for MT5. Every package contains the .mq5 source, frozen rules, validation evidence, checksums and demo-only installation instructions.</p>
+        </div>
+
+        <article class="panel mt5-worker-panel">
+          <div class="panel-head">
+            <div><p class="label">AUTONOMOUS MT5 GENERATOR</p><h2>Frozen rules → guarded source → package → demo handoff</h2></div>
+            <span class="status-pill" id="mt5Status">CHECKING</span>
+          </div>
+          <p class="backtest-message" id="mt5Message">Checking Railway's MT5 generation worker.</p>
+          <div class="research-worker-current">
+            <small>CURRENT PACKAGE</small>
+            <strong id="mt5CurrentJob">Waiting for a frozen strategy</strong>
+          </div>
+          <div class="research-worker-grid mt5-worker-grid">
+            <div><small>WORKER HEARTBEAT</small><strong id="mt5Heartbeat">—</strong></div>
+            <div><small>QUEUED</small><strong id="mt5Queued">0</strong></div>
+            <div><small>COMPLETED</small><strong id="mt5Completed">0</strong></div>
+            <div><small>EA PACKAGES</small><strong id="mt5Generated">0</strong></div>
+            <div><small>FAILED SAFELY</small><strong id="mt5Failed">0</strong></div>
+            <div><small>SAFETY DEFAULT</small><strong>TRADING OFF</strong></div>
+          </div>
+          <div class="foundation-note compact-note" id="mt5LastResult">Only frozen rules can enter this worker. Generated EAs default to InpEnableTrading=false and are for MetaEditor compilation and demo testing only.</div>
+          <div class="actions">
+            <button class="button" id="wakeMt5">Wake MT5 Generator now</button>
+            <button class="button button-quiet" id="refreshMt5">Refresh</button>
+          </div>
+        </article>
+
+        <div class="mt5-top-grid">
+          <article class="panel mt5-best-panel">
+            <div class="panel-head">
+              <div><p class="label">LATEST GENERATED EA</p><h2 id="mt5BestName">Waiting for the first package</h2></div>
+              <span class="status-pill" id="mt5BestStatus">WAITING</span>
+            </div>
+            <p class="backtest-message" id="mt5BestVerdict">A strategy must finish M1 replay and freeze its rules before code generation.</p>
+            <div class="strategy-summary-grid mt5-best-metrics">
+              <div><small>STRATEGY CODE</small><strong id="mt5BestCode">—</strong></div>
+              <div><small>VERSION</small><strong id="mt5BestVersion">—</strong></div>
+              <div><small>M1 LOCKED PF</small><strong id="mt5BestPF">—</strong></div>
+              <div><small>EXPECTANCY</small><strong id="mt5BestExpectancy">—</strong></div>
+              <div><small>M1 TRADES</small><strong id="mt5BestTrades">—</strong></div>
+              <div><small>SOURCE SHA-256</small><strong id="mt5BestSha">—</strong></div>
+            </div>
+            <div class="actions mt5-download-actions">
+              <a class="button button-primary disabled-link" id="mt5BestDownload" href="#" aria-disabled="true">Download MT5 package</a>
+              <a class="button disabled-link" id="mt5BestSource" href="#" aria-disabled="true">Download .mq5 only</a>
+            </div>
+            <p class="discovery-warning">The package is not a compiled .ex5 file. Open the .mq5 source in MetaEditor, compile it, and use it on an MT5 demo account first.</p>
+          </article>
+
+          <article class="panel mt5-path-panel">
+            <div class="panel-head"><div><p class="label">CONTROLLED HANDOFF</p><h2>What you do after download</h2></div><span class="status-pill complete">DEMO ONLY</span></div>
+            <div class="validation-path mt5-path">
+              <div class="done"><span>1</span><strong>Rules frozen</strong><small>The rule hash and evidence cannot be silently changed.</small></div>
+              <div class="done"><span>2</span><strong>EA generated</strong><small>EVE creates guarded .mq5 source and a validation package.</small></div>
+              <div class="active"><span>3</span><strong>Compile in MetaEditor</strong><small>MT5 must compile the source into an .ex5 file.</small></div>
+              <div><span>4</span><strong>Demo forward test</strong><small>Compare broker execution with EVE's historical expectations.</small></div>
+              <div><span>5</span><strong>Live decision later</strong><small>No automatic real-money promotion exists.</small></div>
+            </div>
+          </article>
+        </div>
+
+        <article class="panel mt5-package-panel">
+          <div class="panel-head">
+            <div><p class="label">GENERATED PACKAGE LIBRARY</p><h2>Download the bots EVE has earned the right to build</h2></div>
+            <span class="status-pill" id="mt5ExplorerStatus">WAITING</span>
+          </div>
+          <p class="backtest-message" id="mt5ExplorerMessage">Generated MT5 packages will appear here.</p>
+          <div class="mt5-package-list" id="mt5PackageList"><div class="empty-state">Loading MT5 packages…</div></div>
+          <p class="foundation-note compact-note"><strong>Safety lock:</strong> every generated EA starts with trading disabled. Compiling a source file does not approve it for live money; demo forward testing remains mandatory.</p>
+        </article>
+      </section>
+
       <section id="backtester" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">RESEARCH BACKTESTER v2.3</p><h2>EVE Fixed Ladder v2.61</h2></div>
+          <div><p class="eyebrow">RESEARCH BACKTESTER v2.4</p><h2>EVE Fixed Ladder v2.61</h2></div>
           <p>The existing M5 approximation and M1 high-resolution replay remain available while the broader research memory is expanded.</p>
         </div>
 
@@ -657,7 +735,8 @@
           <article class="pipeline-card current"><div class="stage">v2.0</div><span>07</span><h3>Strategy Idea Factory</h3><p>Validated research is converted into entry, filter, risk and exit rules, then challenged on locked chronological data.</p></article>
           <article class="pipeline-card current"><div class="stage">v2.2</div><span>08</span><h3>Strategy Evolution Engine</h3><p>Surviving strategies form lineages. EVE mutates and combines their rules, compares every child with its parent and keeps stronger development champions.</p></article>
           <article class="pipeline-card current"><div class="stage">v2.3</div><span>09</span><h3>Automatic Validation Pipeline</h3><p>High-resolution M1 replay, execution-cost stress, parameter-neighbourhood testing and immutable rule freezing before MT5 generation.</p></article>
-          <article class="pipeline-card"><div class="stage">NEXT</div><span>10</span><h3>MT5 EA Generator</h3><p>Only frozen strategies marked Ready for MT5 can be converted into a complete versioned Expert Advisor for independent MT5 testing.</p></article>
+          <article class="pipeline-card current"><div class="stage">v2.4</div><span>10</span><h3>MT5 EA Generator</h3><p>Frozen strategies are converted into versioned .mq5 packages with safety locks, evidence, checksums and demo-only handoff instructions.</p></article>
+          <article class="pipeline-card"><div class="stage">NEXT</div><span>11</span><h3>Demo Forward Test</h3><p>Broker-side execution is compared with EVE expectations before any strategy can be considered for a small controlled live trial.</p></article>
         </div>
       </section>
 
@@ -669,11 +748,11 @@
         <div class="activity-list" id="activityList"><div class="empty-state">Waiting for Supabase activity…</div></div>
       </section>
 
-      <footer><span>EVE ALGO LAB · v2.3</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
+      <footer><span>EVE ALGO LAB · v2.4</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
     </main>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=2.3" defer></script>
+  <script src="app.js?v=2.4" defer></script>
 </body>
 </html>

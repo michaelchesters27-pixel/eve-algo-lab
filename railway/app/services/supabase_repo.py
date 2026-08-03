@@ -1204,6 +1204,166 @@ class SupabaseRepository:
         filters.extend([f"order={order_map.get(order, order_map['profit_factor'])}", f"limit={safe_limit}"])
         return await self.select("strategy_validation_jobs", "&".join(filters))
 
+    async def get_mt5_generation_state(self, symbol: str) -> dict[str, Any] | None:
+        rows = await self.select(
+            "mt5_generation_state",
+            f"select=*&symbol=eq.{quote(symbol, safe='')}&limit=1",
+        )
+        return rows[0] if rows else None
+
+    async def upsert_mt5_generation_state(self, symbol: str, **changes: Any) -> None:
+        existing = await self.get_mt5_generation_state(symbol)
+        if existing:
+            await self.update("mt5_generation_state", f"symbol=eq.{quote(symbol, safe='')}", changes)
+            return
+        await self.insert("mt5_generation_state", {"symbol": symbol, **changes})
+
+    async def refresh_mt5_generation_state(self, symbol: str) -> None:
+        await self.rpc("refresh_mt5_generation_state", {"p_symbol": symbol})
+
+    async def mt5_generation_dashboard(self, symbol: str) -> dict[str, Any]:
+        result = await self.rpc("get_mt5_generation_dashboard", {"p_symbol": symbol})
+        return result or {}
+
+    async def list_mt5_generation_seeds(self, symbol: str, limit: int = 20) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(100, int(limit)))
+        existing = await self.select(
+            "mt5_generation_jobs",
+            f"select=frozen_strategy_id&symbol=eq.{quote(symbol, safe='')}",
+        )
+        used = {str(item.get("frozen_strategy_id")) for item in existing if item.get("frozen_strategy_id")}
+        rows = await self.select(
+            "frozen_strategies",
+            "select=id,strategy_code,rule_hash,symbol,source_validation_job_id,source_kind,source_id,name,family,version,rules,validation_metrics,validation_evidence,status,frozen_at,updated_at"
+            f"&symbol=eq.{quote(symbol, safe='')}&status=eq.ready_for_mt5_generation"
+            "&order=frozen_at.asc&limit=100",
+        )
+        return [item for item in rows if str(item.get("id")) not in used][:safe_limit]
+
+    async def upsert_mt5_generation_jobs(self, rows: list[dict[str, Any]]) -> None:
+        for start in range(0, len(rows), 100):
+            await self._request(
+                "POST",
+                "mt5_generation_jobs?on_conflict=generation_key",
+                json=rows[start:start + 100],
+                headers={"Prefer": "resolution=ignore-duplicates,return=minimal"},
+            )
+
+    async def reset_stale_mt5_generation_jobs(self, stale_minutes: int = 20) -> None:
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=stale_minutes)).isoformat()
+        await self.update(
+            "mt5_generation_jobs",
+            f"status=eq.running&or=(heartbeat_at.is.null,heartbeat_at.lt.{quote(cutoff, safe=':-TZ')})",
+            {"status": "queued", "worker_id": None, "error": "Recovered after Railway restart"},
+        )
+
+    async def claim_next_mt5_generation_job(self, worker_id: str) -> dict[str, Any] | None:
+        result = await self.rpc("claim_next_mt5_generation_job", {"p_worker_id": worker_id})
+        if isinstance(result, list) and result:
+            return result[0]
+        return None
+
+    async def get_frozen_strategy(self, frozen_id: str) -> dict[str, Any] | None:
+        rows = await self.select(
+            "frozen_strategies",
+            f"select=*&id=eq.{quote(frozen_id, safe='')}&limit=1",
+        )
+        return rows[0] if rows else None
+
+    async def create_mt5_package(
+        self, job: dict[str, Any], frozen: dict[str, Any], payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        record = {
+            "package_code": payload.get("package_code"),
+            "symbol": frozen.get("symbol") or "XAU/USD",
+            "frozen_strategy_id": frozen.get("id"),
+            "source_generation_job_id": job.get("id"),
+            "strategy_code": payload.get("strategy_code"),
+            "strategy_name": frozen.get("name"),
+            "frozen_version": payload.get("version") or "1.0",
+            "rule_hash": frozen.get("rule_hash"),
+            "file_name": payload.get("file_name"),
+            "mq5_source": payload.get("mq5_source"),
+            "readme_text": payload.get("readme_text"),
+            "frozen_rules": payload.get("frozen_rules") or {},
+            "validation_report": payload.get("validation_report") or {},
+            "manifest": payload.get("manifest") or {},
+            "source_sha256": payload.get("source_sha256"),
+            "static_validation": payload.get("static_validation") or {},
+            "status": payload.get("status") or "ready_for_metaeditor_compile",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        result = await self._request(
+            "POST",
+            "mt5_packages?on_conflict=frozen_strategy_id",
+            json=record,
+            headers={"Prefer": "resolution=merge-duplicates,return=representation"},
+        )
+        if isinstance(result, list) and result:
+            return result[0]
+        existing = await self.select(
+            "mt5_packages",
+            f"select=*&frozen_strategy_id=eq.{quote(str(frozen.get('id')), safe='')}&limit=1",
+        )
+        if not existing:
+            raise RuntimeError("MT5 package could not be stored")
+        return existing[0]
+
+    async def complete_mt5_generation_job(
+        self, job_id: str, *, package_id: Any, file_name: str, source_sha256: str,
+        result_status: str, evidence: dict[str, Any],
+    ) -> None:
+        await self.update(
+            "mt5_generation_jobs",
+            f"id=eq.{quote(job_id, safe='')}",
+            {
+                "status": "complete",
+                "result_status": result_status,
+                "package_id": package_id,
+                "file_name": file_name,
+                "source_sha256": source_sha256,
+                "evidence": evidence,
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+                "error": None,
+            },
+        )
+
+    async def fail_mt5_generation_job(self, job_id: str, error: str) -> None:
+        await self.update(
+            "mt5_generation_jobs",
+            f"id=eq.{quote(job_id, safe='')}",
+            {
+                "status": "failed",
+                "result_status": "static_validation_failed",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+                "error": error[:4000],
+            },
+        )
+
+    async def mark_frozen_strategy_mt5_generated(self, frozen_id: str) -> None:
+        await self.update(
+            "frozen_strategies",
+            f"id=eq.{quote(frozen_id, safe='')}",
+            {"status": "mt5_generated", "updated_at": datetime.now(timezone.utc).isoformat()},
+        )
+
+    async def get_mt5_package(self, package_id: str) -> dict[str, Any] | None:
+        rows = await self.select(
+            "mt5_packages",
+            f"select=*&id=eq.{quote(package_id, safe='')}&limit=1",
+        )
+        return rows[0] if rows else None
+
+    async def list_mt5_packages(self, symbol: str, limit: int = 100) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(200, int(limit)))
+        return await self.select(
+            "mt5_packages",
+            "select=id,package_code,symbol,frozen_strategy_id,source_generation_job_id,strategy_code,strategy_name,frozen_version,rule_hash,file_name,source_sha256,static_validation,status,manifest,validation_report,generated_at,updated_at"
+            f"&symbol=eq.{quote(symbol, safe='')}&order=generated_at.desc&limit={safe_limit}",
+        )
+
     async def fail_interrupted_backtests(self) -> None:
         await self.update(
             "backtest_runs",

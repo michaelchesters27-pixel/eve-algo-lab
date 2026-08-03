@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.backtesting.metrics import calculate_metrics
@@ -26,11 +27,12 @@ from app.services.learning import LearningService, SNAPSHOT_INTERVAL
 from app.services.strategy_lab import StrategyLabService
 from app.services.strategy_evolution import StrategyEvolutionService
 from app.services.high_resolution_validation import HighResolutionValidationService
+from app.services.mt5_generator import MT5GeneratorService, build_package_zip
 from app.services.supabase_repo import SupabaseRepository
 from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
 from app.settings import Settings, get_settings
 
-APP_VERSION = "2.3"
+APP_VERSION = "2.4"
 
 settings = get_settings()
 logging.basicConfig(
@@ -54,6 +56,7 @@ historical_research = ContinuousHistoricalResearchService(settings, repo)
 strategy_lab = StrategyLabService(settings, repo, historical_research.load_complete_rows)
 strategy_evolution = StrategyEvolutionService(settings, repo, historical_research.load_complete_rows)
 high_resolution_validation = HighResolutionValidationService(settings, repo, historical_research.load_complete_rows)
+mt5_generator = MT5GeneratorService(settings, repo)
 background_tasks: list[asyncio.Task[Any]] = []
 
 
@@ -68,6 +71,7 @@ async def lifespan(_: FastAPI):
     background_tasks.append(asyncio.create_task(strategy_lab.loop(), name="strategy-idea-factory"))
     background_tasks.append(asyncio.create_task(strategy_evolution.loop(), name="strategy-evolution-engine"))
     background_tasks.append(asyncio.create_task(high_resolution_validation.loop(), name="high-resolution-validation"))
+    background_tasks.append(asyncio.create_task(mt5_generator.loop(), name="mt5-ea-generator"))
     for sync_index, interval in enumerate(settings.auto_sync_interval_list):
         if interval not in INTERVAL_SECONDS:
             logger.warning("Skipping unsupported AUTO_SYNC_INTERVALS value: %s", interval)
@@ -83,6 +87,7 @@ async def lifespan(_: FastAPI):
     await strategy_lab.stop()
     await strategy_evolution.stop()
     await high_resolution_validation.stop()
+    await mt5_generator.stop()
     for task in background_tasks:
         task.cancel()
     for task in list(backtests.tasks.values()):
@@ -95,7 +100,7 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="EVE Algo Lab API",
     version=APP_VERSION,
-    description="Permanent multi-timeframe XAU/USD memory with autonomous learning, continuous historical research, an autonomous Strategy Idea Factory, controlled strategy evolution, automatic M1 validation and high-resolution backtesting.",
+    description="Permanent multi-timeframe XAU/USD memory with autonomous learning, continuous historical research, an autonomous Strategy Idea Factory, controlled strategy evolution, automatic M1 validation, frozen-rule MT5 EA generation and high-resolution backtesting.",
     lifespan=lifespan,
 )
 app.add_middleware(
@@ -414,6 +419,66 @@ async def wake_high_resolution_validation() -> ApiEnvelope:
     return ApiEnvelope(
         data={"status": "requested"},
         message="High-resolution validation wake requested. Normal M1 replay validation runs automatically.",
+    )
+
+
+@app.get("/api/mt5/status", response_model=ApiEnvelope)
+async def mt5_generation_status(
+    symbol: str = Query(default="XAU/USD", min_length=3, max_length=40),
+) -> ApiEnvelope:
+    dashboard = await repo.mt5_generation_dashboard(symbol)
+    dashboard["service"] = "online"
+    dashboard["version"] = APP_VERSION
+    return ApiEnvelope(data=dashboard)
+
+
+@app.get("/api/mt5/packages", response_model=ApiEnvelope)
+async def list_mt5_packages(
+    symbol: str = Query(default="XAU/USD", min_length=3, max_length=40),
+    limit: int = Query(default=100, ge=1, le=200),
+) -> ApiEnvelope:
+    items = await repo.list_mt5_packages(symbol, limit=limit)
+    return ApiEnvelope(data={"items": items})
+
+
+@app.get("/api/mt5/packages/{package_id}/download")
+async def download_mt5_package(package_id: str) -> Response:
+    package = await repo.get_mt5_package(package_id)
+    if not package:
+        raise HTTPException(status_code=404, detail="MT5 package not found")
+    archive = build_package_zip(package)
+    strategy_code = str(package.get("strategy_code") or "EVE-Strategy").replace("/", "-")
+    version = str(package.get("frozen_version") or "1.0").replace("/", "-")
+    filename = f"{strategy_code}-MT5-v{version}.zip"
+    return Response(
+        content=archive,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@app.get("/api/mt5/packages/{package_id}/source")
+async def download_mt5_source(package_id: str) -> Response:
+    package = await repo.get_mt5_package(package_id)
+    if not package:
+        raise HTTPException(status_code=404, detail="MT5 package not found")
+    filename = str(package.get("file_name") or "EVE_Strategy.mq5")
+    return Response(
+        content=str(package.get("mq5_source") or ""),
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"},
+    )
+
+
+@app.post("/api/mt5/wake", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])
+async def wake_mt5_generator() -> ApiEnvelope:
+    await mt5_generator.request_wake()
+    return ApiEnvelope(
+        data={"status": "requested"},
+        message="MT5 generator wake requested. Frozen strategies are generated automatically.",
     )
 
 
