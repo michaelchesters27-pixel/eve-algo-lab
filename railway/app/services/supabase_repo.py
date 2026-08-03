@@ -854,6 +854,169 @@ class SupabaseRepository:
         filters.extend([f"order={order_map.get(order, order_map['profit_factor'])}", f"limit={safe_limit}"])
         return await self.select("strategy_candidates", "&".join(filters))
 
+    async def get_strategy_evolution_state(self, symbol: str, snapshot_interval: str) -> dict[str, Any] | None:
+        rows = await self.select(
+            "strategy_evolution_state",
+            "select=*&symbol=eq.{}&snapshot_interval=eq.{}&limit=1".format(
+                quote(symbol, safe=""), quote(snapshot_interval, safe="")
+            ),
+        )
+        return rows[0] if rows else None
+
+    async def upsert_strategy_evolution_state(self, symbol: str, snapshot_interval: str, **changes: Any) -> None:
+        existing = await self.get_strategy_evolution_state(symbol, snapshot_interval)
+        if existing:
+            await self.update(
+                "strategy_evolution_state",
+                "symbol=eq.{}&snapshot_interval=eq.{}".format(
+                    quote(symbol, safe=""), quote(snapshot_interval, safe="")
+                ),
+                changes,
+            )
+            return
+        await self.insert(
+            "strategy_evolution_state",
+            {"symbol": symbol, "snapshot_interval": snapshot_interval, **changes},
+        )
+
+    async def refresh_strategy_evolution_state(self, symbol: str, snapshot_interval: str) -> None:
+        await self.rpc("refresh_strategy_evolution_state", {"p_symbol": symbol, "p_snapshot_interval": snapshot_interval})
+
+    async def strategy_evolution_dashboard(self, symbol: str, snapshot_interval: str) -> dict[str, Any]:
+        result = await self.rpc("get_strategy_evolution_dashboard", {"p_symbol": symbol, "p_snapshot_interval": snapshot_interval})
+        return result or {}
+
+    async def list_evolution_seed_strategies(
+        self, symbol: str, snapshot_interval: str, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(50, int(limit)))
+        rows = await self.select(
+            "strategy_candidates",
+            "select=id,candidate_key,symbol,snapshot_interval,name,family,rules,result_status,trades_total,profit_factor,expectancy_r,max_drawdown_r,stability_score,metrics,evidence,finished_at"
+            f"&symbol=eq.{quote(symbol, safe='')}&snapshot_interval=eq.{quote(snapshot_interval, safe='')}"
+            "&status=eq.complete&result_status=in.(elite,validated,promising)&trades_total=gte.50"
+            "&order=profit_factor.desc.nullslast,expectancy_r.desc.nullslast&limit=50",
+        )
+        rank = {"elite": 3, "validated": 2, "promising": 1}
+        return sorted(
+            rows,
+            key=lambda item: (
+                rank.get(str(item.get("result_status")), 0),
+                float(item.get("profit_factor") or 0),
+                float(item.get("expectancy_r") or 0),
+            ),
+            reverse=True,
+        )[:safe_limit]
+
+    async def upsert_strategy_lineages(self, rows: list[dict[str, Any]]) -> None:
+        for start in range(0, len(rows), 100):
+            await self._request(
+                "POST",
+                "strategy_lineages?on_conflict=lineage_key",
+                json=rows[start:start + 100],
+                headers={"Prefer": "resolution=ignore-duplicates,return=minimal"},
+            )
+
+    async def list_strategy_lineages(
+        self, symbol: str, snapshot_interval: str, limit: int = 20
+    ) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(100, int(limit)))
+        return await self.select(
+            "strategy_lineages",
+            "select=*"
+            f"&symbol=eq.{quote(symbol, safe='')}&snapshot_interval=eq.{quote(snapshot_interval, safe='')}"
+            "&status=eq.active"
+            f"&order=champion_validation_score.desc.nullslast,champion_profit_factor.desc.nullslast,updated_at.desc&limit={safe_limit}",
+        )
+
+    async def upsert_evolution_candidates(self, rows: list[dict[str, Any]]) -> None:
+        for start in range(0, len(rows), 200):
+            await self._request(
+                "POST",
+                "strategy_evolution_candidates?on_conflict=child_key",
+                json=rows[start:start + 200],
+                headers={"Prefer": "resolution=ignore-duplicates,return=minimal"},
+            )
+
+    async def claim_next_evolution_candidate(self, worker_id: str) -> dict[str, Any] | None:
+        result = await self.rpc("claim_next_evolution_candidate", {"p_worker_id": worker_id})
+        if isinstance(result, list) and result:
+            return result[0]
+        return None
+
+    async def complete_evolution_candidate(self, candidate_id: str, result: dict[str, Any]) -> None:
+        await self.update(
+            "strategy_evolution_candidates", f"id=eq.{quote(candidate_id, safe='')}",
+            {
+                "status": "complete",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+                "error": None,
+                **result,
+            },
+        )
+
+    async def fail_evolution_candidate(self, candidate_id: str, error: str) -> None:
+        await self.update(
+            "strategy_evolution_candidates", f"id=eq.{quote(candidate_id, safe='')}",
+            {
+                "status": "failed",
+                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "heartbeat_at": datetime.now(timezone.utc).isoformat(),
+                "error": error[:4000],
+            },
+        )
+
+    async def record_evolution_lineage_result(
+        self, *, lineage_id: str, candidate_id: str, promoted: bool, generation: int,
+        result_status: str, name: str, rules: dict[str, Any], metrics: dict[str, Any],
+        profit_factor: float, expectancy_r: float, max_drawdown_r: float, trades: int,
+        validation_score: float, summary: str,
+    ) -> None:
+        await self.rpc(
+            "record_evolution_lineage_result",
+            {
+                "p_lineage_id": lineage_id,
+                "p_candidate_id": candidate_id,
+                "p_promoted": promoted,
+                "p_generation": generation,
+                "p_result_status": result_status,
+                "p_name": name,
+                "p_rules": rules,
+                "p_metrics": metrics,
+                "p_profit_factor": profit_factor,
+                "p_expectancy_r": expectancy_r,
+                "p_max_drawdown_r": max_drawdown_r,
+                "p_trades": trades,
+                "p_validation_score": validation_score,
+                "p_summary": summary,
+            },
+        )
+
+    async def list_evolution_candidates(
+        self, symbol: str, snapshot_interval: str, result_status: str = "all",
+        order: str = "validation_improvement", limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(500, int(limit)))
+        order_map = {
+            "validation_improvement": "validation_improvement.desc.nullslast,profit_factor.desc.nullslast",
+            "profit_factor": "profit_factor.desc.nullslast,expectancy_r.desc.nullslast",
+            "expectancy": "expectancy_r.desc.nullslast,profit_factor.desc.nullslast",
+            "drawdown": "max_drawdown_r.asc.nullslast,profit_factor.desc.nullslast",
+            "generation": "generation.desc,finished_at.desc.nullslast",
+            "recent": "finished_at.desc.nullslast",
+        }
+        filters = [
+            "select=id,child_key,lineage_id,generation,mutation_type,parent_kind,name,hypothesis,parent_rules,rules,changes,selection_config,result_status,selection_passed,promoted_for_next_generation,locked_test_passed,rows_scanned,trades_total,profit_factor,expectancy_r,max_drawdown_r,win_rate,stability_score,validation_score,parent_validation_score,validation_improvement,metrics,parent_comparison,evidence,requested_at,started_at,finished_at",
+            f"symbol=eq.{quote(symbol, safe='')}",
+            f"snapshot_interval=eq.{quote(snapshot_interval, safe='')}",
+            "status=eq.complete",
+        ]
+        if result_status in {"elite", "champion", "development", "rejected"}:
+            filters.append(f"result_status=eq.{result_status}")
+        filters.extend([f"order={order_map.get(order, order_map['validation_improvement'])}", f"limit={safe_limit}"])
+        return await self.select("strategy_evolution_candidates", "&".join(filters))
+
     async def fail_interrupted_backtests(self) -> None:
         await self.update(
             "backtest_runs",

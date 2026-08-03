@@ -62,6 +62,12 @@ let strategyCandidateFilter = "all";
 let strategyCandidateOrder = "profit_factor";
 let selectedStrategyCandidateId = null;
 let strategyRefreshTimer;
+let evolutionDashboard = null;
+let evolutionCandidateItems = [];
+let evolutionCandidateFilter = "all";
+let evolutionCandidateOrder = "validation_improvement";
+let selectedEvolutionCandidateId = null;
+let evolutionRefreshTimer;
 const activeBackfillJobIds = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
 const historicalReady = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, false]));
 const marketStates = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
@@ -1120,6 +1126,195 @@ async function wakeStrategyLab(button) {
   }
 }
 
+
+function evolutionStatusExplanation(item) {
+  const status = String(item?.result_status || "rejected");
+  if (status === "elite") return "Elite: this mutation improved the development champion on validation-only selection and remained exceptionally strong on the sealed locked period. It is still research grade until M1/tick replay and forward testing.";
+  if (status === "champion") return "Champion: the child beat its parent on validation-only selection and remained positive and stable on the sealed locked period.";
+  if (status === "development") return "Development champion: validation improved enough for EVE to keep evolving this rule set, but the sealed locked evidence is not yet strong enough for readiness status.";
+  return "Rejected: the mutation did not improve its direct parent on validation-only selection, or the sealed locked period triggered the catastrophic-loss safety veto.";
+}
+
+function renderEvolutionBest(lineage = {}) {
+  const status = String(lineage.champion_result_status || "waiting");
+  setText("#evolutionBestName", lineage.champion_name || lineage.name || "Waiting for a strategy lineage");
+  setText("#evolutionBestStatus", status.toUpperCase());
+  setClass("#evolutionBestStatus", `status-pill ${["elite", "champion", "validated", "promising"].includes(status) ? "complete" : "waiting"}`);
+  setText("#evolutionBestMessage", lineage.last_result || "The best lineage will appear after EVE seeds strong Strategy Lab candidates.");
+  setText("#evolutionBestPF", lineage.champion_profit_factor == null ? "—" : Number(lineage.champion_profit_factor).toFixed(2));
+  setText("#evolutionBestExpectancy", lineage.champion_expectancy_r == null ? "—" : formatR(lineage.champion_expectancy_r));
+  setText("#evolutionBestDrawdown", lineage.champion_max_drawdown_r == null ? "—" : `${Number(lineage.champion_max_drawdown_r).toFixed(1)}R`);
+  setText("#evolutionBestTrades", lineage.champion_trades == null ? "—" : formatNumber(lineage.champion_trades));
+  setText("#evolutionBestGeneration", formatNumber(lineage.current_generation));
+  setText("#evolutionBestImprovements", formatNumber(lineage.improvements));
+  setText("#evolutionBestValidationScore", lineage.champion_validation_score == null ? "—" : Number(lineage.champion_validation_score).toFixed(2));
+  const rulesHost = $("#evolutionBestRules");
+  if (rulesHost) {
+    const rules = lineage.champion_rules || {};
+    const chips = Object.keys(rules).length ? strategyRulesText({ rules }) : ["Waiting for rules"];
+    rulesHost.innerHTML = chips.map((item) => `<span class="condition-chip">${escapeHtml(item)}</span>`).join("");
+  }
+}
+
+function renderEvolutionLineages(lineages = []) {
+  const host = $("#evolutionLineageList");
+  if (!host) return;
+  if (!lineages.length) {
+    host.innerHTML = '<div class="empty-state">Waiting for strong Strategy Lab candidates to seed evolution lineages.</div>';
+    return;
+  }
+  host.innerHTML = lineages.map((lineage, index) => `
+    <article class="evolution-lineage-card ${index === 0 ? "leader" : ""}">
+      <div class="discovery-result-head"><span class="discovery-result-status">${index === 0 ? "LEADER" : escapeHtml(String(lineage.champion_result_status || "SEED").toUpperCase())}</span><span>GEN ${formatNumber(lineage.current_generation)}</span></div>
+      <h3>${escapeHtml(lineage.champion_name || lineage.name || "Strategy lineage")}</h3>
+      <p>${escapeHtml(lineage.last_result || "EVE is testing controlled mutations against this lineage champion.")}</p>
+      <div class="evolution-lineage-metrics">
+        <div><small>PF</small><strong>${Number(lineage.champion_profit_factor || 0).toFixed(2)}</strong></div>
+        <div><small>EXPECTANCY</small><strong>${formatR(lineage.champion_expectancy_r)}</strong></div>
+        <div><small>MUTATIONS</small><strong>${formatNumber(lineage.mutations_tested)}</strong></div>
+        <div><small>IMPROVEMENTS</small><strong>${formatNumber(lineage.improvements)}</strong></div>
+      </div>
+    </article>`).join("");
+}
+
+function renderEvolutionStatus(data = {}) {
+  evolutionDashboard = data;
+  const state = data.state || {};
+  const current = data.current_child || {};
+  const status = state.status || "waiting";
+  setText("#evolutionStatus", status.toUpperCase());
+  setClass("#evolutionStatus", `status-pill ${["active", "testing", "generating", "loading"].includes(status) ? "complete" : status}`);
+  setText("#evolutionMessage", state.last_error || "EVE mutates surviving strategies one controlled rule at a time and compares every child directly with its parent.");
+  setText("#evolutionCurrentChild", current.name || state.current_child_name || "Waiting for the next mutation");
+  setText("#evolutionHeartbeat", formatDate(state.heartbeat_at, true));
+  setText("#evolutionQueued", formatNumber(state.queue_count));
+  setText("#evolutionCompleted", formatNumber(state.completed_count));
+  setText("#evolutionRowsScanned", formatNumber(state.rows_scanned_total));
+  setText("#evolutionLineages", formatNumber(state.lineages_total));
+  setText("#evolutionRejected", formatNumber(state.rejected_count));
+  setText("#evolutionDevelopment", formatNumber(state.development_count));
+  setText("#evolutionChampionCount", formatNumber(Number(state.champion_count || 0) + Number(state.elite_count || 0)));
+  setText("#evolutionLastResult", state.last_result || "Waiting for the first controlled mutation.");
+  setText("#evolutionTestedCount", formatNumber(state.completed_count));
+  setText("#evolutionRejectedCount", formatNumber(state.rejected_count));
+  setText("#evolutionDevelopmentCount", formatNumber(state.development_count));
+  setText("#evolutionStrongCount", formatNumber(Number(state.champion_count || 0) + Number(state.elite_count || 0)));
+  renderEvolutionBest(data.best_lineage || {});
+  renderEvolutionLineages(data.lineages || []);
+}
+
+function evolutionChangesText(item) {
+  const changes = item?.changes || {};
+  const entries = Object.entries(changes);
+  return entries.length ? entries.map(([key, value]) => `${String(key).replaceAll("_", " ")}: ${value}`) : ["No change description stored"];
+}
+
+function renderEvolutionCandidateDetail(item) {
+  const host = $("#evolutionCandidateDetail");
+  if (!host) return;
+  if (!item) {
+    host.innerHTML = '<div class="discovery-detail-empty"><small>SELECT A MUTATION</small><strong>Click any result to inspect the parent comparison</strong><p>You will see what changed, whether validation improved and how the sealed locked period behaved.</p></div>';
+    return;
+  }
+  const childValidation = item.metrics?.child_validation || {};
+  const childTest = item.metrics?.child_locked_test || {};
+  const parentValidation = item.metrics?.parent_validation || {};
+  const parentTest = item.metrics?.parent_locked_test || {};
+  const validationDelta = item.parent_comparison?.validation_delta || {};
+  const lockedDelta = item.parent_comparison?.locked_test_delta || {};
+  const protocols = item.evidence?.selection_protocol || [];
+  host.innerHTML = `
+    <small class="discovery-detail-label">${escapeHtml(String(item.result_status || "result").toUpperCase())} · GENERATION ${formatNumber(item.generation)} · ${escapeHtml(String(item.mutation_type || "mutation").replaceAll("_", " ").toUpperCase())}</small>
+    <h2>${escapeHtml(item.name || "Evolution mutation")}</h2>
+    <p class="discovery-detail-summary">${escapeHtml(item.hypothesis || "No hypothesis stored.")}</p>
+    <div class="discovery-verdict">${escapeHtml(item.evidence?.verdict || evolutionStatusExplanation(item))}</div>
+    <div class="discovery-detail-metrics strategy-detail-metrics">
+      <div><small>LOCKED PF</small><strong>${Number(item.profit_factor || 0).toFixed(2)}</strong></div>
+      <div><small>LOCKED EXPECTANCY</small><strong>${formatR(item.expectancy_r)}</strong></div>
+      <div><small>MAX DRAWDOWN</small><strong>${Number(item.max_drawdown_r || 0).toFixed(1)}R</strong></div>
+      <div><small>LOCKED TRADES</small><strong>${formatNumber(item.trades_total)}</strong></div>
+      <div><small>VALIDATION SCORE Δ</small><strong>${Number(item.validation_improvement || 0) >= 0 ? "+" : ""}${Number(item.validation_improvement || 0).toFixed(2)}</strong></div>
+      <div><small>YEAR STABILITY</small><strong>${Number(item.stability_score || 0).toFixed(1)}%</strong></div>
+    </div>
+    <div class="discovery-subsection"><small>WHAT EVE CHANGED</small><div class="condition-chip-list">${evolutionChangesText(item).map((change) => `<span class="condition-chip">${escapeHtml(change)}</span>`).join("")}</div></div>
+    <div class="discovery-subsection"><small>CHILD RULES</small><div class="condition-chip-list">${strategyRulesText(item).map((rule) => `<span class="condition-chip">${escapeHtml(rule)}</span>`).join("")}</div></div>
+    <div class="discovery-subsection"><small>VALIDATION-ONLY SELECTION</small><div class="evidence-list">
+      <div><span>Parent validation PF</span><strong>${Number(parentValidation.profit_factor || 0).toFixed(2)}</strong></div>
+      <div><span>Child validation PF</span><strong>${Number(childValidation.profit_factor || 0).toFixed(2)}</strong></div>
+      <div><span>PF change</span><strong>${Number(validationDelta.profit_factor || 0) >= 0 ? "+" : ""}${Number(validationDelta.profit_factor || 0).toFixed(2)}</strong></div>
+      <div><span>Expectancy change</span><strong>${formatR(validationDelta.expectancy_r)}</strong></div>
+      <div><span>Drawdown change</span><strong>${formatR(validationDelta.max_drawdown_r)}</strong></div>
+      <div><span>Selected for next generation</span><strong>${item.promoted_for_next_generation ? "YES" : "NO"}</strong></div>
+    </div></div>
+    <div class="discovery-subsection"><small>SEALED LOCKED AUDIT</small><div class="evidence-list">
+      <div><span>Parent locked PF</span><strong>${Number(parentTest.profit_factor || 0).toFixed(2)}</strong></div>
+      <div><span>Child locked PF</span><strong>${Number(childTest.profit_factor || 0).toFixed(2)}</strong></div>
+      <div><span>Locked PF change</span><strong>${Number(lockedDelta.profit_factor || 0) >= 0 ? "+" : ""}${Number(lockedDelta.profit_factor || 0).toFixed(2)}</strong></div>
+      <div><span>Locked-test readiness</span><strong>${item.locked_test_passed ? "PASSED" : "NOT PASSED"}</strong></div>
+      <div><span>Historical states scanned</span><strong>${formatNumber(item.rows_scanned)}</strong></div>
+      <div><span>Locked data used to choose mutation</span><strong>${item.parent_comparison?.selection_used_locked_test ? "YES" : "NO"}</strong></div>
+    </div></div>
+    <div class="discovery-subsection"><small>ANTI-OVERFITTING PROTOCOL</small><ul class="strategy-caveat-list">${protocols.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul></div>
+    <p class="discovery-warning">Evolution status is not permission to trade. Champion and elite children still require M1/tick replay, broker-cost stress and forward testing.</p>`;
+}
+
+function renderEvolutionCandidates(items = []) {
+  evolutionCandidateItems = items;
+  const host = $("#evolutionCandidateList");
+  if (!host) return;
+  if (!items.length) {
+    host.innerHTML = `<div class="empty-state">No ${escapeHtml(evolutionCandidateFilter === "all" ? "completed" : evolutionCandidateFilter)} evolution results are available yet. EVE will seed lineages and mutate them automatically.</div>`;
+    renderEvolutionCandidateDetail(null);
+    return;
+  }
+  if (!selectedEvolutionCandidateId || !items.some((item) => item.id === selectedEvolutionCandidateId)) selectedEvolutionCandidateId = items[0].id;
+  host.innerHTML = items.map((item) => `
+    <button class="discovery-result-card evolution-result-card ${escapeHtml(String(item.result_status || "rejected"))} ${item.id === selectedEvolutionCandidateId ? "selected" : ""}" type="button" data-evolution-id="${escapeHtml(item.id)}">
+      <div class="discovery-result-head"><span class="discovery-result-status">${escapeHtml(String(item.result_status || "rejected").toUpperCase())}</span><span class="discovery-result-date">GEN ${formatNumber(item.generation)} · ${escapeHtml(formatDate(item.finished_at))}</span></div>
+      <h3>${escapeHtml(item.name || "Evolution mutation")}</h3>
+      <p>${escapeHtml(evolutionChangesText(item).join(" · "))}</p>
+      <div class="discovery-result-metrics strategy-result-metrics">
+        <div><small>LOCKED PF</small><strong>${Number(item.profit_factor || 0).toFixed(2)}</strong></div>
+        <div><small>EXPECTANCY</small><strong>${formatR(item.expectancy_r)}</strong></div>
+        <div><small>VALIDATION Δ</small><strong>${Number(item.validation_improvement || 0) >= 0 ? "+" : ""}${Number(item.validation_improvement || 0).toFixed(2)}</strong></div>
+        <div><small>TRADES</small><strong>${formatNumber(item.trades_total)}</strong></div>
+      </div>
+    </button>`).join("");
+  renderEvolutionCandidateDetail(items.find((item) => item.id === selectedEvolutionCandidateId) || items[0]);
+}
+
+async function refreshEvolution(silent = false) {
+  try {
+    const [statusPayload, candidatesPayload] = await Promise.all([
+      api("evolution/status?symbol=XAU%2FUSD"),
+      api(`evolution/candidates?symbol=XAU%2FUSD&result_status=${encodeURIComponent(evolutionCandidateFilter)}&order=${encodeURIComponent(evolutionCandidateOrder)}&limit=150`),
+    ]);
+    renderEvolutionStatus(statusPayload.data || {});
+    renderEvolutionCandidates(candidatesPayload.data?.items || []);
+    setText("#evolutionExplorerStatus", "READY");
+    setClass("#evolutionExplorerStatus", "status-pill complete");
+    setText("#evolutionExplorerMessage", `Showing ${formatNumber(candidatesPayload.data?.items?.length || 0)} completed mutations. EVE continues evolving lineages in Railway.`);
+  } catch (error) {
+    setText("#evolutionExplorerStatus", "ERROR");
+    setClass("#evolutionExplorerStatus", "status-pill error");
+    setText("#evolutionExplorerMessage", error.message);
+    if (!silent) showToast(error.message, true);
+  }
+}
+
+async function wakeEvolution(button) {
+  button.disabled = true;
+  try {
+    const payload = await api("evolution/wake", { method: "POST", body: "{}" });
+    showToast(payload.message || "Strategy Evolution wake requested");
+    await refreshEvolution(true);
+  } catch (error) {
+    showToast(error.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 const timeframeGrid = $("#timeframeGrid");
 if (timeframeGrid) timeframeGrid.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-action][data-interval]");
@@ -1155,6 +1350,7 @@ listen("#refreshButton", "click", async () => {
   await refreshLearning(true);
   await refreshDiscoveryExplorer(true);
   await refreshStrategyLab(true);
+  await refreshEvolution(true);
   await refreshBacktests(true);
 });
 listen("#discoverySort", "change", async (event) => {
@@ -1202,6 +1398,28 @@ listen("#strategyCandidateList", "click", (event) => {
   renderStrategyCandidates(strategyCandidateItems);
 });
 
+listen("#wakeEvolution", "click", (event) => wakeEvolution(event.currentTarget));
+listen("#refreshEvolution", "click", () => refreshEvolution());
+listen("#evolutionSort", "change", async (event) => {
+  evolutionCandidateOrder = event.currentTarget.value || "validation_improvement";
+  selectedEvolutionCandidateId = null;
+  await refreshEvolution();
+});
+document.querySelectorAll("[data-evolution-filter]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    evolutionCandidateFilter = button.dataset.evolutionFilter || "all";
+    selectedEvolutionCandidateId = null;
+    document.querySelectorAll("[data-evolution-filter]").forEach((item) => item.classList.toggle("active", item === button));
+    await refreshEvolution();
+  });
+});
+listen("#evolutionCandidateList", "click", (event) => {
+  const card = event.target.closest("[data-evolution-id]");
+  if (!card) return;
+  selectedEvolutionCandidateId = card.dataset.evolutionId;
+  renderEvolutionCandidates(evolutionCandidateItems);
+});
+
 const navLinks = [...document.querySelectorAll(".nav-link")];
 const sections = navLinks.map((link) => document.querySelector(link.getAttribute("href"))).filter(Boolean);
 const observer = new IntersectionObserver((entries) => {
@@ -1217,14 +1435,17 @@ sections.forEach((section) => observer.observe(section));
   await refreshLearning(true);
   await refreshDiscoveryExplorer(true);
   await refreshStrategyLab(true);
+  await refreshEvolution(true);
   await refreshBacktests(true);
 })();
 refreshTimer = setInterval(async () => {
   await refreshDashboard(true);
   await refreshLearning(true);
   await refreshStrategyLab(true);
+  await refreshEvolution(true);
   await refreshBacktests(true);
 }, 10_000);
 
 discoveryRefreshTimer = setInterval(() => refreshDiscoveryExplorer(true), 30_000);
 strategyRefreshTimer = setInterval(() => refreshStrategyLab(true), 30_000);
+evolutionRefreshTimer = setInterval(() => refreshEvolution(true), 30_000);

@@ -1,0 +1,1 @@
+EVE Algo Lab v2.2 requires no new Railway or Netlify variables. Existing variables remain unchanged. The Evolution worker is enabled by safe application defaults.

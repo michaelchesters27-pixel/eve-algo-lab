@@ -1,18 +1,25 @@
-# EVE Algo Lab v2.0.1 — Strategy Lab Layout Fix
+# EVE Algo Lab v2.2 — Strategy Evolution Engine
 
-This is a focused interface repair for the Strategy Lab. All v2.0 autonomous strategy generation, testing, research and database logic remain unchanged.
+## Added
 
-## Fixed
+- Dedicated autonomous Strategy Evolution worker on Railway.
+- Strategy lineages seeded from the strongest Strategy Lab survivors.
+- Controlled stop, target, cooldown, direction and filter-mode mutations.
+- Compatible multi-discovery condition combinations.
+- Direct parent-versus-child evaluation on identical chronological data.
+- Validation-only development-champion selection.
+- Sealed locked-test readiness audit and catastrophic-loss safety veto.
+- Persistent generation history, lineage champions and mutation evidence.
+- New Evolution Lab dashboard with worker monitor, current champion, lineage leaderboard and detailed mutation explorer.
+- Netlify proxy routes for Evolution status, results and manual diagnostic wake.
 
-- Added proper internal padding to the Autonomous Strategy Worker panel.
-- Added proper internal padding to the Strategy Candidate Explorer panel.
-- Prevented the first letters of the green section labels from being clipped by the rounded panel edge.
-- Added safe minimum-width handling so long Strategy Lab headings wrap inside the card instead of pushing through its boundary.
-- Added a smaller but still safe card inset on narrow screens.
-- Versioned the frontend assets to force browsers and Netlify to load the corrected CSS.
+## Anti-overfitting rule
 
-## Deployment
+Locked-test results are not used to choose parameter values. Evolution uses training and validation data for selection. The locked period grades readiness and can block a catastrophic child, but it does not steer the mutation search.
 
-Replace the existing GitHub repository contents with this complete folder and wait for Netlify and Railway to redeploy. Then force-refresh the browser.
+## Not included yet
 
-No Supabase SQL or environment-variable changes are required.
+- M1/tick replay promotion pipeline.
+- Automatic MT5 EA generation.
+- Demo forward testing.
+- Live deployment.

@@ -1,10 +1,16 @@
-# Deploy EVE Algo Lab v2.0.1
+# Deploy EVE Algo Lab v2.2
 
 ## 1. Supabase
 
-Open the existing EVE Algo Lab project, open SQL Editor, paste the complete contents of `SUPABASE_UPDATE_v2.0.sql`, and run it once. Wait for `Success. No rows returned`.
+Open the existing EVE Algo Lab Supabase project and SQL Editor. Paste the complete contents of `SUPABASE_UPDATE_v2.2.sql` and run it once.
 
-The update preserves every existing candle, learning snapshot, discovery, model and backtest.
+Wait for:
+
+```text
+Success. No rows returned
+```
+
+The update creates the Evolution state, lineage and child-experiment tables. It preserves all candles, learning snapshots, discoveries, Strategy Lab candidates, models and backtests.
 
 ## 2. GitHub
 
@@ -12,18 +18,22 @@ Unzip the GitHub-ready package. Open the inner `eve-algo-lab` folder and replace
 
 ## 3. Railway and Netlify
 
-Allow the existing GitHub deployments to finish. Do not add or change any variables.
+Allow the existing GitHub deployments to finish.
+
+Do not add or change Railway or Netlify variables. v2.2 is enabled through safe code defaults.
 
 ## 4. Verify
 
-Open EVE, press `Ctrl + F5`, and select **Strategy Lab**.
+Open EVE, press `Ctrl + F5`, and select **Evolution Lab**.
 
-After the Railway startup delay, verify:
+Allow approximately 6–8 minutes after Railway starts. Verify:
 
-- Strategy worker status is ACTIVE.
+- Evolution worker status becomes ACTIVE.
 - Worker heartbeat shows a recent time.
-- Candidates queued is above zero once validated/promising research exists.
-- Completed and states-scanned counts begin rising.
-- Candidate Explorer opens finished results.
+- Active lineages becomes greater than zero when strong Strategy Lab candidates exist.
+- Mutations are queued.
+- Current mutation is populated.
+- Completed and states-scanned counts begin increasing.
+- The lineage leaderboard and evolution history populate.
 
-The Strategy Lab runs in Railway with the browser and computer switched off.
+The worker continues on Railway with the computer and browser switched off.

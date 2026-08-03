@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#07110f">
-  <meta name="description" content="EVE Algo Lab — permanent market memory with autonomous learning and continuous 24/7 historical research for XAU/USD.">
+  <meta name="description" content="EVE Algo Lab — permanent market memory, autonomous research, strategy generation and controlled strategy evolution for XAU/USD.">
   <title>EVE Algo Lab</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=2.0.1">
+  <link rel="stylesheet" href="styles.css?v=2.2">
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -27,9 +27,10 @@
         <a class="nav-link" href="#memory"><span>02</span> Data foundation</a>
         <a class="nav-link" href="#learning"><span>03</span> Learning centre</a>
         <a class="nav-link" href="#strategy-lab"><span>04</span> Strategy Lab</a>
-        <a class="nav-link" href="#backtester"><span>05</span> Backtester</a>
-        <a class="nav-link" href="#pipeline"><span>06</span> Build pipeline</a>
-        <a class="nav-link" href="#activity"><span>07</span> Activity</a>
+        <a class="nav-link" href="#evolution"><span>05</span> Evolution Lab</a>
+        <a class="nav-link" href="#backtester"><span>06</span> Backtester</a>
+        <a class="nav-link" href="#pipeline"><span>07</span> Build pipeline</a>
+        <a class="nav-link" href="#activity"><span>08</span> Activity</a>
       </nav>
       <div class="side-status">
         <span class="pulse" id="servicePulse"></span>
@@ -95,7 +96,7 @@
 
       <section id="memory" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">DATA FOUNDATION v2.0</p><h2>Six layers of market memory</h2></div>
+          <div><p class="eyebrow">DATA FOUNDATION v2.2</p><h2>Six layers of market memory</h2></div>
           <p>Railway downloads each timeframe in sequence and stores it permanently in Supabase. Each dataset has independent progress, resumable history, latest-candle sync and gap review.</p>
         </div>
         <div class="timeframe-grid" id="timeframeGrid" aria-live="polite"></div>
@@ -106,7 +107,7 @@
 
       <section id="learning" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">AUTONOMOUS LEARNING v2.0</p><h2>EVE now works without waiting for you</h2></div>
+          <div><p class="eyebrow">AUTONOMOUS LEARNING v2.2</p><h2>EVE now works without waiting for you</h2></div>
           <p>Two Railway workers now run in parallel: live learning keeps new candles current, while a dedicated historical researcher continuously mines stored data whether the market is open or closed.</p>
         </div>
 
@@ -234,7 +235,7 @@
 
         <article class="panel discovery-explorer-panel" id="discoveryExplorer">
           <div class="panel-head">
-            <div><p class="label">DISCOVERY EXPLORER v2.0</p><h2>Open what EVE has actually learned</h2></div>
+            <div><p class="label">DISCOVERY EXPLORER v2.2</p><h2>Open what EVE has actually learned</h2></div>
             <span class="status-pill complete" id="discoveryExplorerStatus">READY</span>
           </div>
           <p class="backtest-message" id="discoveryExplorerMessage">Inspect validated, promising and rejected historical tests. Every result shows the locked-test evidence behind it.</p>
@@ -279,7 +280,7 @@
 
       <section id="strategy-lab" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">STRATEGY IDEA FACTORY v2.0</p><h2>Turn research into testable bot rules</h2></div>
+          <div><p class="eyebrow">STRATEGY IDEA FACTORY v2.2</p><h2>Turn research into testable bot rules</h2></div>
           <p>EVE continuously converts validated and promising discoveries into rule-based strategy candidates, tests them on chronological unseen data and rejects candidates that do not improve on their unfiltered baseline.</p>
         </div>
 
@@ -350,9 +351,112 @@
         </article>
       </section>
 
+
+      <section id="evolution" class="section-block">
+        <div class="section-title">
+          <div><p class="eyebrow">STRATEGY EVOLUTION ENGINE v2.2</p><h2>Make surviving bot ideas compete and improve</h2></div>
+          <p>EVE seeds lineages from the strongest Strategy Lab candidates, mutates one rule at a time, combines compatible discoveries and keeps a development champion only when validation evidence improves.</p>
+        </div>
+
+        <article class="panel evolution-worker-panel">
+          <div class="panel-head">
+            <div><p class="label">AUTONOMOUS EVOLUTION WORKER</p><h2>Parent → mutation → validation selection → locked audit</h2></div>
+            <span class="status-pill" id="evolutionStatus">CHECKING</span>
+          </div>
+          <p class="backtest-message" id="evolutionMessage">Checking Railway's Strategy Evolution Engine.</p>
+          <div class="research-worker-current">
+            <small>CURRENT MUTATION</small>
+            <strong id="evolutionCurrentChild">Waiting for the worker heartbeat</strong>
+          </div>
+          <div class="research-worker-grid evolution-worker-grid">
+            <div><small>WORKER HEARTBEAT</small><strong id="evolutionHeartbeat">—</strong></div>
+            <div><small>QUEUED</small><strong id="evolutionQueued">0</strong></div>
+            <div><small>COMPLETED</small><strong id="evolutionCompleted">0</strong></div>
+            <div><small>STATES SCANNED</small><strong id="evolutionRowsScanned">0</strong></div>
+            <div><small>ACTIVE LINEAGES</small><strong id="evolutionLineages">0</strong></div>
+            <div><small>REJECTED</small><strong id="evolutionRejected">0</strong></div>
+            <div><small>DEVELOPMENT</small><strong id="evolutionDevelopment">0</strong></div>
+            <div><small>CHAMPION + ELITE</small><strong id="evolutionChampionCount">0</strong></div>
+          </div>
+          <div class="foundation-note compact-note" id="evolutionLastResult">Mutation selection uses validation data only. The sealed locked period grades readiness and can veto catastrophic failure, but it does not choose parameter values.</div>
+          <div class="actions">
+            <button class="button" id="wakeEvolution">Wake Evolution Lab now</button>
+            <button class="button button-quiet" id="refreshEvolution">Refresh</button>
+          </div>
+        </article>
+
+        <div class="evolution-top-grid">
+          <article class="panel evolution-champion-panel">
+            <div class="panel-head">
+              <div><p class="label">CURRENT DEVELOPMENT CHAMPION</p><h2 id="evolutionBestName">Waiting for a strategy lineage</h2></div>
+              <span class="status-pill" id="evolutionBestStatus">WAITING</span>
+            </div>
+            <p class="backtest-message" id="evolutionBestMessage">The best lineage will appear after EVE seeds strong Strategy Lab candidates.</p>
+            <div class="strategy-summary-grid evolution-champion-metrics">
+              <div><small>LOCKED PF</small><strong id="evolutionBestPF">—</strong></div>
+              <div><small>EXPECTANCY</small><strong id="evolutionBestExpectancy">—</strong></div>
+              <div><small>DRAWDOWN</small><strong id="evolutionBestDrawdown">—</strong></div>
+              <div><small>TRADES</small><strong id="evolutionBestTrades">—</strong></div>
+            </div>
+            <div class="evolution-champion-meta">
+              <div><small>GENERATION</small><strong id="evolutionBestGeneration">0</strong></div>
+              <div><small>IMPROVEMENTS</small><strong id="evolutionBestImprovements">0</strong></div>
+              <div><small>VALIDATION SCORE</small><strong id="evolutionBestValidationScore">—</strong></div>
+            </div>
+            <div class="discovery-subsection"><small>CHAMPION RULES</small><div class="condition-chip-list" id="evolutionBestRules"><span class="condition-chip">Waiting for rules</span></div></div>
+          </article>
+
+          <article class="panel evolution-lineage-panel">
+            <div class="panel-head"><div><p class="label">LINEAGE LEADERBOARD</p><h2>Strategies EVE is actively evolving</h2></div><span class="status-pill complete">LIVE</span></div>
+            <p class="backtest-message">Each lineage starts from one surviving Strategy Lab candidate. A mutation replaces its development champion only after a fair parent-versus-child validation comparison.</p>
+            <div class="evolution-lineage-list" id="evolutionLineageList"><div class="empty-state">Waiting for lineages…</div></div>
+          </article>
+        </div>
+
+        <article class="panel evolution-explorer-panel">
+          <div class="panel-head">
+            <div><p class="label">EVOLUTION HISTORY</p><h2>See what EVE changed and why it kept or killed it</h2></div>
+            <span class="status-pill" id="evolutionExplorerStatus">WAITING</span>
+          </div>
+          <p class="backtest-message" id="evolutionExplorerMessage">Completed mutations will appear here.</p>
+          <div class="discovery-toolbar">
+            <div class="discovery-filter-group" role="group" aria-label="Evolution result filter">
+              <button class="evolution-filter active" type="button" data-evolution-filter="all">All</button>
+              <button class="evolution-filter" type="button" data-evolution-filter="elite">Elite</button>
+              <button class="evolution-filter" type="button" data-evolution-filter="champion">Champion</button>
+              <button class="evolution-filter" type="button" data-evolution-filter="development">Development</button>
+              <button class="evolution-filter" type="button" data-evolution-filter="rejected">Rejected</button>
+            </div>
+            <label class="discovery-sort-label">SORT
+              <select id="evolutionSort">
+                <option value="validation_improvement">Best validation improvement</option>
+                <option value="profit_factor">Highest locked PF</option>
+                <option value="expectancy">Highest locked expectancy</option>
+                <option value="drawdown">Lowest drawdown</option>
+                <option value="generation">Newest generation</option>
+                <option value="recent">Most recent</option>
+              </select>
+            </label>
+          </div>
+          <div class="strategy-summary-grid evolution-summary-grid">
+            <div><small>TESTED</small><strong id="evolutionTestedCount">0</strong></div>
+            <div><small>REJECTED</small><strong id="evolutionRejectedCount">0</strong></div>
+            <div><small>DEVELOPMENT</small><strong id="evolutionDevelopmentCount">0</strong></div>
+            <div><small>CHAMPION + ELITE</small><strong id="evolutionStrongCount">0</strong></div>
+          </div>
+          <div class="discovery-explorer-layout evolution-explorer-layout">
+            <div class="discovery-explorer-list" id="evolutionCandidateList"><div class="empty-state">Loading evolution results…</div></div>
+            <aside class="discovery-detail evolution-detail" id="evolutionCandidateDetail" aria-live="polite">
+              <div class="discovery-detail-empty"><small>SELECT A MUTATION</small><strong>Click any evolution result to inspect the parent comparison</strong><p>You will see exactly what changed, whether validation improved, how the sealed locked period behaved and whether the child became the next development champion.</p></div>
+            </aside>
+          </div>
+          <p class="foundation-note compact-note"><strong>Controlled evolution:</strong> EVE does not tune directly against the locked test. Even an elite evolution result remains research grade until M1/tick replay and forward testing are completed.</p>
+        </article>
+      </section>
+
       <section id="backtester" class="section-block">
         <div class="section-title">
-          <div><p class="eyebrow">RESEARCH BACKTESTER v2.0</p><h2>EVE Fixed Ladder v2.61</h2></div>
+          <div><p class="eyebrow">RESEARCH BACKTESTER v2.2</p><h2>EVE Fixed Ladder v2.61</h2></div>
           <p>The existing M5 approximation and M1 high-resolution replay remain available while the broader research memory is expanded.</p>
         </div>
 
@@ -446,7 +550,8 @@
           <article class="pipeline-card current"><div class="stage">v1.6</div><span>05</span><h3>Autonomous Learning</h3><p>Background candle learning, prediction grading and controlled challenger training.</p></article>
           <article class="pipeline-card current"><div class="stage">v1.7</div><span>06</span><h3>Continuous Historical Research</h3><p>A dedicated 24/7 worker generates, tests and challenges past-data questions regardless of market hours.</p></article>
           <article class="pipeline-card current"><div class="stage">v2.0</div><span>07</span><h3>Strategy Idea Factory</h3><p>Validated research is converted into entry, filter, risk and exit rules, then challenged on locked chronological data.</p></article>
-          <article class="pipeline-card"><div class="stage">NEXT</div><span>08</span><h3>Ask EVE + Pattern Match</h3><p>Natural-language research, similar historical structures and evidence-led likely outcomes.</p></article>
+          <article class="pipeline-card current"><div class="stage">v2.2</div><span>08</span><h3>Strategy Evolution Engine</h3><p>Surviving strategies form lineages. EVE mutates and combines their rules, compares every child with its parent and keeps stronger development champions.</p></article>
+          <article class="pipeline-card"><div class="stage">NEXT</div><span>09</span><h3>Automatic Validation Pipeline</h3><p>High-resolution M1 replay, execution-cost stress, parameter-neighbourhood testing and readiness grading before demo forward testing.</p></article>
         </div>
       </section>
 
@@ -458,11 +563,11 @@
         <div class="activity-list" id="activityList"><div class="empty-state">Waiting for Supabase activity…</div></div>
       </section>
 
-      <footer><span>EVE ALGO LAB · v2.0.0</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
+      <footer><span>EVE ALGO LAB · v2.2</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
     </main>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=2.0.1" defer></script>
+  <script src="app.js?v=2.2" defer></script>
 </body>
 </html>

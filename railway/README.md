@@ -1,14 +1,16 @@
 # Railway service
 
-FastAPI with five persistent engines for EVE Algo Lab:
+FastAPI with persistent engines for EVE Algo Lab:
 
 - Multi-timeframe candle ingestion and completed-bar sync.
 - Resumable Learning Foundation builds.
 - Autonomous new-candle learning, prediction grading and challenger training.
 - Continuous 24/7 historical research on stored past data.
+- Autonomous Strategy Idea Factory.
+- Controlled Strategy Evolution Engine.
 - M5 approximation and M1 replay backtesting.
 
-No new environment variables are required for v2.0. Historical research and Strategy Lab defaults are loaded from code.
+No new environment variables are required for v2.2. All new workers are active through safe code defaults and share the historical learning cache to reduce Railway memory use.
 
 Local run:
 
@@ -26,7 +28,6 @@ Run tests:
 pytest -q
 ```
 
+## v2.2 Evolution protocol
 
-## v2.0 Strategy Lab
-
-A fourth Railway worker converts validated historical findings into strategy candidates and evaluates them automatically. It runs independently of market hours and uses only stored learning snapshots.
+Evolution mutations are chosen using validation evidence only. The locked chronological period is reserved for readiness grading and a catastrophic-loss veto. Every result keeps its direct parent comparison and exact rule change.

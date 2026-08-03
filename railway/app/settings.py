@@ -65,6 +65,15 @@ class Settings(BaseSettings):
     strategy_lab_queue_floor: int = Field(default=12, ge=2, le=500)
     strategy_lab_cache_minutes: int = Field(default=180, ge=15, le=1440)
 
+    # v2.2 autonomous Strategy Evolution Engine. It shares the historical
+    # research dataset and runs controlled one-child-at-a-time mutations.
+    strategy_evolution_enabled: bool = True
+    strategy_evolution_startup_delay_seconds: int = Field(default=360, ge=30, le=3600)
+    strategy_evolution_job_delay_seconds: float = Field(default=60.0, ge=5.0, le=1800.0)
+    strategy_evolution_idle_seconds: float = Field(default=60.0, ge=5.0, le=1800.0)
+    strategy_evolution_queue_floor: int = Field(default=20, ge=2, le=1000)
+    strategy_evolution_cache_minutes: int = Field(default=180, ge=15, le=1440)
+
     @field_validator("supabase_url", "twelve_data_base_url")
     @classmethod
     def strip_trailing_slash(cls, value: str) -> str:
