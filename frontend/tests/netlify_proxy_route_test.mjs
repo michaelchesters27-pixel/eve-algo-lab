@@ -81,3 +81,18 @@ response = await proxy(new Request("https://eve.example/api/backtests/active?lim
 assert.equal(response.status, 200);
 assert.equal(calls.at(-1).url, "https://railway.example/api/backtests/active?limit=5");
 console.log("Netlify proxy active-backtest route: PASS");
+
+response = await proxy(new Request("https://eve.example/api/fleet?symbol=XAU%2FUSD&limit=200"));
+assert.equal(response.status, 200);
+assert.equal(calls.at(-1).url, "https://railway.example/api/fleet?symbol=XAU%2FUSD&limit=200");
+
+response = await proxy(new Request("https://eve.example/api/fleet/heartbeat", {
+  method: "POST",
+  body: JSON.stringify({ package_id: "123e4567-e89b-12d3-a456-426614174000" }),
+  headers: { "Content-Type": "application/json", "X-EVE-FLEET-TOKEN": "fleet-token" },
+}));
+assert.equal(response.status, 200);
+assert.equal(calls.at(-1).url, "https://railway.example/api/fleet/heartbeat");
+assert.equal(calls.at(-1).options.headers["X-EVE-FLEET-TOKEN"], "fleet-token");
+assert.equal(calls.at(-1).options.headers["X-EVE-ADMIN-TOKEN"], undefined);
+console.log("Netlify proxy Demo Fleet routes: PASS");

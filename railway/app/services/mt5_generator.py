@@ -15,12 +15,13 @@ from typing import Any
 from app.services.autonomy import number
 from app.services.learning import SNAPSHOT_INTERVAL
 from app.services.demo_eligibility import plain_rule_summary
+from app.services.fleet import fleet_token
 from app.services.supabase_repo import SupabaseRepository
 from app.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-MT5_GENERATOR_VERSION = "mt5-ea-generator-v2.5"
+MT5_GENERATOR_VERSION = "mt5-ea-generator-v3.1"
 MAX_GENERATION_SEEDS = 20
 
 
@@ -693,6 +694,264 @@ PACKAGE CONTENTS
 - README.txt: this file
 """
 
+
+def upgrade_source_for_fleet(source: str, package_id: str, rule_hash: str, secret: str) -> str:
+    """Add best-effort Demo Fleet telemetry without changing frozen trade rules.
+
+    Stored packages remain immutable. Download routes add this operational wrapper
+    so existing and future packages can report whether they are attached to MT5.
+    Heartbeats are never used as an entry, exit or risk-management condition.
+    """
+    if "EVE_FLEET_TELEMETRY_V31" in source:
+        return source
+    token = fleet_token(secret, package_id, rule_hash)
+    upgraded = re.sub(r'#property\s+version\s+"[^"]+"', '#property version   "3.10"', source, count=1)
+    upgraded = upgraded.replace(
+        'input bool   InpVerboseLogging            = true;\n',
+        'input bool   InpVerboseLogging            = true;\n'
+        'input bool   InpFleetTelemetry             = true;    // Attachment status only; never controls trading\n'
+        'input string InpFleetEndpoint              = "https://evealgolab.netlify.app/api/fleet/heartbeat";\n'
+        'input int    InpFleetHeartbeatSeconds      = 30;\n',
+        1,
+    )
+    upgraded = upgraded.replace(
+        'const bool   EVE_CONDITION_INCLUDE = ',
+        f'const string EVE_PACKAGE_ID     = "{mql_string(package_id)}";\n'
+        f'const string EVE_FLEET_TOKEN    = "{mql_string(token)}";\n'
+        'const string EVE_FLEET_VERSION  = "3.1";\n'
+        'const bool   EVE_CONDITION_INCLUDE = ',
+        1,
+    )
+    upgraded = upgraded.replace(
+        'datetime last_entry_time = 0;\n',
+        'datetime last_entry_time = 0;\n'
+        'string fleet_state = "starting";\n'
+        'string fleet_state_detail = "EA initialising";\n'
+        'datetime fleet_last_send = 0;\n'
+        '// EVE_FLEET_TELEMETRY_V31\n',
+        1,
+    )
+
+    telemetry = r'''
+string JsonEscape(string value)
+{
+   StringReplace(value,"\\","\\\\");
+   StringReplace(value,"\"","\\\"");
+   StringReplace(value,"\r"," ");
+   StringReplace(value,"\n"," ");
+   return value;
+}
+
+string JsonBool(const bool value)
+{
+   return value ? "true" : "false";
+}
+
+string FleetAccountType()
+{
+   long mode=AccountInfoInteger(ACCOUNT_TRADE_MODE);
+   if(mode == ACCOUNT_TRADE_MODE_DEMO) return "demo";
+   if(mode == ACCOUNT_TRADE_MODE_CONTEST) return "contest";
+   if(mode == ACCOUNT_TRADE_MODE_REAL) return "real";
+   return "unknown";
+}
+
+int FleetOpenPositions()
+{
+   int count=0;
+   for(int i=PositionsTotal()-1;i>=0;i--)
+   {
+      ulong ticket=PositionGetTicket(i);
+      if(ticket == 0 || !PositionSelectByTicket(ticket)) continue;
+      if(PositionGetString(POSITION_SYMBOL) == _Symbol && PositionGetInteger(POSITION_MAGIC) == EVE_MAGIC) count++;
+   }
+   return count;
+}
+
+double FleetOpenProfit()
+{
+   double result=0.0;
+   for(int i=PositionsTotal()-1;i>=0;i--)
+   {
+      ulong ticket=PositionGetTicket(i);
+      if(ticket == 0 || !PositionSelectByTicket(ticket)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol || PositionGetInteger(POSITION_MAGIC) != EVE_MAGIC) continue;
+      result+=PositionGetDouble(POSITION_PROFIT)+PositionGetDouble(POSITION_SWAP);
+   }
+   return result;
+}
+
+datetime FleetLastTradeTime()
+{
+   if(!HistorySelect(0,TimeCurrent())) return 0;
+   datetime latest=0;
+   int total=HistoryDealsTotal();
+   for(int i=total-1;i>=0;i--)
+   {
+      ulong ticket=HistoryDealGetTicket(i);
+      if(ticket == 0) continue;
+      if(HistoryDealGetString(ticket,DEAL_SYMBOL) != _Symbol) continue;
+      if((long)HistoryDealGetInteger(ticket,DEAL_MAGIC) != EVE_MAGIC) continue;
+      datetime value=(datetime)HistoryDealGetInteger(ticket,DEAL_TIME);
+      if(value > latest) latest=value;
+   }
+   return latest;
+}
+
+void SetFleetState(const string state,const string detail)
+{
+   fleet_state=state;
+   fleet_state_detail=detail;
+}
+
+void SendFleetHeartbeat(const bool force=false)
+{
+   if(!InpFleetTelemetry || MQLInfoInteger(MQL_TESTER)) return;
+   int interval=InpFleetHeartbeatSeconds < 10 ? 10 : InpFleetHeartbeatSeconds;
+   if(!force && fleet_last_send > 0 && TimeCurrent()-fleet_last_send < interval) return;
+
+   bool terminal_allowed=(bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED);
+   bool ea_allowed=(bool)MQLInfoInteger(MQL_TRADE_ALLOWED);
+   string payload="{";
+   payload+="\"package_id\":\""+JsonEscape(EVE_PACKAGE_ID)+"\",";
+   payload+="\"strategy_code\":\""+JsonEscape(EVE_STRATEGY_CODE)+"\",";
+   payload+="\"rule_hash\":\""+JsonEscape(EVE_RULE_HASH)+"\",";
+   payload+="\"account_login\":"+IntegerToString((long)AccountInfoInteger(ACCOUNT_LOGIN))+",";
+   payload+="\"account_type\":\""+FleetAccountType()+"\",";
+   payload+="\"broker_server\":\""+JsonEscape(AccountInfoString(ACCOUNT_SERVER))+"\",";
+   payload+="\"broker_company\":\""+JsonEscape(AccountInfoString(ACCOUNT_COMPANY))+"\",";
+   payload+="\"symbol\":\""+JsonEscape(_Symbol)+"\",";
+   payload+="\"timeframe\":\""+JsonEscape(EnumToString((ENUM_TIMEFRAMES)_Period))+"\",";
+   payload+="\"chart_id\":\""+IntegerToString(ChartID())+"\",";
+   payload+="\"trading_enabled\":"+JsonBool(InpEnableTrading)+",";
+   payload+="\"algo_trading_enabled\":"+JsonBool(terminal_allowed && ea_allowed)+",";
+   payload+="\"state\":\""+JsonEscape(fleet_state)+"\",";
+   payload+="\"state_detail\":\""+JsonEscape(fleet_state_detail)+"\",";
+   payload+="\"open_positions\":"+IntegerToString(FleetOpenPositions())+",";
+   payload+="\"open_profit\":"+DoubleToString(FleetOpenProfit(),2)+",";
+   payload+="\"closed_profit_today\":"+DoubleToString(ClosedProfitToday(),2)+",";
+   payload+="\"terminal_time\":"+IntegerToString((long)TimeCurrent())+",";
+   payload+="\"last_trade_time\":"+IntegerToString((long)FleetLastTradeTime())+",";
+   payload+="\"client_version\":\""+EVE_FLEET_VERSION+"\"";
+   payload+="}";
+
+   char data[];
+   int data_size=StringToCharArray(payload,data,0,WHOLE_ARRAY,CP_UTF8);
+   if(data_size > 0) ArrayResize(data,data_size-1);
+   char result[];
+   string response_headers;
+   string headers="Content-Type: application/json\r\nX-EVE-FLEET-TOKEN: "+EVE_FLEET_TOKEN+"\r\n";
+   ResetLastError();
+   int response=WebRequest("POST",InpFleetEndpoint,headers,1000,data,result,response_headers);
+   fleet_last_send=TimeCurrent();
+   if(response < 200 || response >= 300)
+   {
+      if(force && InpVerboseLogging) Print(EVE_STRATEGY_CODE,": Demo Fleet heartbeat unavailable HTTP=",response," MQL=",GetLastError(),". Trading continues normally.");
+   }
+}
+'''
+    upgraded = upgraded.replace('void EvaluateNewSignal()\n{', telemetry + '\nvoid EvaluateNewSignal()\n{', 1)
+    upgraded = upgraded.replace(
+        '   if(!InpEnableTrading) return;\n   if(HasOurPosition() || !CooldownPassed() || !SpreadPassed() || !DailyLossGuardPassed()) return;\n',
+        '   if(!InpEnableTrading) { SetFleetState("trading_disabled","Enable the EA safety input on demo"); return; }\n'
+        '   if(HasOurPosition()) { SetFleetState("position_open","Managing the current position"); return; }\n'
+        '   if(!CooldownPassed()) { SetFleetState("cooldown","Waiting for the frozen cooldown"); return; }\n'
+        '   if(!SpreadPassed()) { SetFleetState("spread_blocked","Spread is above the safety limit"); return; }\n'
+        '   if(!DailyLossGuardPassed()) { SetFleetState("daily_loss_guard","Daily loss safety guard is active"); return; }\n',
+        1,
+    )
+    upgraded = upgraded.replace('   if(source_time <= 0) return;\n', '   if(source_time <= 0) { SetFleetState("waiting_data","Waiting for M5 chart data"); return; }\n', 1)
+    upgraded = upgraded.replace("   if(source_utc.min % 15 != 0) return; // Matches EVE's 15-minute research snapshot anchors.\n", "   if(source_utc.min % 15 != 0) { SetFleetState(\"waiting_anchor\",\"Waiting for the next 15-minute checkpoint\"); return; } // Matches EVE's 15-minute research snapshot anchors.\n", 1)
+    upgraded = upgraded.replace('   if(!CalculateFeatureSet(f)) return;\n', '   if(!CalculateFeatureSet(f)) { SetFleetState("waiting_data","Not enough data to calculate the frozen features"); return; }\n', 1)
+    upgraded = upgraded.replace('   if(!eligible) return;\n', '   if(!eligible) { SetFleetState("waiting_rule_condition","Waiting for the frozen day, time or market condition"); return; }\n', 1)
+    upgraded = upgraded.replace(
+        '   if(direction > 0 && !InpAllowLong) return;\n   if(direction < 0 && !InpAllowShort) return;\n   if(direction == 0) return;\n',
+        '   if(direction > 0 && !InpAllowLong) { SetFleetState("direction_blocked","Long entries are disabled in Inputs"); return; }\n'
+        '   if(direction < 0 && !InpAllowShort) { SetFleetState("direction_blocked","Short entries are disabled in Inputs"); return; }\n'
+        '   if(direction == 0) { SetFleetState("waiting_direction","Waiting for a non-neutral frozen direction"); return; }\n',
+        1,
+    )
+    upgraded = upgraded.replace(
+        '      SaveEntryTime();\n      Print(EVE_STRATEGY_CODE,": opened ",',
+        '      SaveEntryTime();\n      SetFleetState("position_open",direction > 0 ? "BUY opened" : "SELL opened");\n      SendFleetHeartbeat(true);\n      Print(EVE_STRATEGY_CODE,": opened ",',
+        1,
+    )
+    upgraded = upgraded.replace(
+        '      Print(EVE_STRATEGY_CODE,": order failed code=",trade.ResultRetcode()," ",trade.ResultRetcodeDescription());\n',
+        '      SetFleetState("order_failed",trade.ResultRetcodeDescription());\n      SendFleetHeartbeat(true);\n      Print(EVE_STRATEGY_CODE,": order failed code=",trade.ResultRetcode()," ",trade.ResultRetcodeDescription());\n',
+        1,
+    )
+    upgraded = upgraded.replace(
+        '         trade.PositionClose(ticket,InpSlippagePoints);\n         if(InpVerboseLogging)',
+        '         trade.PositionClose(ticket,InpSlippagePoints);\n         SetFleetState("time_exit","Position closed at the frozen maximum hold");\n         SendFleetHeartbeat(true);\n         if(InpVerboseLogging)',
+        1,
+    )
+    upgraded = upgraded.replace(
+        '   Print(EVE_STRATEGY_CODE,": loaded. Frozen hash=",EVE_RULE_HASH,". InpEnableTrading defaults to FALSE for safety.");\n   return INIT_SUCCEEDED;\n',
+        '   int heartbeat_seconds=InpFleetHeartbeatSeconds < 10 ? 10 : InpFleetHeartbeatSeconds;\n'
+        '   EventSetTimer(heartbeat_seconds);\n'
+        '   SetFleetState(InpEnableTrading ? "running" : "trading_disabled",InpEnableTrading ? "EA attached and monitoring" : "Enable the EA safety input on demo");\n'
+        '   SendFleetHeartbeat(true);\n'
+        '   Print(EVE_STRATEGY_CODE,": loaded. Frozen hash=",EVE_RULE_HASH,". InpEnableTrading defaults to FALSE for safety.");\n'
+        '   return INIT_SUCCEEDED;\n',
+        1,
+    )
+    upgraded = upgraded.replace(
+        'void OnDeinit(const int reason)\n{\n}\n',
+        'void OnDeinit(const int reason)\n{\n   SetFleetState("detached","EA removed or MT5 closing");\n   SendFleetHeartbeat(true);\n   EventKillTimer();\n}\n\nvoid OnTimer()\n{\n   if(HasOurPosition()) SetFleetState("position_open","Managing the current position");\n   else if(InpEnableTrading && fleet_state == "position_open") SetFleetState("running","Position finished; waiting for the next frozen setup");\n   SendFleetHeartbeat(false);\n}\n',
+        1,
+    )
+    upgraded = upgraded.replace(
+        '   ManageMaximumHold();\n   datetime current=iTime(_Symbol,PERIOD_M5,0);\n',
+        '   ManageMaximumHold();\n   if(HasOurPosition()) SetFleetState("position_open","Managing the current position");\n   datetime current=iTime(_Symbol,PERIOD_M5,0);\n',
+        1,
+    )
+    required_markers = (
+        "EVE_FLEET_TELEMETRY_V31",
+        "input bool   InpFleetTelemetry",
+        "const string EVE_PACKAGE_ID",
+        "void SendFleetHeartbeat",
+        "void OnTimer()",
+        "WebRequest",
+    )
+    missing = [marker for marker in required_markers if marker not in upgraded]
+    if missing:
+        raise ValueError(f"Fleet telemetry could not be added safely; missing source anchors: {', '.join(missing)}")
+    if upgraded.count("trade.Buy") != source.count("trade.Buy") or upgraded.count("trade.Sell") != source.count("trade.Sell"):
+        raise ValueError("Fleet telemetry upgrade changed the EA order-execution call count")
+    return upgraded
+
+
+def prepare_package_for_download(package: dict[str, Any], secret: str) -> dict[str, Any]:
+    prepared = dict(package)
+    package_id = str(package.get("id") or "")
+    rule_hash = str(package.get("rule_hash") or "")
+    source = upgrade_source_for_fleet(str(package.get("mq5_source") or ""), package_id, rule_hash, secret)
+    manifest = dict(package.get("manifest") or {})
+    manifest.update({
+        "command_centre_version": "3.1",
+        "fleet_telemetry": True,
+        "fleet_endpoint": "https://evealgolab.netlify.app/api/fleet/heartbeat",
+        "fleet_note": "Best-effort telemetry is never used as a trading condition.",
+        "execution_source_sha256": sha256_text(source),
+    })
+    readme = str(package.get("readme_text") or "")
+    if "DEMO FLEET CONNECTION" not in readme:
+        readme += """
+
+DEMO FLEET CONNECTION
+- This download includes best-effort EVE Command Centre heartbeat telemetry.
+- In MT5 open Tools > Options > Expert Advisors.
+- Tick Allow WebRequest for listed URL and add: https://evealgolab.netlify.app
+- Telemetry reports attachment state, chart, demo account type and P/L only.
+- A telemetry or internet failure never blocks, changes or closes a trade.
+- Demo Fleet marks the bot offline automatically when MT5 or the EA stops reporting.
+"""
+    prepared["mq5_source"] = source
+    prepared["manifest"] = manifest
+    prepared["readme_text"] = readme
+    prepared["source_sha256"] = sha256_text(source)
+    return prepared
 
 def build_package_files(package: dict[str, Any]) -> dict[str, bytes]:
     source = str(package.get("mq5_source") or "")

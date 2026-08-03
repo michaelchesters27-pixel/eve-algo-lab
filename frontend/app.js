@@ -83,6 +83,14 @@ let mt5Dashboard = null;
 let mt5PackageItems = [];
 let mt5RefreshTimer;
 let demoEligibilityDashboard = null;
+let demoBotItems = [];
+let botLibraryCategory = "all";
+let botLibrarySearch = "";
+let fleetDashboard = null;
+let fleetRefreshTimer;
+let currentWorkspace = "home";
+let currentFactoryStage = "build";
+let currentBotView = "organised";
 let serviceOnline = false;
 let demoRefreshTimer;
 const activeBackfillJobIds = Object.fromEntries(TIMEFRAMES.map((item) => [item.interval, null]));
@@ -112,6 +120,7 @@ function setJourneyState(selector, state, detail) {
 }
 
 function homeStatusClass(status) {
+  if (status === "attached") return "complete";
   if (status === "active_now") return "test-now";
   if (status === "attach_now_waiting_market_condition") return "attach-leave";
   if (status === "waiting_for_trading_window") return "wait-time";
@@ -141,21 +150,31 @@ function updateCommandCentre() {
   const strategiesTested = Number(strategyState.completed_count || 0);
   const mt5Ready = Number(validationState.mt5_ready_count || 0);
   const botsGenerated = Number(mt5State.generated_count || mt5PackageItems.length || 0);
+  const fleetCounts = fleetDashboard?.counts || {};
+  const fleetOnline = Number(fleetCounts.online || 0);
 
   setText("#homeResearchCount", formatNumber(researchTests));
   setText("#homeStrategyCount", formatNumber(strategiesTested));
   setText("#homeValidatedCount", formatNumber(mt5Ready));
   setText("#homeBotCount", formatNumber(botsGenerated));
+  setText("#homeFleetCount", formatNumber(fleetOnline));
+  setText("#homeFleetState", fleetDashboard?.setup_required ? "One-time setup required" : fleetOnline ? `${formatNumber(fleetCounts.in_trade || 0)} currently in trade` : "No live heartbeat");
   setText("#homeResearchState", learningState.autonomous_learning_enabled !== false && learningState.initial_build_complete ? "Working automatically" : "Foundation check");
   setText("#homeStrategyState", strategiesTested ? `${formatNumber(Number(strategyState.validated_count || 0) + Number(strategyState.elite_count || 0))} strong survivors` : "Waiting for evidence");
   setText("#homeProofState", mt5Ready ? "Rules frozen for bots" : "No rules frozen yet");
-  setText("#homeBotState", botsGenerated ? "Available in Bot Factory" : "Waiting for proof");
+  setText("#homeBotState", botsGenerated ? "Available in Bot Library" : "Waiting for proof");
 
-  const actionStatus = recommended.status || "waiting";
-  const actionLabel = recommended.status_label || (recommended.package_id ? "NEXT TEST" : "NO ACTION");
+  const recommendedPresence = fleetPresenceForPackage(recommended.package_id);
+  const recommendedAttached = recommendedPresence.count > 0;
+  const actionStatus = recommendedAttached ? "attached" : (recommended.status || "waiting");
+  const actionLabel = recommendedAttached ? "RUNNING IN MT5" : (recommended.status_label || (recommended.package_id ? "NEXT TEST" : "NO ACTION"));
   const actionTitle = recommended.strategy_name || "EVE is working in the background";
-  const actionCopy = recommended.headline || recommended.next_action || "No manual action is needed while EVE checks research, strategies and generated bots.";
-  const actionMeta = recommended.next_action || (recommended.package_id ? `Attach to ${recommended.attach_to || "XAUUSD M5"}. Demo only.` : "Open the detailed pages only when you need to inspect the work.");
+  const actionCopy = recommendedAttached
+    ? `${recommendedPresence.count} live attachment${recommendedPresence.count === 1 ? " is" : "s are"} already reporting. Do not attach another copy.`
+    : (recommended.headline || recommended.next_action || "No manual action is needed while EVE checks research, strategies and generated bots.");
+  const actionMeta = recommendedAttached
+    ? "Open Demo Fleet to see its state, chart, switches and demo P/L."
+    : (recommended.next_action || (recommended.package_id ? `Attach to ${recommended.attach_to || "XAUUSD M5"}. Demo only.` : "Open the detailed pages only when you need to inspect the work."));
 
   setText("#homeActionStatus", actionLabel);
   setClass("#homeActionStatus", `status-pill ${homeStatusClass(actionStatus)}`);
@@ -166,18 +185,25 @@ function updateCommandCentre() {
   if (actionCard) actionCard.dataset.status = actionStatus;
   const download = $("#homeActionDownload");
   if (download) {
-    if (recommended.package_id) {
+    if (recommendedAttached) {
+      download.href = "#demo-fleet";
+      download.textContent = "Open Demo Fleet";
+      download.removeAttribute("aria-disabled");
+      download.classList.remove("disabled-link");
+    } else if (recommended.package_id) {
       download.href = `/api/mt5/packages/${encodeURIComponent(recommended.package_id)}/download`;
+      download.textContent = "Download recommended bot";
       download.removeAttribute("aria-disabled");
       download.classList.remove("disabled-link");
     } else {
       download.href = "#";
+      download.textContent = "No bot action";
       download.setAttribute("aria-disabled", "true");
       download.classList.add("disabled-link");
     }
   }
 
-  const activeAction = ["active_now", "attach_now_waiting_market_condition"].includes(actionStatus);
+  const activeAction = ["active_now", "attach_now_waiting_market_condition", "attached"].includes(actionStatus);
   const futureAction = ["waiting_for_trading_window", "waiting_for_period", "market_closed"].includes(actionStatus);
   if (activeAction) {
     setText("#briefingStatus", "ACTION AVAILABLE");
@@ -190,7 +216,7 @@ function updateCommandCentre() {
   } else {
     setText("#briefingStatus", "EVE IS WORKING");
     setText("#briefingHeadline", "EVE is researching, testing and building in the background.");
-    setText("#briefingCopy", botsGenerated ? `${formatNumber(botsGenerated)} MT5 bot package${botsGenerated === 1 ? " is" : "s are"} available. Demo Testing will tell you when each one is practical to attach.` : "No intervention is required while the autonomous workers continue.");
+    setText("#briefingCopy", botsGenerated ? `${formatNumber(botsGenerated)} MT5 bot package${botsGenerated === 1 ? " is" : "s are"} available. Bot Library will tell you when each one is practical to attach.` : "No intervention is required while the autonomous workers continue.");
   }
 
   const allDataReady = readyDatasets === TIMEFRAMES.length;
@@ -1941,36 +1967,91 @@ function demoStatusClass(status) {
   return "waiting";
 }
 
+function scheduleExplanationForDisplay(item = {}) {
+  const explanation = String(item.schedule_explanation || "Frozen schedule unavailable.");
+  const rawHour = item.hour_utc;
+  if (rawHour == null || rawHour === "" || Number.isNaN(Number(rawHour))) return explanation;
+  const now = new Date();
+  const utcDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), Number(rawHour), 0, 0));
+  const london = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Europe/London", timeZoneName: "short" }).format(utcDate);
+  return `${explanation} Today that clock time is ${london} in London.`;
+}
+
+function fleetPresenceForPackage(packageId) {
+  const matches = (fleetDashboard?.items || []).filter((fleetItem) => String(fleetItem.package_id || "") === String(packageId || ""));
+  const online = matches.filter((fleetItem) => fleetItem.connection === "online");
+  const known = matches.filter((fleetItem) => fleetItem.connection !== "detached");
+  return { matches, online, known, count: online.length, duplicate: online.some((fleetItem) => fleetItem.duplicate) };
+}
+
 function renderDemoRecommended(item = {}) {
   const hasItem = Boolean(item.package_id);
+  const presence = fleetPresenceForPackage(item.package_id);
+  const isAttached = presence.count > 0;
   setText("#demoRecommendedName", item.strategy_name || "Waiting for generated EAs");
-  setText("#demoRecommendedStatus", hasItem ? item.status_label : "WAITING");
-  setClass("#demoRecommendedStatus", `status-pill ${hasItem ? demoStatusClass(item.status) : "waiting"}`);
-  setText("#demoRecommendedHeadline", item.headline || "EVE will prioritise bots that can actually operate in the current period.");
+  setText("#demoRecommendedStatus", isAttached ? "RUNNING IN MT5" : hasItem ? item.status_label : "WAITING");
+  setClass("#demoRecommendedStatus", `status-pill ${isAttached ? "complete" : hasItem ? demoStatusClass(item.status) : "waiting"}`);
+  setText("#demoRecommendedHeadline", isAttached ? `${presence.count} live MT5 attachment${presence.count === 1 ? " is" : "s are"} already reporting for this bot.` : (item.headline || "EVE will prioritise bots that can actually operate in the current period."));
   setText("#demoRecommendedRule", item.rule_summary || "Frozen rule summary will appear here.");
   setText("#demoRecommendedPF", hasItem ? Number(item.locked_profit_factor || 0).toFixed(2) : "—");
   setText("#demoRecommendedExpectancy", hasItem ? formatR(item.locked_expectancy_r) : "—");
   setText("#demoRecommendedTrades", hasItem ? formatNumber(item.locked_trades) : "—");
   setText("#demoRecommendedChart", item.attach_to || "XAUUSD M5");
-  setText("#demoRecommendedAction", item.next_action || "Wait for EVE to finish checking the packages.");
+  setText("#demoRecommendedAction", isAttached ? "Already attached. Do not attach another copy; monitor it in Demo Fleet." : (item.next_action || "Wait for EVE to finish checking the packages."));
   setDownloadLink("#demoRecommendedDownload", item.package_id, "download");
   setDownloadLink("#demoRecommendedSource", item.package_id, "source");
 }
 
-function renderDemoBotList(items = []) {
+function botMatchesCategory(item, category) {
+  if (category === "all") return true;
+  if (category === "test_now") return ["active_now", "attach_now_waiting_market_condition"].includes(item.status);
+  return (item.usage_tags || []).includes(category);
+}
+
+function renderDemoBotList(items = demoBotItems) {
   const host = $("#demoBotList");
   if (!host) return;
-  if (!items.length) {
-    host.innerHTML = '<div class="empty-state">No generated MT5 packages are available yet.</div>';
+  const needle = botLibrarySearch.trim().toLowerCase();
+  const filtered = items.filter((item) => {
+    if (!botMatchesCategory(item, botLibraryCategory)) return false;
+    if (!needle) return true;
+    return [item.strategy_name, item.strategy_code, item.package_code, item.usage_title, item.rule_summary]
+      .some((value) => String(value || "").toLowerCase().includes(needle));
+  });
+  const categoryNames = {
+    all: "every generated bot",
+    test_now: "bots practical to test now",
+    everyday: "everyday bots",
+    weekday_monday: "Monday bots",
+    weekday_tuesday: "Tuesday bots",
+    weekday_wednesday: "Wednesday bots",
+    weekday_thursday: "Thursday bots",
+    weekday_friday: "Friday bots",
+    short_window: "short-window bots",
+    seasonal: "monthly and seasonal bots",
+  };
+  setText("#botCategorySummary", `Showing ${formatNumber(filtered.length)} of ${formatNumber(items.length)} — ${categoryNames[botLibraryCategory] || "selected bots"}.`);
+  if (!filtered.length) {
+    host.innerHTML = '<div class="empty-state">No bots match this schedule category or search.</div>';
     return;
   }
-  host.innerHTML = items.map((item, index) => {
+  host.innerHTML = filtered.map((item, index) => {
     const chips = (item.conditions || []).map((condition) => `<span class="demo-condition-chip ${condition.matched ? "match" : "missing"}">${condition.matched ? "✓" : "○"} ${escapeHtml(condition.label)}</span>`).join("");
-    return `<article class="demo-bot-card ${escapeHtml(item.status || "")}">
+    const presence = fleetPresenceForPackage(item.package_id);
+    const isAttached = presence.count > 0;
+    const fleetBanner = isAttached
+      ? `<div class="bot-fleet-banner ${presence.duplicate ? "duplicate" : "online"}"><small>MT5 STATUS</small><strong>${presence.duplicate ? "DUPLICATE ATTACHMENTS" : "RUNNING IN MT5"} · ${presence.count} LIVE</strong><span>${presence.duplicate ? "Open Demo Fleet and remove the extra copy." : "EVE is receiving this bot's heartbeat. Do not attach another copy."}</span></div>`
+      : "";
+    const actions = isAttached
+      ? `<div class="actions compact-actions"><a class="button button-primary" href="#demo-fleet">Open Demo Fleet</a><a class="button" href="${escapeHtml(item.download_url || "#")}">Download again only if replacing it</a></div>`
+      : `<div class="actions compact-actions"><a class="button button-primary" href="${escapeHtml(item.download_url || "#")}">Download fleet-ready package</a><a class="button" href="${escapeHtml(item.source_url || "#")}">Download fleet-ready .mq5</a></div>`;
+    return `<article class="demo-bot-card ${escapeHtml(item.status || "")} ${isAttached ? "already-attached" : ""}" data-package-id="${escapeHtml(item.package_id || "")}">
       <div class="demo-bot-head">
-        <div><small>${index === 0 ? "TOP PRACTICAL CHOICE" : escapeHtml(item.package_code || "GENERATED EA")}</small><h3>${escapeHtml(item.strategy_name || item.strategy_code || "EVE strategy")}</h3></div>
+        <div><small>${index === 0 && botLibraryCategory === "test_now" ? "TOP PRACTICAL CHOICE" : escapeHtml(item.package_code || "GENERATED EA")}</small><h3>${escapeHtml(item.strategy_name || item.strategy_code || "EVE strategy")}</h3></div>
         <span class="status-pill ${demoStatusClass(item.status)}">${escapeHtml(item.status_label || "WAITING")}</span>
       </div>
+      ${fleetBanner}
+      <div class="bot-usage-banner"><small>WHEN THIS BOT IS FOR</small><strong>${escapeHtml(item.usage_title || "General bot")}</strong><span>${escapeHtml(scheduleExplanationForDisplay(item))}</span></div>
       <p class="demo-bot-rule">${escapeHtml(item.rule_summary || "Frozen strategy rules")}</p>
       ${chips ? `<div class="demo-condition-list">${chips}</div>` : ""}
       <div class="strategy-summary-grid demo-bot-metrics">
@@ -1979,11 +2060,8 @@ function renderDemoBotList(items = []) {
         <div><small>TRADES</small><strong>${formatNumber(item.locked_trades)}</strong></div>
       </div>
       <div class="demo-bot-action"><small>WHAT YOU DO</small><strong>${escapeHtml(item.next_action || "Wait for the next eligibility check.")}</strong></div>
-      <p><strong>Attach to:</strong> ${escapeHtml(item.attach_to || "XAUUSD M5")}<br><strong>Demo setting:</strong> ${escapeHtml(item.demo_switch || "Set InpEnableTrading=true")}</p>
-      <div class="actions compact-actions">
-        <a class="button button-primary" href="${escapeHtml(item.download_url || "#")}">Download package</a>
-        <a class="button" href="${escapeHtml(item.source_url || "#")}">Download .mq5</a>
-      </div>
+      <p><strong>Attach to:</strong> ${escapeHtml(item.attach_to || "XAUUSD M5")}<br><strong>Can it stay attached?</strong> ${escapeHtml(item.attach_guidance || "Yes — frozen filters keep it idle outside its window.")}<br><strong>Demo setting:</strong> ${escapeHtml(item.demo_switch || "Set InpEnableTrading=true")}</p>
+      ${actions}
     </article>`;
   }).join("");
 }
@@ -2003,7 +2081,8 @@ function renderDemoEligibility(data = {}) {
   setText("#demoAttachCount", formatNumber(counts.attach_and_leave));
   setText("#demoWaitingCount", formatNumber(Number(counts.waiting_for_time || 0) + Number(counts.waiting_for_period || 0) + Number(counts.market_closed || 0)));
   renderDemoRecommended(data.recommended || {});
-  renderDemoBotList(data.items || []);
+  demoBotItems = data.items || [];
+  renderDemoBotList();
   setText("#demoListStatus", "READY");
   setClass("#demoListStatus", "status-pill complete");
   setText("#demoDisclaimer", data.disclaimer || "Demo only.");
@@ -2020,6 +2099,162 @@ async function refreshDemoEligibility(silent = false) {
     setText("#demoMessage", error.message);
     if (!silent) showToast(error.message, true);
   }
+}
+
+function fleetConnectionClass(connection) {
+  if (connection === "online") return "fleet-online";
+  if (connection === "stale") return "fleet-stale";
+  if (connection === "detached") return "fleet-detached";
+  return "fleet-offline";
+}
+
+function fleetStateLabel(item) {
+  const labels = {
+    starting: "Starting",
+    running: "Monitoring",
+    trading_disabled: "Trading input is OFF",
+    position_open: "Position open",
+    cooldown: "Cooldown",
+    spread_blocked: "Spread safety block",
+    daily_loss_guard: "Daily loss guard",
+    waiting_anchor: "Waiting for 15-minute checkpoint",
+    waiting_rule_condition: "Waiting for frozen setup",
+    waiting_direction: "Waiting for direction",
+    waiting_data: "Waiting for chart data",
+    direction_blocked: "Direction disabled",
+    order_failed: "Order failed",
+    time_exit: "Time exit completed",
+    detached: "Detached",
+  };
+  return labels[item.state] || String(item.state || "Unknown").replaceAll("_", " ");
+}
+
+function renderFleet(data = {}) {
+  fleetDashboard = data;
+  const counts = data.counts || {};
+  if (demoEligibilityDashboard?.recommended) renderDemoRecommended(demoEligibilityDashboard.recommended);
+  if (demoBotItems.length) renderDemoBotList();
+  const setup = Boolean(data.setup_required);
+  const online = Number(counts.online || 0);
+  const attention = Number(counts.attention || 0);
+  setText("#fleetOnlineCount", formatNumber(online));
+  setText("#fleetTradeCount", formatNumber(counts.in_trade));
+  setText("#fleetAttentionCount", formatNumber(attention));
+  setText("#fleetDuplicateCount", formatNumber(counts.duplicates));
+  setText("#fleetClosedPnl", formatSignedMoney(data.combined_closed_profit_today || 0));
+  setText("#fleetOpenPnl", formatSignedMoney(data.combined_open_profit || 0));
+  setText("#fleetHeadline", setup ? "One-time fleet setup is required" : online ? `${online} EVE bot${online === 1 ? " is" : "s are"} attached and reporting` : "No fleet-ready bot is reporting from MT5");
+  setText("#fleetMessage", data.message || "A bot appears online only while its heartbeat is arriving.");
+  setText("#fleetOverallStatus", setup ? "SETUP" : attention ? "ATTENTION" : online ? "LIVE" : "WAITING");
+  setClass("#fleetOverallStatus", `status-pill ${setup ? "queued" : attention ? "error" : online ? "complete" : "waiting"}`);
+  setText("#fleetListStatus", setup ? "SETUP" : online ? "LIVE" : "WAITING");
+  setClass("#fleetListStatus", `status-pill ${setup ? "queued" : online ? "complete" : "waiting"}`);
+  const setupPanel = $("#fleetSetupPanel");
+  if (setupPanel) setupPanel.hidden = !setup;
+
+  const host = $("#fleetList");
+  const items = data.items || [];
+  if (!host) return;
+  if (!items.length) {
+    host.innerHTML = `<div class="empty-state">${setup ? "Complete the one-time steps above, then attach a fleet-ready EA." : "No heartbeat yet. Existing old EAs must be downloaded again to gain fleet telemetry."}</div>`;
+    updateCommandCentre();
+    return;
+  }
+  host.innerHTML = items.map((item) => {
+    const isReal = item.account_type === "real";
+    const warnings = [];
+    if (isReal) warnings.push("REAL ACCOUNT DETECTED — remove this EA. EVE packages are demo-only.");
+    if (item.duplicate) warnings.push("Duplicate attachment detected for the same strategy, account, symbol and timeframe.");
+    if (item.connection === "online" && !item.trading_enabled) warnings.push("The EA safety input InpEnableTrading is OFF.");
+    if (item.connection === "online" && !item.algo_trading_enabled) warnings.push("MT5 Algo Trading is OFF for this EA or terminal.");
+    const connectionLabel = String(item.connection || "offline").toUpperCase();
+    return `<article class="fleet-card ${escapeHtml(item.connection || "offline")} ${isReal ? "real-account" : ""}">
+      <div class="fleet-card-head">
+        <div><small>${escapeHtml(item.package_code || item.strategy_code || "EVE BOT")}</small><h3>${escapeHtml(item.strategy_name || item.strategy_code || "EVE strategy")}</h3></div>
+        <span class="status-pill ${fleetConnectionClass(item.connection)}">${escapeHtml(connectionLabel)}</span>
+      </div>
+      ${warnings.map((warning) => `<div class="fleet-warning">${escapeHtml(warning)}</div>`).join("")}
+      <div class="fleet-status-line"><small>CURRENT STATE</small><strong>${escapeHtml(fleetStateLabel(item))}${item.state_detail ? ` — ${escapeHtml(item.state_detail)}` : ""}</strong></div>
+      <div class="bot-usage-banner"><small>WHEN THIS BOT IS FOR</small><strong>${escapeHtml(item.usage_title || "Schedule unavailable")}</strong><span>${escapeHtml(scheduleExplanationForDisplay(item))}</span></div>
+      <div class="fleet-passport">
+        <div><small>ACCOUNT</small><strong>${escapeHtml(item.account_login_masked || "—")} · ${escapeHtml(String(item.account_type || "unknown").toUpperCase())}</strong></div>
+        <div><small>BROKER</small><strong>${escapeHtml(item.broker_server || item.broker_company || "—")}</strong></div>
+        <div><small>CHART</small><strong>${escapeHtml(item.symbol || "—")} · ${escapeHtml(item.timeframe || "—")}</strong></div>
+        <div><small>LAST HEARTBEAT</small><strong>${item.heartbeat_age_seconds == null ? "—" : `${Math.round(item.heartbeat_age_seconds)} seconds ago`}</strong></div>
+        <div><small>TRADING INPUT</small><strong>${item.trading_enabled ? "ON" : "OFF"}</strong></div>
+        <div><small>ALGO TRADING</small><strong>${item.algo_trading_enabled ? "ON" : "OFF"}</strong></div>
+      </div>
+      <div class="fleet-pnl">
+        <div><small>CLOSED TODAY</small><strong>${formatSignedMoney(item.closed_profit_today || 0)}</strong></div>
+        <div><small>OPEN NOW</small><strong>${formatSignedMoney(item.open_profit || 0)}</strong></div>
+      </div>
+    </article>`;
+  }).join("");
+  updateCommandCentre();
+}
+
+async function refreshFleet(silent = false) {
+  try {
+    const payload = await api("fleet?symbol=XAU%2FUSD&limit=200");
+    renderFleet(payload.data || {});
+  } catch (error) {
+    setText("#fleetOverallStatus", "ERROR");
+    setClass("#fleetOverallStatus", "status-pill error");
+    setText("#fleetMessage", error.message);
+    if (!silent) showToast(error.message, true);
+  }
+}
+
+const WORKSPACE_ALIASES = {
+  home: "home", overview: "home",
+  research: "research", learning: "research",
+  "strategy-factory": "strategy", "strategy-lab": "strategy", evolution: "strategy", validation: "strategy",
+  "bot-library": "bot-library", "demo-lab": "bot-library", "mt5-lab": "bot-library",
+  "demo-fleet": "demo-fleet",
+  advanced: "advanced", foundation: "advanced", memory: "advanced", backtester: "advanced", pipeline: "advanced", activity: "advanced",
+};
+
+function parseWorkspaceRoute() {
+  const raw = (window.location.hash || "#home").slice(1);
+  const [path, query = ""] = raw.split("?");
+  const params = new URLSearchParams(query);
+  const workspace = WORKSPACE_ALIASES[path] || "home";
+  let stage = params.get("stage") || currentFactoryStage;
+  if (path === "evolution") stage = "improve";
+  if (path === "validation") stage = "prove";
+  if (path === "strategy-lab") stage = "build";
+  let view = params.get("view") || currentBotView;
+  if (path === "mt5-lab") view = "files";
+  if (path === "demo-lab" || path === "bot-library") view = "organised";
+  return { path, workspace, stage, view };
+}
+
+function showWorkspace(workspace, { stage = currentFactoryStage, view = currentBotView, scrollTarget = null } = {}) {
+  currentWorkspace = workspace;
+  currentFactoryStage = ["build", "improve", "prove"].includes(stage) ? stage : "build";
+  currentBotView = ["organised", "files"].includes(view) ? view : "organised";
+  document.querySelectorAll("[data-workspace]").forEach((section) => {
+    let visible = section.dataset.workspace === currentWorkspace;
+    if (visible && currentWorkspace === "strategy" && section.dataset.factoryStage) visible = section.dataset.factoryStage === currentFactoryStage;
+    if (visible && currentWorkspace === "bot-library" && section.dataset.botView) visible = section.dataset.botView === currentBotView;
+    if (visible && section.id === "backtester") visible = legacyBacktesterOpen;
+    section.hidden = !visible;
+    section.setAttribute("aria-hidden", visible ? "false" : "true");
+  });
+  document.querySelectorAll("[data-workspace-link]").forEach((link) => link.classList.toggle("active", link.dataset.workspaceLink === currentWorkspace));
+  document.querySelectorAll("[data-factory-target]").forEach((button) => button.classList.toggle("active", button.dataset.factoryTarget === currentFactoryStage));
+  document.querySelectorAll("[data-bot-view-target]").forEach((button) => button.classList.toggle("active", button.dataset.botViewTarget === currentBotView));
+  requestAnimationFrame(() => {
+    const target = scrollTarget ? document.getElementById(scrollTarget) : null;
+    if (target && !target.hidden) target.scrollIntoView({ block: "start" });
+    else window.scrollTo({ top: 0, behavior: "auto" });
+  });
+}
+
+function applyWorkspaceRoute() {
+  const route = parseWorkspaceRoute();
+  if (route.path === "backtester") legacyBacktesterOpen = true;
+  showWorkspace(route.workspace, { stage: route.stage, view: route.view, scrollTarget: ["foundation", "memory", "backtester", "pipeline", "activity"].includes(route.path) ? route.path : null });
 }
 
 function listen(selector, eventName, handler) {
@@ -2060,6 +2295,7 @@ listen("#refreshButton", "click", async () => {
   await refreshValidation(true);
   await refreshMt5(true);
   await refreshDemoEligibility(true);
+  await refreshFleet(true);
   if (legacyBacktesterOpen && (activeBacktestId || legacyBacktestHistoryOpen)) await refreshBacktests(true);
 });
 listen("#discoverySort", "change", async (event) => {
@@ -2135,6 +2371,18 @@ listen("#refreshValidation", "click", () => refreshValidation());
 listen("#wakeMt5", "click", (event) => wakeMt5(event.currentTarget));
 listen("#refreshMt5", "click", () => refreshMt5());
 listen("#refreshDemoLab", "click", () => refreshDemoEligibility());
+listen("#refreshFleet", "click", () => refreshFleet());
+listen("#botLibrarySearch", "input", (event) => {
+  botLibrarySearch = event.currentTarget.value || "";
+  renderDemoBotList();
+});
+document.querySelectorAll("[data-bot-category]").forEach((button) => {
+  button.addEventListener("click", () => {
+    botLibraryCategory = button.dataset.botCategory || "all";
+    document.querySelectorAll("[data-bot-category]").forEach((item) => item.classList.toggle("active", item === button));
+    renderDemoBotList();
+  });
+});
 listen("#validationSort", "change", async (event) => {
   validationJobOrder = event.currentTarget.value || "profit_factor";
   selectedValidationJobId = null;
@@ -2157,29 +2405,29 @@ listen("#validationJobList", "click", (event) => {
 
 listen("#openLegacyBacktester", "click", () => setLegacyBacktesterOpen(true));
 listen("#closeLegacyBacktester", "click", () => setLegacyBacktesterOpen(false));
-window.addEventListener("hashchange", () => {
-  if (window.location.hash === "#backtester") setLegacyBacktesterOpen(true, { scroll: true, updateHash: false });
+document.querySelectorAll("[data-workspace-link]").forEach((link) => {
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    window.location.hash = link.getAttribute("href");
+  });
 });
-
-const navLinks = [...document.querySelectorAll(".nav-link")];
-const sections = [...document.querySelectorAll("[data-nav-section]")];
-const observer = new IntersectionObserver((entries) => {
-  const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-  if (!visible) return;
-  const target = visible.target.dataset.navSection || `#${visible.target.id}`;
-  navLinks.forEach((link) => link.classList.toggle("active", link.getAttribute("href") === target));
-}, { rootMargin: "-28% 0px -62%", threshold: [0, .05, .15] });
-sections.forEach((section) => observer.observe(section));
-navLinks.forEach((link) => link.addEventListener("click", () => navLinks.forEach((item) => item.classList.toggle("active", item === link))));
-
-const factoryLinks = [...document.querySelectorAll(".factory-tabs a")];
-const factorySections = ["strategy-lab", "evolution", "validation"].map((id) => document.getElementById(id)).filter(Boolean);
-const factoryObserver = new IntersectionObserver((entries) => {
-  const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-  if (!visible) return;
-  factoryLinks.forEach((link) => link.classList.toggle("active", link.getAttribute("href") === `#${visible.target.id}`));
-}, { rootMargin: "-30% 0px -58%", threshold: [0, .05, .15] });
-factorySections.forEach((section) => factoryObserver.observe(section));
+document.querySelectorAll("[data-factory-target]").forEach((button) => {
+  button.addEventListener("click", () => {
+    currentFactoryStage = button.dataset.factoryTarget || "build";
+    window.location.hash = `#strategy-factory?stage=${currentFactoryStage}`;
+  });
+});
+document.querySelectorAll("[data-bot-view-target]").forEach((button) => {
+  button.addEventListener("click", () => {
+    currentBotView = button.dataset.botViewTarget || "organised";
+    window.location.hash = currentBotView === "files" ? "#bot-library?view=files" : "#bot-library";
+  });
+});
+document.querySelectorAll(".advanced-link-grid a").forEach((link) => {
+  link.addEventListener("click", () => { currentWorkspace = "advanced"; });
+});
+window.addEventListener("hashchange", applyWorkspaceRoute);
+applyWorkspaceRoute();
 
 updateCommandCentre();
 (async () => {
@@ -2192,6 +2440,7 @@ updateCommandCentre();
   await refreshValidation(true);
   await refreshMt5(true);
   await refreshDemoEligibility(true);
+  await refreshFleet(true);
   if (window.location.hash === "#backtester") setLegacyBacktesterOpen(true, { scroll: false, updateHash: false });
   updateCommandCentre();
 })();
@@ -2203,6 +2452,7 @@ refreshTimer = setInterval(async () => {
   await refreshValidation(true);
   await refreshMt5(true);
   await refreshDemoEligibility(true);
+  await refreshFleet(true);
   if (legacyBacktesterOpen && (activeBacktestId || legacyBacktestHistoryOpen)) await refreshBacktests(true);
 }, 10_000);
 
@@ -2212,3 +2462,4 @@ evolutionRefreshTimer = setInterval(() => refreshEvolution(true), 30_000);
 validationRefreshTimer = setInterval(() => refreshValidation(true), 30_000);
 mt5RefreshTimer = setInterval(() => refreshMt5(true), 30_000);
 demoRefreshTimer = setInterval(() => refreshDemoEligibility(true), 30_000);
+fleetRefreshTimer = setInterval(() => refreshFleet(true), 30_000);

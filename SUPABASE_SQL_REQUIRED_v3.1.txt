@@ -1,0 +1,2 @@
+Run SUPABASE_UPDATE_v3.1.sql once in the existing EVE Algo Lab Supabase project before using Demo Fleet.
+It creates only public.mt5_fleet_instances. Existing candles, research, mutations, validation and MT5 packages are retained.

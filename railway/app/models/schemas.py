@@ -68,6 +68,29 @@ class FixedLadderBacktestRequest(BaseModel):
         return value
 
 
+class FleetHeartbeatRequest(BaseModel):
+    package_id: str = Field(min_length=8, max_length=80)
+    strategy_code: str = Field(min_length=3, max_length=120)
+    rule_hash: str = Field(min_length=16, max_length=128)
+    account_login: int = Field(gt=0)
+    account_type: Literal["demo", "contest", "real", "unknown"] = "unknown"
+    broker_server: str = Field(default="", max_length=160)
+    broker_company: str = Field(default="", max_length=160)
+    symbol: str = Field(min_length=1, max_length=40)
+    timeframe: str = Field(min_length=1, max_length=20)
+    chart_id: str = Field(default="", max_length=80)
+    trading_enabled: bool = False
+    algo_trading_enabled: bool = False
+    state: str = Field(default="starting", min_length=1, max_length=80)
+    state_detail: str = Field(default="", max_length=500)
+    open_positions: int = Field(default=0, ge=0, le=1000)
+    open_profit: float = Field(default=0.0, ge=-1_000_000_000, le=1_000_000_000)
+    closed_profit_today: float = Field(default=0.0, ge=-1_000_000_000, le=1_000_000_000)
+    terminal_time: int | None = Field(default=None, ge=0)
+    last_trade_time: int | None = Field(default=None, ge=0)
+    client_version: str = Field(default="", max_length=80)
+
+
 class ApiEnvelope(BaseModel):
     ok: bool = True
     data: Any = None

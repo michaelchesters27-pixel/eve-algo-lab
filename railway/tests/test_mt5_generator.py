@@ -106,3 +106,24 @@ def test_unsupported_condition_fails_generation():
         assert "Unsupported MT5 source condition field" in str(exc)
     else:
         raise AssertionError("Unsupported condition should not generate source")
+
+
+def test_download_source_adds_non_blocking_fleet_telemetry_without_changing_rules():
+    from app.services.mt5_generator import prepare_package_for_download
+
+    frozen = frozen_strategy()
+    payload = generate_package_payload(frozen)
+    payload.update({"id": "22222222-2222-2222-2222-222222222222", "rule_hash": frozen["rule_hash"]})
+    original = payload["mq5_source"]
+    prepared = prepare_package_for_download(payload, "admin-secret-123")
+    source = prepared["mq5_source"]
+    assert "EVE_FLEET_TELEMETRY_V31" in source
+    assert "InpFleetTelemetry" in source
+    assert "void OnTimer()" in source
+    assert "WebRequest" in source
+    assert "Trading continues normally" in source
+    assert f'const double EVE_STOP_ATR      = {float(frozen["rules"]["stop_atr"]):.8f};' in source
+    assert f'const double EVE_TARGET_ATR    = {float(frozen["rules"]["target_atr"]):.8f};' in source
+    assert original.count("trade.Buy") == source.count("trade.Buy")
+    assert original.count("trade.Sell") == source.count("trade.Sell")
+    assert prepared["manifest"]["fleet_telemetry"] is True

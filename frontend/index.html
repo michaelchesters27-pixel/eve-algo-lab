@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3.0.2">
+  <link rel="stylesheet" href="styles.css?v=3.1">
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -24,13 +24,13 @@
       </a>
       <nav class="nav" aria-label="Main navigation">
         <p class="nav-group-label">COMMAND</p>
-        <a class="nav-link active" href="#overview"><span>01</span><b>Home</b><small>What matters now</small></a>
-        <a class="nav-link" href="#learning"><span>02</span><b>Research</b><small>What EVE is learning</small></a>
-        <a class="nav-link" href="#strategy-lab"><span>03</span><b>Strategy Factory</b><small>Build · improve · prove</small></a>
-        <a class="nav-link" href="#mt5-lab"><span>04</span><b>Bot Factory</b><small>Generated MT5 EAs</small></a>
-        <a class="nav-link" href="#demo-lab"><span>05</span><b>Demo Testing</b><small>What to attach and when</small></a>
+        <a class="nav-link active" href="#home" data-workspace-link="home"><span>01</span><b>Home</b><small>What matters now</small></a>
+        <a class="nav-link" href="#research" data-workspace-link="research"><span>02</span><b>Research</b><small>What EVE is learning</small></a>
+        <a class="nav-link" href="#strategy-factory" data-workspace-link="strategy"><span>03</span><b>Strategy Factory</b><small>Build · improve · prove</small></a>
+        <a class="nav-link" href="#bot-library" data-workspace-link="bot-library"><span>04</span><b>Bot Library</b><small>Everyday · weekday · seasonal</small></a>
+        <a class="nav-link" href="#demo-fleet" data-workspace-link="demo-fleet"><span>05</span><b>Demo Fleet</b><small>What is attached to MT5</small></a>
         <p class="nav-group-label nav-group-secondary">SYSTEM</p>
-        <a class="nav-link" href="#advanced"><span>06</span><b>Advanced</b><small>Data · tests · logs</small></a>
+        <a class="nav-link" href="#advanced" data-workspace-link="advanced"><span>06</span><b>Advanced</b><small>Data · tests · logs</small></a>
       </nav>
       <div class="side-status">
         <span class="pulse" id="servicePulse"></span>
@@ -41,7 +41,7 @@
     <main>
       <header class="topbar command-topbar">
         <div>
-          <p class="eyebrow">EVE COMMAND CENTRE · v3.0.2</p>
+          <p class="eyebrow">EVE COMMAND CENTRE · v3.1</p>
           <h1 id="briefingGreeting">Good afternoon.</h1>
           <p class="topbar-summary">Here is what EVE has done, what matters now and the one action worth your attention.</p>
         </div>
@@ -52,7 +52,7 @@
         </div>
       </header>
 
-      <section id="overview" class="command-centre" data-nav-section="#overview">
+      <section id="overview" class="command-centre workspace-section" data-workspace="home">
         <article class="command-brief panel">
           <div class="command-brief-copy">
             <div class="command-state-row"><span class="command-live-dot"></span><span id="briefingStatus">EVE IS CHECKING</span></div>
@@ -65,6 +65,7 @@
             <div><small>STRATEGIES TESTED</small><strong id="homeStrategyCount">0</strong><span id="homeStrategyState">Checking</span></div>
             <div><small>READY FOR MT5</small><strong id="homeValidatedCount">0</strong><span id="homeProofState">Checking</span></div>
             <div><small>BOT PACKAGES</small><strong id="homeBotCount">0</strong><span id="homeBotState">Checking</span></div>
+            <div><small>DEMO BOTS ONLINE</small><strong id="homeFleetCount">0</strong><span id="homeFleetState">Waiting for heartbeat</span></div>
           </div>
         </article>
 
@@ -97,16 +98,16 @@
         <article class="panel journey-panel">
           <div class="panel-head"><div><p class="label">THE EVE JOURNEY</p><h2>One clear path from evidence to demo</h2></div><span class="journey-caption">AUTONOMOUS PIPELINE</span></div>
           <div class="journey-track">
-            <a href="#learning" class="journey-step" id="journeyResearch"><span>1</span><div><small>RESEARCH</small><strong>Find evidence</strong><p>Test historical questions.</p></div></a>
-            <a href="#strategy-lab" class="journey-step" id="journeyBuild"><span>2</span><div><small>BUILD</small><strong>Create rules</strong><p>Turn evidence into strategies.</p></div></a>
-            <a href="#evolution" class="journey-step" id="journeyImprove"><span>3</span><div><small>IMPROVE</small><strong>Beat the parent</strong><p>Controlled mutations compete.</p></div></a>
-            <a href="#validation" class="journey-step" id="journeyProof"><span>4</span><div><small>PROVE</small><strong>Survive M1 replay</strong><p>Stress costs and robustness.</p></div></a>
-            <a href="#mt5-lab" class="journey-step" id="journeyBot"><span>5</span><div><small>BOT</small><strong>Generate MT5 EA</strong><p>Freeze and package the code.</p></div></a>
-            <a href="#demo-lab" class="journey-step" id="journeyDemo"><span>6</span><div><small>DEMO</small><strong>Test at the right time</strong><p>Attach only eligible bots.</p></div></a>
+            <a href="#research" class="journey-step" id="journeyResearch"><span>1</span><div><small>RESEARCH</small><strong>Find evidence</strong><p>Test historical questions.</p></div></a>
+            <a href="#strategy-factory" class="journey-step" id="journeyBuild"><span>2</span><div><small>BUILD</small><strong>Create rules</strong><p>Turn evidence into strategies.</p></div></a>
+            <a href="#strategy-factory?stage=improve" class="journey-step" id="journeyImprove"><span>3</span><div><small>IMPROVE</small><strong>Beat the parent</strong><p>Controlled mutations compete.</p></div></a>
+            <a href="#strategy-factory?stage=prove" class="journey-step" id="journeyProof"><span>4</span><div><small>PROVE</small><strong>Survive M1 replay</strong><p>Stress costs and robustness.</p></div></a>
+            <a href="#bot-library?view=files" class="journey-step" id="journeyBot"><span>5</span><div><small>BOT</small><strong>Generate MT5 EA</strong><p>Freeze and package the code.</p></div></a>
+            <a href="#bot-library" class="journey-step" id="journeyDemo"><span>6</span><div><small>DEMO</small><strong>Test at the right time</strong><p>Attach only eligible bots.</p></div></a>
           </div>
         </article>
       </section>
-      <section id="learning" class="section-block primary-workspace" data-nav-section="#learning">
+      <section id="learning" class="section-block primary-workspace workspace-section" data-workspace="research">
         <div class="section-title">
           <div><p class="eyebrow">RESEARCH</p><h2>See what EVE is learning and what the evidence says</h2></div>
           <p>Two Railway workers now run in parallel: live learning keeps new candles current, while a dedicated historical researcher continuously mines stored data whether the market is open or closed.</p>
@@ -277,15 +278,15 @@
           </div>
         </article>
       </section>
-      <section id="strategy-lab" class="section-block factory-workspace" data-nav-section="#strategy-lab">
+      <section id="strategy-lab" class="section-block factory-workspace workspace-section" data-workspace="strategy" data-factory-stage="build">
         <div class="section-title">
           <div><p class="eyebrow">STRATEGY FACTORY</p><h2>Build, improve and prove every strategy</h2></div>
           <p>One continuous factory: EVE turns research into exact rules, improves the survivors and demands high-resolution proof before any bot is generated.</p>
         </div>
         <nav class="factory-tabs" aria-label="Strategy Factory stages">
-          <a class="active" href="#strategy-lab"><span>1</span> Build rules</a>
-          <a href="#evolution"><span>2</span> Improve</a>
-          <a href="#validation"><span>3</span> Prove</a>
+          <button class="active" type="button" data-factory-target="build"><span>1</span> Build rules</button>
+          <button type="button" data-factory-target="improve"><span>2</span> Improve</button>
+          <button type="button" data-factory-target="prove"><span>3</span> Prove</button>
         </nav>
 
         <article class="panel strategy-worker-panel">
@@ -354,11 +355,16 @@
           <p class="foundation-note compact-note"><strong>Research grade:</strong> these are evidence-backed strategy specifications, not finished MT5 EAs. A validated or elite candidate must still pass M1/tick replay and live forward testing before deployment.</p>
         </article>
       </section>
-      <section id="evolution" class="section-block factory-workspace factory-continuation" data-nav-section="#strategy-lab">
+      <section id="evolution" class="section-block factory-workspace factory-continuation workspace-section" data-workspace="strategy" data-factory-stage="improve">
         <div class="section-title">
           <div><p class="eyebrow">STRATEGY FACTORY · STAGE 2</p><h2>Improve the strategies that survived</h2></div>
           <p>EVE seeds lineages from the strongest Strategy Factory candidates, mutates one rule at a time, combines compatible discoveries and keeps a development champion only when validation evidence improves.</p>
         </div>
+        <nav class="factory-tabs" aria-label="Strategy Factory stages">
+          <button type="button" data-factory-target="build"><span>1</span> Build rules</button>
+          <button class="active" type="button" data-factory-target="improve"><span>2</span> Improve</button>
+          <button type="button" data-factory-target="prove"><span>3</span> Prove</button>
+        </nav>
 
         <article class="panel evolution-worker-panel">
           <div class="panel-head">
@@ -455,11 +461,16 @@
           <p class="foundation-note compact-note"><strong>Controlled evolution:</strong> EVE does not tune directly against the locked test. Even an elite evolution result remains research grade until M1/tick replay and forward testing are completed.</p>
         </article>
       </section>
-      <section id="validation" class="section-block factory-workspace factory-continuation" data-nav-section="#strategy-lab">
+      <section id="validation" class="section-block factory-workspace factory-continuation workspace-section" data-workspace="strategy" data-factory-stage="prove">
         <div class="section-title">
           <div><p class="eyebrow">STRATEGY FACTORY · STAGE 3</p><h2>Demand proof before a bot is built</h2></div>
           <p>EVE automatically replays Champion, Elite and validated strategies on stored M1 candles, stresses execution costs and challenges nearby parameters before freezing any rule set for MT5 generation.</p>
         </div>
+        <nav class="factory-tabs" aria-label="Strategy Factory stages">
+          <button type="button" data-factory-target="build"><span>1</span> Build rules</button>
+          <button type="button" data-factory-target="improve"><span>2</span> Improve</button>
+          <button class="active" type="button" data-factory-target="prove"><span>3</span> Prove</button>
+        </nav>
 
         <article class="panel validation-worker-panel">
           <div class="panel-head">
@@ -557,11 +568,15 @@
           <p class="foundation-note compact-note"><strong>Still not a trading instruction:</strong> “Ready for MT5” means the rules are frozen and eligible for EA generation. It does not permit live trading; MT5 testing and demo forward validation still come next.</p>
         </article>
       </section>
-      <section id="mt5-lab" class="section-block primary-workspace" data-nav-section="#mt5-lab">
+      <section id="mt5-lab" class="section-block primary-workspace workspace-section" data-workspace="bot-library" data-bot-view="files">
         <div class="section-title">
           <div><p class="eyebrow">BOT FACTORY</p><h2>Download the MT5 bots EVE has earned the right to build</h2></div>
           <p>EVE only generates code from immutable strategies marked Ready for MT5. Every package contains the .mq5 source, frozen rules, validation evidence, checksums and demo-only installation instructions.</p>
         </div>
+        <nav class="workspace-tabs bot-library-tabs" aria-label="Bot Library views">
+          <button type="button" data-bot-view-target="organised">Organised bots</button>
+          <button class="active" type="button" data-bot-view-target="files">Generated files</button>
+        </nav>
 
         <article class="panel mt5-worker-panel">
           <div class="panel-head">
@@ -632,11 +647,15 @@
           <p class="foundation-note compact-note"><strong>Safety lock:</strong> every generated EA starts with trading disabled. Compiling a source file does not approve it for live money; demo forward testing remains mandatory.</p>
         </article>
       </section>
-      <section id="demo-lab" class="section-block primary-workspace" data-nav-section="#demo-lab">
+      <section id="demo-lab" class="section-block primary-workspace workspace-section" data-workspace="bot-library" data-bot-view="organised">
         <div class="section-title">
-          <div><p class="eyebrow">DEMO TESTING</p><h2>Know which bot to attach and exactly when to test it</h2></div>
-          <p>EVE reads every frozen bot rule, compares it with the current UTC/UK time and latest stored M5 market context, then labels the practical next action in plain English.</p>
+          <div><p class="eyebrow">BOT LIBRARY</p><h2>Choose bots by the day, time or season they were built for</h2></div>
+          <p>Every bot is organised as an everyday, weekday, short-window or seasonal bot. EVE still checks the exact frozen rules and tells you whether to attach it now or leave it stored.</p>
         </div>
+        <nav class="workspace-tabs bot-library-tabs" aria-label="Bot Library views">
+          <button class="active" type="button" data-bot-view-target="organised">Organised bots</button>
+          <button type="button" data-bot-view-target="files">Generated files</button>
+        </nav>
 
         <article class="panel demo-overview-panel">
           <div class="panel-head">
@@ -678,7 +697,7 @@
             <a class="button button-primary disabled-link" id="demoRecommendedDownload" href="#" aria-disabled="true">Download recommended package</a>
             <a class="button disabled-link" id="demoRecommendedSource" href="#" aria-disabled="true">Download .mq5 only</a>
           </div>
-          <p class="discovery-warning">Demo only. EVE cannot see whether you have physically attached the EA or changed its Inputs. After attaching, set <strong>InpEnableTrading=true</strong> and enable MT5 Algo Trading.</p>
+          <p class="discovery-warning">Fleet-ready downloads report when they are actually attached to MT5. After attaching, set <strong>InpEnableTrading=true</strong>, enable Algo Trading and allow the EVE WebRequest URL.</p>
         </article>
 
         <article class="panel demo-list-panel">
@@ -686,11 +705,66 @@
             <div><p class="label">ALL GENERATED BOTS — LABELLED</p><h2>When each EA can be tested</h2></div>
             <span class="status-pill" id="demoListStatus">CHECKING</span>
           </div>
+          <div class="bot-library-toolbar">
+            <div class="bot-category-filters" role="group" aria-label="Bot schedule category">
+              <button class="active" type="button" data-bot-category="all">All</button>
+              <button type="button" data-bot-category="test_now">Test now</button>
+              <button type="button" data-bot-category="everyday">Everyday</button>
+              <button type="button" data-bot-category="weekday_monday">Monday</button>
+              <button type="button" data-bot-category="weekday_tuesday">Tuesday</button>
+              <button type="button" data-bot-category="weekday_wednesday">Wednesday</button>
+              <button type="button" data-bot-category="weekday_thursday">Thursday</button>
+              <button type="button" data-bot-category="weekday_friday">Friday</button>
+              <button type="button" data-bot-category="short_window">Short windows</button>
+              <button type="button" data-bot-category="seasonal">Monthly / seasonal</button>
+            </div>
+            <label class="bot-search-label">FIND A BOT<input id="botLibrarySearch" type="search" placeholder="Name or EVE code"></label>
+          </div>
+          <div class="bot-category-summary" id="botCategorySummary">Showing every generated bot.</div>
           <div class="demo-bot-list" id="demoBotList"><div class="empty-state">Loading bot eligibility…</div></div>
           <p class="foundation-note compact-note" id="demoDisclaimer">Eligibility uses frozen rules, UTC/UK time and EVE's latest stored M5 context. Broker session boundaries can differ slightly.</p>
         </article>
       </section>
-      <section id="advanced" class="section-block advanced-index" data-nav-section="#advanced">
+      <section id="demo-fleet" class="section-block primary-workspace workspace-section" data-workspace="demo-fleet">
+        <div class="section-title">
+          <div><p class="eyebrow">DEMO FLEET</p><h2>The bots actually attached to MT5</h2></div>
+          <p>A bot is shown as online only while its own EA heartbeat is arriving. Closing MT5, removing the EA or losing telemetry changes the status automatically.</p>
+        </div>
+
+        <article class="panel fleet-summary-panel">
+          <div class="panel-head">
+            <div><p class="label">LIVE MT5 CONNECTION</p><h2 id="fleetHeadline">Checking for attached EVE bots</h2></div>
+            <span class="status-pill" id="fleetOverallStatus">CHECKING</span>
+          </div>
+          <p class="backtest-message" id="fleetMessage">Loading Demo Fleet heartbeats.</p>
+          <div class="research-worker-grid fleet-metrics">
+            <div><small>ONLINE</small><strong id="fleetOnlineCount">0</strong></div>
+            <div><small>IN A TRADE</small><strong id="fleetTradeCount">0</strong></div>
+            <div><small>NEEDS ATTENTION</small><strong id="fleetAttentionCount">0</strong></div>
+            <div><small>DUPLICATES</small><strong id="fleetDuplicateCount">0</strong></div>
+            <div><small>CLOSED P/L TODAY</small><strong id="fleetClosedPnl">US$0.00</strong></div>
+            <div><small>OPEN P/L</small><strong id="fleetOpenPnl">US$0.00</strong></div>
+          </div>
+          <div class="actions"><button class="button button-quiet" id="refreshFleet">Refresh fleet</button></div>
+        </article>
+
+        <article class="panel fleet-setup-panel" id="fleetSetupPanel" hidden>
+          <div class="panel-head"><div><p class="label">ONE-TIME CONNECTION</p><h2>Connect your MT5 bots to Demo Fleet</h2></div><span class="status-pill queued">SETUP</span></div>
+          <ol class="fleet-setup-steps">
+            <li>Run <strong>SUPABASE_UPDATE_v3.1.sql</strong> once.</li>
+            <li>Download the bot again from Bot Library and compile the fleet-ready .mq5.</li>
+            <li>In MT5 add <strong>https://evealgolab.netlify.app</strong> under Tools → Options → Expert Advisors → Allow WebRequest.</li>
+            <li>Attach the EA on demo. It will appear here within about 30 seconds.</li>
+          </ol>
+          <p>Telemetry is best-effort. A connection failure never changes, opens or closes a trade.</p>
+        </article>
+
+        <article class="panel fleet-list-panel">
+          <div class="panel-head"><div><p class="label">ATTACHED BOT PASSPORTS</p><h2>Account, chart, state and result — all in one place</h2></div><span class="status-pill" id="fleetListStatus">WAITING</span></div>
+          <div class="fleet-list" id="fleetList"><div class="empty-state">No fleet-ready heartbeat has arrived yet.</div></div>
+        </article>
+      </section>
+      <section id="advanced" class="section-block advanced-index workspace-section" data-workspace="advanced">
         <div class="section-title">
           <div><p class="eyebrow">ADVANCED SYSTEM VIEW</p><h2>The machinery behind EVE</h2></div>
           <p>These screens remain available for diagnosis and deep inspection. You should not need them for normal daily use.</p>
@@ -703,7 +777,7 @@
           <a href="#activity"><small>05</small><strong>System activity</strong><span>Read recent Supabase and worker events.</span></a>
         </div>
       </section>
-      <section id="foundation" class="hero-grid system-foundation technical-section" data-nav-section="#advanced">
+      <section id="foundation" class="hero-grid system-foundation technical-section workspace-section" data-workspace="advanced">
         <article class="panel progress-panel">
           <div class="panel-head">
             <div><p class="label">MULTI-TIMEFRAME FOUNDATION</p><h2>Market Memory</h2></div>
@@ -745,7 +819,7 @@
           <div class="quality-line"><span>Automatic completed-bar sync</span><strong>M1 · M5 · M15 · H1 · H4 · D1</strong></div>
         </article>
       </section>
-      <section id="memory" class="section-block technical-section" data-nav-section="#advanced">
+      <section id="memory" class="section-block technical-section workspace-section" data-workspace="advanced">
         <div class="section-title">
           <div><p class="eyebrow">ADVANCED · DATA FOUNDATION</p><h2>Six layers of market memory</h2></div>
           <p>Railway downloads each timeframe in sequence and stores it permanently in Supabase. Each dataset has independent progress, resumable history, latest-candle sync and gap review.</p>
@@ -755,7 +829,7 @@
           <strong>Safe queueing:</strong> the four new historical downloads can be queued together. Railway processes one ingestion job at a time, so Twelve Data is not hit by four large downloads simultaneously.
         </div>
       </section>
-      <section id="backtester" class="section-block technical-section legacy-backtester-shell" data-nav-section="#advanced" hidden aria-hidden="true">
+      <section id="backtester" class="section-block technical-section legacy-backtester-shell workspace-section" data-workspace="advanced" hidden aria-hidden="true">
         <div class="legacy-tool-toolbar">
           <div><span class="status-pill waiting">OPTIONAL LEGACY TOOL</span><strong>Fixed Ladder v2.61 only</strong></div>
           <button type="button" class="button button-quiet" id="closeLegacyBacktester">Close backtester</button>
@@ -889,7 +963,7 @@
           </div>
         </article>
       </section>
-      <section id="pipeline" class="section-block technical-section" data-nav-section="#advanced">
+      <section id="pipeline" class="section-block technical-section workspace-section" data-workspace="advanced">
         <div class="section-title">
           <div><p class="eyebrow">PROJECT ROADMAP</p><h2>Research before automation</h2></div>
           <p>The next research engines will use the same clean multi-timeframe memory rather than rebuilding historical context for every experiment.</p>
@@ -909,7 +983,7 @@
           <article class="pipeline-card"><div class="stage">NEXT</div><span>12</span><h3>Demo Forward Telemetry</h3><p>MT5 trade logs and execution data are compared with EVE expectations before any strategy can be considered for a controlled live trial.</p></article>
         </div>
       </section>
-      <section id="activity" class="section-block activity-block technical-section" data-nav-section="#advanced">
+      <section id="activity" class="section-block activity-block technical-section workspace-section" data-workspace="advanced">
         <div class="section-title compact">
           <div><p class="eyebrow">SYSTEM LOG</p><h2>Recent activity</h2></div>
           <button class="text-button" id="refreshButton">Refresh now ↗</button>
@@ -917,11 +991,11 @@
         <div class="activity-list" id="activityList"><div class="empty-state">Waiting for Supabase activity…</div></div>
       </section>
 
-      <footer><span>EVE COMMAND CENTRE · v3.0.2</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
+      <footer><span>EVE COMMAND CENTRE · v3.1</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
     </main>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=3.0" defer></script>
+  <script src="app.js?v=3.1" defer></script>
 </body>
 </html>

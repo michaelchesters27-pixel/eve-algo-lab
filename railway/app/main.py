@@ -14,6 +14,7 @@ from app.backtesting.metrics import calculate_metrics
 from app.models.schemas import (
     ApiEnvelope,
     FixedLadderBacktestRequest,
+    FleetHeartbeatRequest,
     JobRequest,
     JobResponse,
     LearningBuildRequest,
@@ -27,13 +28,14 @@ from app.services.learning import LearningService, SNAPSHOT_INTERVAL
 from app.services.strategy_lab import StrategyLabService
 from app.services.strategy_evolution import StrategyEvolutionService
 from app.services.high_resolution_validation import HighResolutionValidationService
-from app.services.mt5_generator import MT5GeneratorService, build_package_zip
+from app.services.mt5_generator import MT5GeneratorService, build_package_zip, prepare_package_for_download
 from app.services.demo_eligibility import build_demo_dashboard
-from app.services.supabase_repo import SupabaseRepository
+from app.services.fleet import build_fleet_dashboard, heartbeat_row, verify_fleet_token
+from app.services.supabase_repo import SupabaseError, SupabaseRepository
 from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
 from app.settings import Settings, get_settings
 
-APP_VERSION = "2.5"
+APP_VERSION = "3.1"
 
 settings = get_settings()
 logging.basicConfig(
@@ -109,7 +111,7 @@ app.add_middleware(
     allow_origins=settings.cors_origin_list,
     allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "X-EVE-ADMIN-TOKEN"],
+    allow_headers=["Content-Type", "X-EVE-ADMIN-TOKEN", "X-EVE-FLEET-TOKEN"],
 )
 
 
@@ -461,6 +463,7 @@ async def download_mt5_package(package_id: str) -> Response:
     package = await repo.get_mt5_package(package_id)
     if not package:
         raise HTTPException(status_code=404, detail="MT5 package not found")
+    package = prepare_package_for_download(package, settings.admin_token)
     archive = build_package_zip(package)
     strategy_code = str(package.get("strategy_code") or "EVE-Strategy").replace("/", "-")
     version = str(package.get("frozen_version") or "1.0").replace("/", "-")
@@ -480,12 +483,58 @@ async def download_mt5_source(package_id: str) -> Response:
     package = await repo.get_mt5_package(package_id)
     if not package:
         raise HTTPException(status_code=404, detail="MT5 package not found")
+    package = prepare_package_for_download(package, settings.admin_token)
     filename = str(package.get("file_name") or "EVE_Strategy.mq5")
     return Response(
         content=str(package.get("mq5_source") or ""),
         media_type="text/plain; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"},
     )
+
+
+@app.post("/api/fleet/heartbeat", response_model=ApiEnvelope)
+async def mt5_fleet_heartbeat(
+    request: FleetHeartbeatRequest,
+    x_eve_fleet_token: Annotated[str | None, Header()] = None,
+) -> ApiEnvelope:
+    package = await repo.get_mt5_package(request.package_id)
+    if not package or str(package.get("rule_hash") or "") != request.rule_hash:
+        raise HTTPException(status_code=404, detail="EVE MT5 package not found")
+    if not verify_fleet_token(settings.admin_token, request.package_id, request.rule_hash, x_eve_fleet_token):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Demo Fleet token")
+    payload = request.model_dump()
+    row = heartbeat_row(payload)
+    try:
+        await repo.upsert_mt5_fleet_instance(row)
+    except SupabaseError as exc:
+        if "mt5_fleet_instances" in str(exc):
+            raise HTTPException(status_code=503, detail="Run SUPABASE_UPDATE_v3.1.sql to enable Demo Fleet") from exc
+        raise
+    return ApiEnvelope(data={"status": "accepted", "instance_key": row["instance_key"], "heartbeat_at": row["heartbeat_at"]})
+
+
+@app.get("/api/fleet", response_model=ApiEnvelope)
+async def mt5_fleet_dashboard(
+    symbol: str = Query(default="XAU/USD", min_length=3, max_length=40),
+    limit: int = Query(default=200, ge=1, le=500),
+) -> ApiEnvelope:
+    packages = await repo.list_mt5_packages(symbol, limit=200)
+    try:
+        rows = await repo.list_mt5_fleet_instances(limit=limit)
+    except SupabaseError as exc:
+        if "mt5_fleet_instances" in str(exc):
+            return ApiEnvelope(data={
+                "setup_required": True,
+                "counts": {"online": 0, "stale": 0, "offline": 0, "detached": 0, "in_trade": 0, "attention": 0, "duplicates": 0, "total": 0},
+                "items": [],
+                "message": "Run SUPABASE_UPDATE_v3.1.sql once to enable live MT5 attachment detection.",
+            })
+        raise
+    dashboard = build_fleet_dashboard(rows, packages)
+    dashboard["setup_required"] = False
+    dashboard["service"] = "online"
+    dashboard["version"] = APP_VERSION
+    return ApiEnvelope(data=dashboard)
 
 
 @app.post("/api/mt5/wake", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])

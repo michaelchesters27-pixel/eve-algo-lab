@@ -1,0 +1,2 @@
+EVE Command Centre v3.1 requires no new Railway or Netlify environment variables.
+Keep the existing Railway ADMIN_TOKEN, Supabase and Twelve Data variables, and the existing Netlify RAILWAY_API_URL and EVE_ADMIN_TOKEN values unchanged.

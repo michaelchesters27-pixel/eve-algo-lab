@@ -1,33 +1,56 @@
-# EVE Command Centre v3.0.2
+# EVE Command Centre v3.1
 
-EVE is a private XAU/USD research and MT5 bot-development platform using Supabase, Railway, Netlify and Twelve Data.
+EVE is a private XAU/USD research, strategy-evolution and MT5 bot-development platform using Supabase, Railway, Netlify and Twelve Data.
 
-## What changed in v3.0.2
+## What v3.1 changes
 
-The optional Fixed Ladder replay now has a clean separation between a new test and stored historical runs.
+v3.1 reorganises the product without changing the research engine beneath it.
 
-- Opening the tool shows a blank **Current Test** workspace.
-- Last week’s result is not loaded or presented automatically.
-- **View previous tests** deliberately opens the archive.
-- Archived tests show their stored date, replay resolution, metrics and an **ARCHIVED TEST** warning.
-- Starting a new test clears any archived selection immediately.
-- Basket reports appear only for the current completed test or a specifically selected archived test.
-- The M5-versus-M1 comparison is kept inside the archive.
-- A dedicated active-run route restores only a genuinely queued or running test after a refresh, without fetching completed history.
+- Six clear workspaces: **Home, Research, Strategy Factory, Bot Library, Demo Fleet and Advanced**.
+- Strategy creation, mutation and high-resolution validation remain separate backend stages, but are presented as **Build → Improve → Prove**.
+- Generated EAs are grouped by how they are intended to be used: everyday, weekday, short-window, monthly and seasonal bots.
+- Every Bot Library card explains the exact frozen schedule, current practical eligibility, London-time guidance, chart and attachment action.
+- **Demo Fleet** shows which fleet-ready EAs are genuinely attached to MT5 and still reporting.
+- Bot Library marks a package **RUNNING IN MT5** when the matching live heartbeat is present, helping prevent accidental duplicate attachments.
+- Duplicate EAs, disabled internal trading, disabled Algo Trading, stale heartbeats and real-account attachments are flagged.
+- The Fixed Ladder replay remains an optional legacy tool under **Advanced** and does not influence current Strategy Factory or bot rankings.
 
-## Main Command Centre
+## What remains unchanged
 
-1. **Home** — one briefing, one recommended action and system health.
-2. **Research** — what EVE is learning and the evidence behind it.
-3. **Strategy Factory** — build rules, improve survivors and demand high-resolution proof.
-4. **Bot Factory** — generated MT5 packages and compilation instructions.
-5. **Demo Testing** — which bot can be tested now, later today or in a future period.
-6. **Advanced** — market memory, optional legacy tools, build history and activity logs.
+The autonomous engine keeps running as before:
 
-## Important limitation
+- historical-data sync and gap checks;
+- research questions, discovery and evidence building;
+- autonomous Strategy Factory candidate creation;
+- lineage mutation and parent-versus-child evolution;
+- M1 validation, cost stress and robustness testing;
+- frozen strategy and MT5 package generation.
 
-The Legacy Fixed Ladder Backtester is not a general MQ5 execution environment. Railway runs a manually recreated Python model for `EVE_Twelve_Data_Fixed_Ladder_v2.61.mq5`. A different EA must be compiled and tested through MetaTrader 5 Strategy Tester.
+A frozen EA already on demo is never silently mutated. A stronger mutation becomes a separate challenger/version and must pass the full pipeline before it can be downloaded.
 
-## Safety
+## One-time v3.1 setup
 
-All generated EAs default to `InpEnableTrading=false`. EVE cannot yet verify that an EA is physically attached to an MT5 terminal or receive completed demo-trade telemetry. Use a demo account only.
+Run `SUPABASE_UPDATE_v3.1.sql` once in Supabase SQL Editor. It adds only `mt5_fleet_instances`, the heartbeat table used by Demo Fleet. Existing candles, research, strategies, mutations, validation results and packages are untouched.
+
+No new Railway or Netlify variables are required.
+
+## Connecting an EA to Demo Fleet
+
+Older EAs already attached to MT5 do not contain telemetry and cannot appear automatically.
+
+1. Wait until the bot has no open trade.
+2. Download the same package or `.mq5` again from **Bot Library** after v3.1 is deployed.
+3. Compile the new fleet-ready source in MetaEditor.
+4. In MT5 open **Tools → Options → Expert Advisors**.
+5. Enable **Allow WebRequest for listed URL** and add `https://evealgolab.netlify.app`.
+6. Remove the old EA from its chart, attach the new compiled EA, and restore the same demo inputs.
+7. Set `InpEnableTrading=true` only on the demo account and keep Algo Trading enabled.
+
+Telemetry is best-effort. A failed heartbeat cannot open, alter or close a position, and the EA's frozen rule hash remains unchanged.
+
+## Important limitations
+
+- Demo Fleet can only see fleet-ready downloads that send heartbeats.
+- EVE does not automatically compile `.mq5` files; MetaEditor is still required.
+- The Legacy Fixed Ladder Backtester is a Python reconstruction of one specific EA, not a general MQ5 tester.
+- All generated EAs are for demo testing first. v3.1 does not promote a bot to real-money trading.

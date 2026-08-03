@@ -1,0 +1,34 @@
+EVE COMMAND CENTRE v3.1 — RELEASE VALIDATION
+
+Automated validation completed in the build environment:
+- Railway/Python test suite: 59 passed
+- Frontend/Netlify test suite: 12 passed
+- frontend/app.js syntax: passed (node --check)
+- frontend/netlify/functions/api.mjs syntax: passed (node --check)
+- Python application compileall: passed
+- Duplicate HTML id check: passed
+- CSS brace-balance check: passed
+- GitHub ZIP integrity: checked after packaging
+
+Autonomous engine preservation check:
+The following core worker/service files are byte-for-byte unchanged from the v3.0.2 source package:
+- autonomy.py
+- historical_research.py
+- learning.py
+- strategy_lab.py
+- strategy_evolution.py
+- high_resolution_validation.py
+- ingestion.py
+- twelve_data.py
+
+Fleet-ready MQL5 static check:
+- Tested the telemetry upgrade against EVE_120088A4AC1E_v1_0.mq5 supplied during development.
+- Fleet wrapper inserted once.
+- OnTimer inserted once.
+- MQL brace balance passed.
+- Original trade.Buy and trade.Sell call counts remained unchanged.
+- Frozen 15-minute hold and 15-minute cooldown constants remained unchanged.
+- Heartbeat request timeout is capped at 1000 ms and telemetry is never used as an entry, exit or risk condition.
+
+Important boundary:
+MetaEditor is not available in the build environment. The generated fleet-ready .mq5 must still be compiled in MetaEditor before it is attached to MT5. No claim is made that an .ex5 was compiled in this environment.

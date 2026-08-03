@@ -1371,6 +1371,22 @@ class SupabaseRepository:
             f"&symbol=eq.{quote(symbol, safe='')}&order=generated_at.desc&limit={safe_limit}",
         )
 
+
+    async def upsert_mt5_fleet_instance(self, payload: dict[str, Any]) -> None:
+        await self.upsert(
+            "mt5_fleet_instances",
+            payload,
+            on_conflict="instance_key",
+            return_representation=False,
+        )
+
+    async def list_mt5_fleet_instances(self, limit: int = 200) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(500, int(limit)))
+        return await self.select(
+            "mt5_fleet_instances",
+            "select=*&order=heartbeat_at.desc&limit={}".format(safe_limit),
+        )
+
     async def fail_interrupted_backtests(self) -> None:
         await self.update(
             "backtest_runs",

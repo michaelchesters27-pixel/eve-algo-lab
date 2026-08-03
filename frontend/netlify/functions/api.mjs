@@ -25,6 +25,8 @@ const ALLOWED = [
   /^mt5\/eligibility$/,
   /^mt5\/packages\/[0-9a-f-]+\/(download|source)$/i,
   /^mt5\/wake$/,
+  /^fleet$/,
+  /^fleet\/heartbeat$/,
   /^backtests$/,
   /^backtests\/active$/,
   /^backtests\/[0-9a-f-]+$/i,
@@ -39,7 +41,7 @@ export default async (request) => {
       status: 204,
       headers: {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Headers": "Content-Type, X-EVE-FLEET-TOKEN",
         "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
       },
     });
@@ -55,14 +57,15 @@ export default async (request) => {
     );
   }
 
-  if (request.method !== "GET" && !adminToken) {
+  const url = new URL(request.url);
+  const isFleetHeartbeat = request.method === "POST" && /\/fleet\/heartbeat$/.test(url.pathname);
+  if (request.method !== "GET" && !isFleetHeartbeat && !adminToken) {
     return Response.json(
       { ok: false, message: "Netlify variable EVE_ADMIN_TOKEN is missing. Set it to the same value as Railway ADMIN_TOKEN." },
       { status: 503 },
     );
   }
 
-  const url = new URL(request.url);
   let path = url.pathname
     .replace(/^\/\.netlify\/functions\/api\/?/, "")
     .replace(/^\/api\/?/, "")
@@ -80,7 +83,11 @@ export default async (request) => {
   const headers = { Accept: "application/json" };
   if (request.method !== "GET") {
     headers["Content-Type"] = "application/json";
-    headers["X-EVE-ADMIN-TOKEN"] = adminToken;
+    if (isFleetHeartbeat) {
+      headers["X-EVE-FLEET-TOKEN"] = request.headers.get("X-EVE-FLEET-TOKEN") || "";
+    } else {
+      headers["X-EVE-ADMIN-TOKEN"] = adminToken;
+    }
   }
 
   try {

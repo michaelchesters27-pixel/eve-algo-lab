@@ -237,6 +237,96 @@ def plain_rule_summary(rules: dict[str, Any]) -> str:
     return f"{condition_text}; {direction}."
 
 
+def describe_bot_usage(rules: dict[str, Any]) -> dict[str, Any]:
+    """Turn frozen calendar rules into human-friendly bot-library labels.
+
+    This is presentation metadata only. It never changes eligibility or trading rules.
+    """
+    conditions = list(rules.get("source_conditions") or [])
+    mode = str(rules.get("condition_mode") or "include")
+    by_field: dict[str, list[Any]] = {}
+    for condition in conditions:
+        field = str(condition.get("field") or "")
+        by_field.setdefault(field, []).append(condition.get("value"))
+
+    tags: list[str] = ["all"]
+    labels: list[str] = []
+    weekday_values = [int(number(v)) for v in by_field.get("weekday", [])]
+    month_values = [int(number(v)) for v in by_field.get("month", [])]
+    quarter_values = [int(number(v)) for v in by_field.get("quarter", [])]
+    week_values = [int(number(v)) for v in by_field.get("week_of_month", [])]
+    hour_values = [int(number(v)) for v in by_field.get("hour_utc", [])]
+    session_values = [str(v) for v in by_field.get("session", [])]
+
+    has_included_calendar_restriction = mode == "include" and bool(weekday_values or month_values or quarter_values or week_values)
+    if mode == "include":
+        for value in weekday_values:
+            name = WEEKDAY_NAMES.get(value, f"Weekday {value}")
+            tags.append(f"weekday_{name.lower()}")
+            labels.append(f"{name} bot")
+        for value in month_values:
+            name = MONTH_NAMES.get(value, f"Month {value}")
+            tags.append(f"month_{name.lower()}")
+            labels.append(f"{name} bot")
+        quarter_ranges = {1: "January–March", 2: "April–June", 3: "July–September", 4: "October–December"}
+        for value in quarter_values:
+            tags.append(f"quarter_q{value}")
+            labels.append(f"{quarter_ranges.get(value, f'Quarter {value}')} bot")
+        for value in week_values:
+            tags.append(f"week_{value}")
+            labels.append(f"Week {value} bot")
+
+    if not has_included_calendar_restriction:
+        tags.append("everyday")
+        labels.append("Everyday bot")
+
+    if hour_values:
+        tags.append("timed")
+        labels.extend(f"{value:02d}:00 UTC window" for value in hour_values)
+    if session_values:
+        tags.append("session")
+        labels.extend(SESSION_NAMES.get(value, value.replace("_", " ")) for value in session_values)
+    if (weekday_values or month_values or quarter_values or week_values) and (hour_values or session_values):
+        tags.append("short_window")
+    if month_values or quarter_values:
+        tags.append("seasonal")
+
+    unique_tags = list(dict.fromkeys(tags))
+    unique_labels = list(dict.fromkeys(labels))
+    title = " · ".join(unique_labels) if unique_labels else "General bot"
+
+    calendar_bits: list[str] = []
+    for field in ("weekday", "week_of_month", "month", "quarter", "hour_utc", "session"):
+        for value in by_field.get(field, []):
+            calendar_bits.append(condition_label(field, value))
+    if not calendar_bits:
+        calendar_text = "No day, month or time restriction."
+    elif mode == "include":
+        calendar_text = "Active only when " + " and ".join(calendar_bits) + "."
+    else:
+        calendar_text = "Active except when " + " and ".join(calendar_bits) + "."
+
+    if mode == "include" and (weekday_values or month_values or quarter_values or week_values):
+        attach_guidance = "Safe to leave attached on demo; the EA will stay idle outside this schedule."
+    else:
+        attach_guidance = "Designed for regular demo use; leave attached and let the frozen filters decide."
+
+    primary_group = next((tag for tag in unique_tags if tag not in {"all", "timed", "session", "short_window", "seasonal"}), "everyday")
+    return {
+        "usage_tags": unique_tags,
+        "usage_primary": primary_group,
+        "usage_title": title,
+        "schedule_explanation": calendar_text,
+        "attach_guidance": attach_guidance,
+        "hour_utc": hour_values[0] if hour_values else None,
+        "weekday": weekday_values[0] if weekday_values else None,
+        "month": month_values[0] if month_values else None,
+        "quarter": quarter_values[0] if quarter_values else None,
+        "week_of_month": week_values[0] if week_values else None,
+        "session": session_values[0] if session_values else None,
+    }
+
+
 def _locked_metrics(package: dict[str, Any]) -> dict[str, Any]:
     report = dict(package.get("validation_report") or {})
     metrics = dict(report.get("validation_metrics") or {})
@@ -335,6 +425,7 @@ def evaluate_package(
     current_matches = [item.label for item in results if item.matched]
     current_missing = [item.label for item in results if not item.matched]
     locked = _locked_metrics(package)
+    usage = describe_bot_usage(rules)
     output = {
         "package_id": package.get("id"),
         "package_code": package.get("package_code"),
@@ -352,6 +443,7 @@ def evaluate_package(
         "condition_mode": condition_mode,
         "direction_rule": direction_rule,
         "rule_summary": plain_rule_summary(rules),
+        **usage,
         "conditions": [
             {
                 "field": item.field,
@@ -408,6 +500,10 @@ def build_demo_dashboard(
         "waiting_for_time": sum(1 for item in items if item["status"] == "waiting_for_trading_window"),
         "waiting_for_period": sum(1 for item in items if item["status"] == "waiting_for_period"),
         "market_closed": sum(1 for item in items if item["status"] == "market_closed"),
+        "everyday": sum(1 for item in items if "everyday" in item.get("usage_tags", [])),
+        "weekday": sum(1 for item in items if any(str(tag).startswith("weekday_") for tag in item.get("usage_tags", []))),
+        "short_window": sum(1 for item in items if "short_window" in item.get("usage_tags", [])),
+        "seasonal": sum(1 for item in items if "seasonal" in item.get("usage_tags", [])),
         "total": len(items),
     }
     recommended = next((item for item in items if item["status"] in {"active_now", "attach_now_waiting_market_condition"}), None)
