@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3.1">
+  <link rel="stylesheet" href="styles.css?v=3.2">
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -22,15 +22,24 @@
         <span class="brand-mark">E</span>
         <span><strong>EVE</strong><small>ALGO LAB</small></span>
       </a>
+      <div class="mode-switch" role="tablist" aria-label="EVE view">
+        <button type="button" class="active" data-app-mode="operator" role="tab" aria-selected="true">RUN BOTS</button>
+        <button type="button" data-app-mode="research" role="tab" aria-selected="false">RESEARCH</button>
+      </div>
       <nav class="nav" aria-label="Main navigation">
-        <p class="nav-group-label">COMMAND</p>
-        <a class="nav-link active" href="#home" data-workspace-link="home"><span>01</span><b>Home</b><small>What matters now</small></a>
-        <a class="nav-link" href="#research" data-workspace-link="research"><span>02</span><b>Research</b><small>What EVE is learning</small></a>
-        <a class="nav-link" href="#strategy-factory" data-workspace-link="strategy"><span>03</span><b>Strategy Factory</b><small>Build · improve · prove</small></a>
-        <a class="nav-link" href="#bot-library" data-workspace-link="bot-library"><span>04</span><b>Bot Library</b><small>Everyday · weekday · seasonal</small></a>
-        <a class="nav-link" href="#demo-fleet" data-workspace-link="demo-fleet"><span>05</span><b>Demo Fleet</b><small>What is attached to MT5</small></a>
-        <p class="nav-group-label nav-group-secondary">SYSTEM</p>
-        <a class="nav-link" href="#advanced" data-workspace-link="advanced"><span>06</span><b>Advanced</b><small>Data · tests · logs</small></a>
+        <div class="mode-nav" data-mode-nav="operator">
+          <p class="nav-group-label">OPERATOR</p>
+          <a class="nav-link active" href="#home" data-workspace-link="home" data-nav-view="operator"><span>01</span><b>Today</b><small>Exactly what to do now</small></a>
+          <a class="nav-link" href="#bot-library" data-workspace-link="bot-library" data-nav-view="operator"><span>02</span><b>Bot Schedule</b><small>Everyday · weekday · seasonal</small></a>
+          <a class="nav-link" href="#demo-fleet" data-workspace-link="demo-fleet" data-nav-view="operator"><span>03</span><b>Demo Fleet</b><small>Bots EVE can actually see</small></a>
+        </div>
+        <div class="mode-nav" data-mode-nav="research" hidden>
+          <p class="nav-group-label">RESEARCH ENGINE</p>
+          <a class="nav-link" href="#research" data-workspace-link="research" data-nav-view="research"><span>01</span><b>Research</b><small>What EVE is learning</small></a>
+          <a class="nav-link" href="#strategy-factory" data-workspace-link="strategy" data-nav-view="research"><span>02</span><b>Strategy Factory</b><small>Build · improve · prove</small></a>
+          <a class="nav-link" href="#bot-library?view=files" data-workspace-link="bot-library" data-nav-view="research"><span>03</span><b>Bot Factory</b><small>Generated MT5 packages</small></a>
+          <a class="nav-link" href="#advanced" data-workspace-link="advanced" data-nav-view="research"><span>04</span><b>Advanced</b><small>Data · tests · logs</small></a>
+        </div>
       </nav>
       <div class="side-status">
         <span class="pulse" id="servicePulse"></span>
@@ -41,9 +50,9 @@
     <main>
       <header class="topbar command-topbar">
         <div>
-          <p class="eyebrow">EVE COMMAND CENTRE · v3.1.1</p>
+          <p class="eyebrow" id="topbarEyebrow">EVE OPERATOR · v3.2</p>
           <h1 id="briefingGreeting">Good afternoon.</h1>
-          <p class="topbar-summary">Here is what EVE has done, what matters now and the one action worth your attention.</p>
+          <p class="topbar-summary" id="topbarSummary">See only what is running, what is waiting and what you need to do.</p>
         </div>
         <div class="market-selector" aria-label="Selected market">
           <div class="metal-dot"></div>
@@ -65,7 +74,7 @@
             <div><small>STRATEGIES TESTED</small><strong id="homeStrategyCount">0</strong><span id="homeStrategyState">Checking</span></div>
             <div><small>READY FOR MT5</small><strong id="homeValidatedCount">0</strong><span id="homeProofState">Checking</span></div>
             <div><small>BOT PACKAGES</small><strong id="homeBotCount">0</strong><span id="homeBotState">Checking</span></div>
-            <div><small>DEMO BOTS ONLINE</small><strong id="homeFleetCount">0</strong><span id="homeFleetState">Waiting for heartbeat</span></div>
+            <div><small>BOTS REPORTING TO EVE</small><strong id="homeFleetCount">0</strong><span id="homeFleetState">Not the same as bots physically attached</span></div>
           </div>
         </article>
 
@@ -78,7 +87,7 @@
             <p class="home-action-copy" id="homeActionCopy">EVE is ranking generated bots by whether they can actually be tested now.</p>
             <div class="home-action-meta" id="homeActionMeta">No manual action required yet.</div>
             <div class="actions">
-              <a class="button button-primary" id="homeActionPrimary" href="#demo-lab">Open demo testing</a>
+              <a class="button button-primary" id="homeActionPrimary" href="#demo-fleet">Open Demo Fleet</a>
               <a class="button disabled-link" id="homeActionDownload" href="#" aria-disabled="true">Download recommended bot</a>
             </div>
           </article>
@@ -95,7 +104,23 @@
           </article>
         </div>
 
-        <article class="panel journey-panel">
+        <article class="panel fleet-visibility-card" id="homeFleetVisibility" hidden>
+          <div class="panel-head">
+            <div><p class="label">MT5 VISIBILITY</p><h2>EVE cannot yet see the bots already attached to your MT5</h2></div>
+            <span class="status-pill queued">ONE-TIME SETUP</span>
+          </div>
+          <p>Your older EAs can still trade correctly, but they do not send a heartbeat. Until fleet-ready versions report, EVE will not tell you to attach another bot because that could create duplicates.</p>
+          <div class="visibility-truth-grid">
+            <div><small>PHYSICALLY ATTACHED IN MT5</small><strong>Unknown to EVE</strong><span>You may have bots attached, but the website cannot verify old EA versions.</span></div>
+            <div><small>REPORTING TO EVE</small><strong id="homeVisibleReportingCount">0</strong><span>Only fleet-ready EA heartbeats are counted here.</span></div>
+          </div>
+          <div class="actions">
+            <a class="button button-primary" href="#demo-fleet">Fix MT5 visibility</a>
+            <a class="button button-quiet" href="#bot-library?view=files">Open Bot Factory</a>
+          </div>
+        </article>
+
+        <article class="panel journey-panel research-background-card">
           <div class="panel-head"><div><p class="label">THE EVE JOURNEY</p><h2>One clear path from evidence to demo</h2></div><span class="journey-caption">AUTONOMOUS PIPELINE</span></div>
           <div class="journey-track">
             <a href="#research" class="journey-step" id="journeyResearch"><span>1</span><div><small>RESEARCH</small><strong>Find evidence</strong><p>Test historical questions.</p></div></a>
@@ -728,8 +753,14 @@
       <section id="demo-fleet" class="section-block primary-workspace workspace-section" data-workspace="demo-fleet">
         <div class="section-title">
           <div><p class="eyebrow">DEMO FLEET</p><h2>The bots actually attached to MT5</h2></div>
-          <p>A bot is shown as online only while its own EA heartbeat is arriving. Closing MT5, removing the EA or losing telemetry changes the status automatically.</p>
+          <p>This page shows only bots sending fleet heartbeats. A zero here does not prove that no bots are physically attached in MT5; older EA versions are invisible to EVE.</p>
         </div>
+
+        <article class="panel fleet-truth-banner">
+          <p class="label">IMPORTANT DISTINCTION</p>
+          <h2>Attached in MT5 and visible to EVE are not the same thing</h2>
+          <p>Fleet-ready EAs report their account, chart, switches and current state. Older EAs can trade but remain invisible here. EVE will never pretend that zero heartbeats means zero physical attachments.</p>
+        </article>
 
         <article class="panel fleet-summary-panel">
           <div class="panel-head">
@@ -749,12 +780,12 @@
         </article>
 
         <article class="panel fleet-setup-panel" id="fleetSetupPanel" hidden>
-          <div class="panel-head"><div><p class="label">ONE-TIME CONNECTION</p><h2>Connect your MT5 bots to Demo Fleet</h2></div><span class="status-pill queued">SETUP</span></div>
+          <div class="panel-head"><div><p class="label">ONE-TIME CONNECTION</p><h2>Connect your MT5 bots to Demo Fleet</h2></div><span class="status-pill queued" id="fleetSetupStatus">CONNECT EAS</span></div>
           <ol class="fleet-setup-steps">
-            <li>Run <strong>SUPABASE_UPDATE_v3.1.sql</strong> once.</li>
-            <li>Download the bot again from Bot Library and compile the fleet-ready .mq5.</li>
+            <li id="fleetDatabaseStep"><strong>Database:</strong> checking fleet table.</li>
+            <li>Wait until the exact bot has <strong>no open trade</strong>, then download it again from Bot Factory and compile the fleet-ready .mq5.</li>
             <li>In MT5 add <strong>https://evealgolab.netlify.app</strong> under Tools → Options → Expert Advisors → Allow WebRequest.</li>
-            <li>Attach the EA on demo. It will appear here within about 30 seconds.</li>
+            <li>Remove only the old copy, attach the fleet-ready EA with the same inputs, and check that it appears here. Upgrade one bot at a time.</li>
           </ol>
           <p>Telemetry is best-effort. A connection failure never changes, opens or closes a trade.</p>
         </article>
@@ -991,11 +1022,11 @@
         <div class="activity-list" id="activityList"><div class="empty-state">Waiting for Supabase activity…</div></div>
       </section>
 
-      <footer><span>EVE COMMAND CENTRE · v3.1.1</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
+      <footer><span>EVE COMMAND CENTRE · v3.2</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
     </main>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=3.1" defer></script>
+  <script src="app.js?v=3.2" defer></script>
 </body>
 </html>

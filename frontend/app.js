@@ -89,6 +89,7 @@ let botLibrarySearch = "";
 let fleetDashboard = null;
 let fleetRefreshTimer;
 let currentWorkspace = "home";
+let currentAppMode = localStorage.getItem("eve-app-mode") === "research" ? "research" : "operator";
 let currentFactoryStage = "build";
 let currentBotView = "organised";
 let serviceOnline = false;
@@ -121,6 +122,7 @@ function setJourneyState(selector, state, detail) {
 
 function homeStatusClass(status) {
   if (status === "attached") return "complete";
+  if (status === "visibility_required") return "error";
   if (status === "active_now") return "test-now";
   if (status === "attach_now_waiting_market_condition") return "attach-leave";
   if (status === "waiting_for_trading_window") return "wait-time";
@@ -158,7 +160,7 @@ function updateCommandCentre() {
   setText("#homeValidatedCount", formatNumber(mt5Ready));
   setText("#homeBotCount", formatNumber(botsGenerated));
   setText("#homeFleetCount", formatNumber(fleetOnline));
-  setText("#homeFleetState", fleetDashboard?.setup_required ? "One-time setup required" : fleetOnline ? `${formatNumber(fleetCounts.in_trade || 0)} currently in trade` : "No live heartbeat");
+  setText("#homeFleetState", !fleetDashboard ? "Checking heartbeats" : fleetDashboard?.setup_required ? "One-time setup required" : fleetOnline ? `${formatNumber(fleetCounts.in_trade || 0)} currently in trade` : "0 visible; old EAs may still be attached");
   setText("#homeResearchState", learningState.autonomous_learning_enabled !== false && learningState.initial_build_complete ? "Working automatically" : "Foundation check");
   setText("#homeStrategyState", strategiesTested ? `${formatNumber(Number(strategyState.validated_count || 0) + Number(strategyState.elite_count || 0))} strong survivors` : "Waiting for evidence");
   setText("#homeProofState", mt5Ready ? "Rules frozen for bots" : "No rules frozen yet");
@@ -166,15 +168,59 @@ function updateCommandCentre() {
 
   const recommendedPresence = fleetPresenceForPackage(recommended.package_id);
   const recommendedAttached = recommendedPresence.count > 0;
-  const actionStatus = recommendedAttached ? "attached" : (recommended.status || "waiting");
-  const actionLabel = recommendedAttached ? "RUNNING IN MT5" : (recommended.status_label || (recommended.package_id ? "NEXT TEST" : "NO ACTION"));
-  const actionTitle = recommended.strategy_name || "EVE is working in the background";
-  const actionCopy = recommendedAttached
-    ? `${recommendedPresence.count} live attachment${recommendedPresence.count === 1 ? " is" : "s are"} already reporting. Do not attach another copy.`
-    : (recommended.headline || recommended.next_action || "No manual action is needed while EVE checks research, strategies and generated bots.");
-  const actionMeta = recommendedAttached
-    ? "Open Demo Fleet to see its state, chart, switches and demo P/L."
-    : (recommended.next_action || (recommended.package_id ? `Attach to ${recommended.attach_to || "XAUUSD M5"}. Demo only.` : "Open the detailed pages only when you need to inspect the work."));
+  const fleetLoaded = fleetDashboard !== null;
+  const fleetItems = Array.isArray(fleetDashboard?.items) ? fleetDashboard.items : [];
+  const fleetKnownAttachments = fleetItems.length;
+  const fleetVisibilityMissing = fleetLoaded && fleetOnline === 0;
+  const visibilityCard = $("#homeFleetVisibility");
+  if (visibilityCard) visibilityCard.hidden = !fleetVisibilityMissing;
+  setText("#homeVisibleReportingCount", formatNumber(fleetOnline));
+
+  let actionStatus = "waiting";
+  let actionLabel = "CHECKING";
+  let actionTitle = "Checking which bots EVE can see";
+  let actionCopy = "EVE will not recommend another bot until the Demo Fleet check has completed.";
+  let actionMeta = "No action yet.";
+  let primaryHref = "#demo-fleet";
+  let primaryLabel = "Open Demo Fleet";
+  let secondaryHref = "#";
+  let secondaryLabel = "No bot action";
+  let secondaryEnabled = false;
+
+  if (fleetVisibilityMissing) {
+    actionStatus = "visibility_required";
+    actionLabel = "CANNOT SEE MT5";
+    actionTitle = "Do not attach another bot yet";
+    actionCopy = "You may already have bots attached, but EVE is receiving zero fleet heartbeats. The dashboard cannot safely recommend another EA until it can see what is running.";
+    actionMeta = "Your existing bots may be working correctly. Upgrade them to fleet-ready versions only when they have no open trade.";
+    primaryHref = "#demo-fleet";
+    primaryLabel = "Fix MT5 visibility";
+    secondaryHref = "#bot-library?view=files";
+    secondaryLabel = "Open Bot Factory";
+    secondaryEnabled = true;
+  } else if (recommendedAttached) {
+    actionStatus = "attached";
+    actionLabel = "RUNNING IN MT5";
+    actionTitle = recommended.strategy_name || "Recommended bot";
+    actionCopy = `${recommendedPresence.count} live attachment${recommendedPresence.count === 1 ? " is" : "s are"} already reporting. Do not attach another copy.`;
+    actionMeta = "Open Demo Fleet to see its current state, chart, switches and demo P/L.";
+    primaryHref = "#demo-fleet";
+    primaryLabel = "Open Demo Fleet";
+    secondaryHref = "#bot-library";
+    secondaryLabel = "Open Bot Schedule";
+    secondaryEnabled = true;
+  } else if (fleetLoaded && recommended.package_id) {
+    actionStatus = recommended.status || "waiting";
+    actionLabel = recommended.status_label || "NEXT TEST";
+    actionTitle = recommended.strategy_name || "Recommended bot";
+    actionCopy = recommended.headline || recommended.next_action || "EVE has identified the next practical demo candidate.";
+    actionMeta = recommended.next_action || `Attach to ${recommended.attach_to || "XAUUSD M5"}. Demo only.`;
+    primaryHref = "#bot-library";
+    primaryLabel = "Open Bot Schedule";
+    secondaryHref = `/api/mt5/packages/${encodeURIComponent(recommended.package_id)}/download`;
+    secondaryLabel = "Download recommended bot";
+    secondaryEnabled = true;
+  }
 
   setText("#homeActionStatus", actionLabel);
   setClass("#homeActionStatus", `status-pill ${homeStatusClass(actionStatus)}`);
@@ -183,29 +229,32 @@ function updateCommandCentre() {
   setText("#homeActionMeta", actionMeta);
   const actionCard = $("#homeActionCard");
   if (actionCard) actionCard.dataset.status = actionStatus;
+  const primary = $("#homeActionPrimary");
+  if (primary) { primary.href = primaryHref; primary.textContent = primaryLabel; }
   const download = $("#homeActionDownload");
   if (download) {
-    if (recommendedAttached) {
-      download.href = "#demo-fleet";
-      download.textContent = "Open Demo Fleet";
-      download.removeAttribute("aria-disabled");
-      download.classList.remove("disabled-link");
-    } else if (recommended.package_id) {
-      download.href = `/api/mt5/packages/${encodeURIComponent(recommended.package_id)}/download`;
-      download.textContent = "Download recommended bot";
-      download.removeAttribute("aria-disabled");
-      download.classList.remove("disabled-link");
-    } else {
-      download.href = "#";
-      download.textContent = "No bot action";
-      download.setAttribute("aria-disabled", "true");
-      download.classList.add("disabled-link");
-    }
+    download.href = secondaryEnabled ? secondaryHref : "#";
+    download.textContent = secondaryLabel;
+    download.toggleAttribute("aria-disabled", !secondaryEnabled);
+    download.classList.toggle("disabled-link", !secondaryEnabled);
   }
 
   const activeAction = ["active_now", "attach_now_waiting_market_condition", "attached"].includes(actionStatus);
   const futureAction = ["waiting_for_trading_window", "waiting_for_period", "market_closed"].includes(actionStatus);
-  if (activeAction) {
+  if (!fleetLoaded) {
+    setText("#briefingStatus", "CHECKING DEMO FLEET");
+    setText("#briefingHeadline", "EVE is checking which MT5 bots it can actually see.");
+    setText("#briefingCopy", "No new attachment recommendation will appear until that check is complete.");
+  } else if (fleetVisibilityMissing) {
+    setText("#briefingStatus", "MT5 VISIBILITY REQUIRED");
+    setText("#briefingHeadline", "EVE cannot yet see the bots you already have attached.");
+    setText("#briefingCopy", "Do not add another bot from this dashboard until Demo Fleet is receiving heartbeats. Your existing EAs may still be trading normally.");
+  } else if (fleetOnline > 0) {
+    const inTrade = Number(fleetCounts.in_trade || 0);
+    setText("#briefingStatus", "DEMO FLEET LIVE");
+    setText("#briefingHeadline", `${fleetOnline} bot${fleetOnline === 1 ? " is" : "s are"} attached and reporting to EVE.`);
+    setText("#briefingCopy", inTrade ? `${inTrade} bot${inTrade === 1 ? " is" : "s are"} currently in a trade. Open Demo Fleet for exact status.` : "All visible bots are being monitored. Open Demo Fleet for their exact waiting reasons and results.");
+  } else if (activeAction) {
     setText("#briefingStatus", "ACTION AVAILABLE");
     setText("#briefingHeadline", recommended.headline || `${actionTitle} can be prepared for demo testing.`);
     setText("#briefingCopy", actionMeta);
@@ -216,7 +265,7 @@ function updateCommandCentre() {
   } else {
     setText("#briefingStatus", "EVE IS WORKING");
     setText("#briefingHeadline", "EVE is researching, testing and building in the background.");
-    setText("#briefingCopy", botsGenerated ? `${formatNumber(botsGenerated)} MT5 bot package${botsGenerated === 1 ? " is" : "s are"} available. Bot Library will tell you when each one is practical to attach.` : "No intervention is required while the autonomous workers continue.");
+    setText("#briefingCopy", botsGenerated ? `${formatNumber(botsGenerated)} MT5 bot package${botsGenerated === 1 ? " is" : "s are"} available. Bot Schedule explains exactly when each one is for.` : "No intervention is required while the autonomous workers continue.");
   }
 
   const allDataReady = readyDatasets === TIMEFRAMES.length;
@@ -2137,26 +2186,29 @@ function renderFleet(data = {}) {
   const setup = Boolean(data.setup_required);
   const online = Number(counts.online || 0);
   const attention = Number(counts.attention || 0);
+  const items = data.items || [];
+  const needsConnection = setup || (!online && !items.length);
   setText("#fleetOnlineCount", formatNumber(online));
   setText("#fleetTradeCount", formatNumber(counts.in_trade));
   setText("#fleetAttentionCount", formatNumber(attention));
   setText("#fleetDuplicateCount", formatNumber(counts.duplicates));
   setText("#fleetClosedPnl", formatSignedMoney(data.combined_closed_profit_today || 0));
   setText("#fleetOpenPnl", formatSignedMoney(data.combined_open_profit || 0));
-  setText("#fleetHeadline", setup ? "One-time fleet setup is required" : online ? `${online} EVE bot${online === 1 ? " is" : "s are"} attached and reporting` : "No fleet-ready bot is reporting from MT5");
-  setText("#fleetMessage", data.message || "A bot appears online only while its heartbeat is arriving.");
+  setText("#fleetHeadline", setup ? "One-time fleet setup is required" : online ? `${online} EVE bot${online === 1 ? " is" : "s are"} attached and reporting` : "EVE can currently see 0 bots");
+  setText("#fleetMessage", online ? (data.message || "A bot appears online only while its heartbeat is arriving.") : "This does not mean no bots are attached in MT5. It means no fleet-ready heartbeat is reaching EVE.");
   setText("#fleetOverallStatus", setup ? "SETUP" : attention ? "ATTENTION" : online ? "LIVE" : "WAITING");
   setClass("#fleetOverallStatus", `status-pill ${setup ? "queued" : attention ? "error" : online ? "complete" : "waiting"}`);
   setText("#fleetListStatus", setup ? "SETUP" : online ? "LIVE" : "WAITING");
   setClass("#fleetListStatus", `status-pill ${setup ? "queued" : online ? "complete" : "waiting"}`);
   const setupPanel = $("#fleetSetupPanel");
-  if (setupPanel) setupPanel.hidden = !setup;
+  if (setupPanel) setupPanel.hidden = !needsConnection;
+  setText("#fleetSetupStatus", setup ? "DATABASE" : "CONNECT EAS");
+  setHtml("#fleetDatabaseStep", setup ? "<strong>Database:</strong> run SUPABASE_UPDATE_v3.1.sql once, then refresh this page." : "<strong>Database:</strong> ready. Do not run Supabase SQL again.");
 
   const host = $("#fleetList");
-  const items = data.items || [];
   if (!host) return;
   if (!items.length) {
-    host.innerHTML = `<div class="empty-state">${setup ? "Complete the one-time steps above, then attach a fleet-ready EA." : "No heartbeat yet. Existing old EAs must be downloaded again to gain fleet telemetry."}</div>`;
+    host.innerHTML = `<div class="empty-state"><strong>0 bots are visible to EVE.</strong><br>${setup ? "Complete the one-time steps above, then attach a fleet-ready EA." : "Older EAs may still be attached and trading. Download the exact bots again from Bot Factory and replace them only when they have no open trade."}</div>`;
     updateCommandCentre();
     return;
   }
@@ -2205,6 +2257,27 @@ async function refreshFleet(silent = false) {
   }
 }
 
+function modeForRoute(route) {
+  if (route.workspace === "research" || route.workspace === "strategy" || route.workspace === "advanced") return "research";
+  if (route.workspace === "bot-library" && route.view === "files") return "research";
+  return "operator";
+}
+
+function setAppMode(mode, { navigate = false } = {}) {
+  currentAppMode = mode === "research" ? "research" : "operator";
+  localStorage.setItem("eve-app-mode", currentAppMode);
+  document.body.dataset.appMode = currentAppMode;
+  document.querySelectorAll("[data-app-mode]").forEach((button) => {
+    const active = button.dataset.appMode === currentAppMode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  document.querySelectorAll("[data-mode-nav]").forEach((group) => { group.hidden = group.dataset.modeNav !== currentAppMode; });
+  setText("#topbarEyebrow", currentAppMode === "operator" ? "EVE OPERATOR · v3.2" : "EVE RESEARCH ENGINE · v3.2");
+  setText("#topbarSummary", currentAppMode === "operator" ? "See only what is running, what is waiting and what you need to do." : "Inspect research, controlled mutations, validation and generated MT5 packages.");
+  if (navigate) window.location.hash = currentAppMode === "operator" ? "#home" : "#research";
+}
+
 const WORKSPACE_ALIASES = {
   home: "home", overview: "home",
   research: "research", learning: "research",
@@ -2241,7 +2314,12 @@ function showWorkspace(workspace, { stage = currentFactoryStage, view = currentB
     section.hidden = !visible;
     section.setAttribute("aria-hidden", visible ? "false" : "true");
   });
-  document.querySelectorAll("[data-workspace-link]").forEach((link) => link.classList.toggle("active", link.dataset.workspaceLink === currentWorkspace));
+  document.querySelectorAll("[data-workspace-link]").forEach((link) => {
+    const linkView = link.dataset.navView || currentAppMode;
+    let active = link.dataset.workspaceLink === currentWorkspace && linkView === currentAppMode;
+    if (active && currentWorkspace === "bot-library") active = currentAppMode === "research" ? currentBotView === "files" : currentBotView === "organised";
+    link.classList.toggle("active", active);
+  });
   document.querySelectorAll("[data-factory-target]").forEach((button) => button.classList.toggle("active", button.dataset.factoryTarget === currentFactoryStage));
   document.querySelectorAll("[data-bot-view-target]").forEach((button) => button.classList.toggle("active", button.dataset.botViewTarget === currentBotView));
   requestAnimationFrame(() => {
@@ -2253,6 +2331,7 @@ function showWorkspace(workspace, { stage = currentFactoryStage, view = currentB
 
 function applyWorkspaceRoute() {
   const route = parseWorkspaceRoute();
+  setAppMode(modeForRoute(route));
   if (route.path === "backtester") legacyBacktesterOpen = true;
   showWorkspace(route.workspace, { stage: route.stage, view: route.view, scrollTarget: ["foundation", "memory", "backtester", "pipeline", "activity"].includes(route.path) ? route.path : null });
 }
@@ -2405,6 +2484,9 @@ listen("#validationJobList", "click", (event) => {
 
 listen("#openLegacyBacktester", "click", () => setLegacyBacktesterOpen(true));
 listen("#closeLegacyBacktester", "click", () => setLegacyBacktesterOpen(false));
+document.querySelectorAll("[data-app-mode]").forEach((button) => {
+  button.addEventListener("click", () => setAppMode(button.dataset.appMode, { navigate: true }));
+});
 document.querySelectorAll("[data-workspace-link]").forEach((link) => {
   link.addEventListener("click", (event) => {
     event.preventDefault();
@@ -2427,6 +2509,7 @@ document.querySelectorAll(".advanced-link-grid a").forEach((link) => {
   link.addEventListener("click", () => { currentWorkspace = "advanced"; });
 });
 window.addEventListener("hashchange", applyWorkspaceRoute);
+setAppMode(currentAppMode);
 applyWorkspaceRoute();
 
 updateCommandCentre();

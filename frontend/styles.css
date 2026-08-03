@@ -1546,3 +1546,24 @@ tr:last-child td { border-bottom: 0; }
     overflow-y: hidden;
   }
 }
+
+
+/* v3.2 — operator-first organisation and honest MT5 visibility */
+.mode-switch { display:grid; grid-template-columns:1fr 1fr; gap:5px; margin-top:28px; padding:5px; border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.018); }
+.mode-switch button { min-height:34px; border:0; border-radius:8px; color:var(--muted); background:transparent; font:600 8px "DM Mono"; letter-spacing:.08em; cursor:pointer; }
+.mode-switch button.active { color:#07100f; background:var(--accent); box-shadow:0 0 20px rgba(142,240,197,.12); }
+.mode-nav { display:grid; gap:8px; }
+.mode-nav[hidden] { display:none !important; }
+.sidebar .nav { margin-top:22px; }
+.fleet-visibility-card,.fleet-truth-banner { margin-top:18px; border-color:rgba(216,189,120,.34); background:linear-gradient(145deg,rgba(43,36,18,.42),rgba(12,27,24,.9)); }
+.fleet-visibility-card>p,.fleet-truth-banner>p:last-child { max-width:850px; color:#bccac5; font-size:12px; line-height:1.7; }
+.visibility-truth-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:18px; }
+.visibility-truth-grid>div { min-height:112px; padding:16px; border:1px solid var(--line); border-radius:13px; background:rgba(255,255,255,.018); }
+.visibility-truth-grid small { display:block; color:var(--gold); font:500 8px "DM Mono"; letter-spacing:.09em; }
+.visibility-truth-grid strong { display:block; margin-top:10px; font-size:18px; }
+.visibility-truth-grid span { display:block; margin-top:8px; color:var(--muted); font-size:10px; line-height:1.5; }
+.home-action-card[data-status="visibility_required"] { border-color:rgba(255,141,135,.34); box-shadow:inset 3px 0 0 var(--danger); }
+.research-background-card { opacity:.88; }
+.fleet-truth-banner h2 { margin:8px 0 0; font-size:23px; }
+.empty-state strong { color:var(--text); }
+@media (max-width:760px) { .mode-switch { margin:0 8px; min-width:210px; } .mode-nav { display:flex; gap:6px; } .mode-nav .nav-group-label { display:none; } .visibility-truth-grid { grid-template-columns:1fr; } }
