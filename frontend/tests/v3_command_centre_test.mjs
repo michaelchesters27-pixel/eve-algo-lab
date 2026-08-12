@@ -9,11 +9,11 @@ function idsFrom(markup) {
   return [...markup.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
 }
 
-test("v3.1 command centre has one clear six-item navigation", () => {
+test("command centre exposes the Strategy Tester without cluttering operator mode", () => {
   const nav = html.match(/<nav class="nav"[\s\S]*?<\/nav>/)?.[0] || "";
   const links = [...nav.matchAll(/class="nav-link[^"]*"/g)];
-  assert.equal(links.length, 6);
-  for (const target of ["#home", "#research", "#strategy-factory", "#bot-library", "#demo-fleet", "#advanced"]) {
+  assert.equal(links.length, 8);
+  for (const target of ["#home", "#research", "#strategy-factory", "#bot-library", "#demo-fleet", "#backtester", "#advanced"]) {
     assert.match(nav, new RegExp(`href="${target.replace("#", "\\#")}"`));
   }
 });

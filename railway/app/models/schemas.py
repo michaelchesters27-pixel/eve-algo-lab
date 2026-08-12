@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, field_validator
 SupportedInterval = Literal["1min", "5min", "15min", "30min", "45min", "1h", "2h", "4h", "8h", "1day"]
 PathMode = Literal["candle_direction", "open_high_low_close", "open_low_high_close"]
 BacktestResolution = Literal["candle", "m1_replay"]
+BacktestTestSegment = Literal["full", "development", "untouched", "custom"]
 
 
 class JobRequest(BaseModel):
@@ -57,6 +58,40 @@ class FixedLadderBacktestRequest(BaseModel):
     commission_per_001_lot: float = Field(default=0.08, ge=0, le=1000)
     slippage_price: float = Field(default=0.0, ge=0, le=100)
     money_per_price_per_001_lot: float = Field(default=1.0, gt=0, le=10000)
+    path_mode: PathMode = "candle_direction"
+
+    @field_validator("date_to")
+    @classmethod
+    def validate_date_range(cls, value: datetime | None, info):
+        start = info.data.get("date_from")
+        if value is not None and start is not None and value <= start:
+            raise ValueError("date_to must be later than date_from")
+        return value
+
+
+class LiquidityBasketBacktestRequest(BaseModel):
+    name: str = Field(default="Liquidity Basket v1 — Full M1 History", min_length=3, max_length=120)
+    symbol: str = Field(default="XAU/USD", min_length=3, max_length=40)
+    interval: Literal["1min"] = "1min"
+    resolution: Literal["m1_replay"] = "m1_replay"
+    test_segment: BacktestTestSegment = "full"
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    starting_balance: float = Field(default=1000.0, gt=0, le=100_000_000)
+    positions_per_basket: int = Field(default=4, ge=1, le=20)
+    fixed_lot: float = Field(default=0.02, gt=0, le=100)
+    lookback_candles: int = Field(default=20, ge=3, le=500)
+    trend_period: int = Field(default=50, ge=2, le=1000)
+    use_trend_filter: bool = True
+    minimum_sweep_price: float = Field(default=0.05, ge=0, le=1000)
+    profit_target_money: float = Field(default=4.0, gt=0, le=1_000_000)
+    basket_stop_money: float = Field(default=8.0, gt=0, le=1_000_000)
+    maximum_hold_minutes: int = Field(default=180, ge=1, le=10_080)
+    cooldown_candles: int = Field(default=5, ge=0, le=10_000)
+    spread_price: float = Field(default=0.05, ge=0, le=100)
+    commission_per_001_lot: float = Field(default=0.08, ge=0, le=1000)
+    slippage_price: float = Field(default=0.0, ge=0, le=100)
+    money_per_price_per_001_lot: float = Field(default=1.0, gt=0, le=10_000)
     path_mode: PathMode = "candle_direction"
 
     @field_validator("date_to")

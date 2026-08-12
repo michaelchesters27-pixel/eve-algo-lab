@@ -45,6 +45,7 @@ test("Bot Library marks packages already attached to MT5", () => {
 
 test("Home changes its recommended action when that bot is already attached", () => {
   assert.match(js, /recommendedAttached/);
-  assert.match(js, /Open Demo Fleet to see its state/);
-  assert.match(js, /download\.textContent = "Open Demo Fleet"/);
+  assert.match(js, /Open Demo Fleet to see its current state/);
+  assert.match(js, /primaryLabel = "Open Demo Fleet"/);
+  assert.match(js, /primary\.textContent = primaryLabel/);
 });
