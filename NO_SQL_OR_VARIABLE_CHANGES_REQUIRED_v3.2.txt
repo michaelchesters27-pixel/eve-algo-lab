@@ -1,0 +1,2 @@
+EVE Command Centre v3.2 reuses the existing strategy, backtest run, trade and basket tables.
+No Supabase SQL, Railway variable or Netlify variable changes are required.

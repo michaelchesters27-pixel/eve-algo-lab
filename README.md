@@ -1,8 +1,25 @@
-# EVE Command Centre v3.1
+# EVE Command Centre v3.2
 
 EVE is a private XAU/USD research, strategy-evolution and MT5 bot-development platform using Supabase, Railway, Netlify and Twelve Data.
 
-## What v3.1 changes
+## What v3.2 changes
+
+v3.2 adds a dedicated **Strategy Tester** without changing live MT5 fleet execution.
+
+- The first new experiment is **Liquidity Basket v1** on stored XAU/USD M1 candles.
+- A signal requires a sweep of the previous liquidity high/low and a confirmed close back inside; entry occurs only at the next candle open.
+- The tester opens four equal positions by default and manages them as one combined-money basket.
+- Spread, commission, optional slippage, a hard basket loss, maximum hold and post-basket cooldown are modelled.
+- Full-history, development first-two-thirds, untouched final-third and custom-period tests are supported.
+- An untouched run is rejected unless a completed development run exists with every entry, risk and cost setting unchanged.
+- Slippage and the broker's XAU/USD contract value can be calibrated instead of being hidden assumptions.
+- Every completed test receives a plain-English verdict based on profit, profit factor, expectancy, evidence count and drawdown.
+- Results include worst basket, longest losing run, frequency, balance path and a basket-by-basket archive.
+- The source-verified Fixed Ladder v2.61 replay remains available as a legacy diagnostic inside the same page.
+
+No Supabase SQL or new Railway/Netlify variables are required for v3.2.
+
+## What v3.1 changed
 
 v3.1 reorganises the product without changing the research engine beneath it.
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
@@ -18,10 +18,11 @@ from app.models.schemas import (
     JobRequest,
     JobResponse,
     LearningBuildRequest,
+    LiquidityBasketBacktestRequest,
     MetricsPreviewRequest,
 )
 from app.services.autonomy import AutonomousLearningService
-from app.services.backtests import BacktestService
+from app.services.backtests import BacktestService, liquidity_settings_match
 from app.services.ingestion import IngestionService, historical_backfill_complete
 from app.services.historical_research import ContinuousHistoricalResearchService
 from app.services.learning import LearningService, SNAPSHOT_INTERVAL
@@ -35,7 +36,7 @@ from app.services.supabase_repo import SupabaseError, SupabaseRepository
 from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
 from app.settings import Settings, get_settings
 
-APP_VERSION = "3.1"
+APP_VERSION = "3.2"
 
 settings = get_settings()
 logging.basicConfig(
@@ -543,6 +544,130 @@ async def wake_mt5_generator() -> ApiEnvelope:
     return ApiEnvelope(
         data={"status": "requested"},
         message="MT5 generator wake requested. Frozen strategies are generated automatically.",
+    )
+
+
+def _parse_stored_datetime(value: Any, label: str) -> datetime:
+    if not value:
+        raise HTTPException(status_code=409, detail=f"M1 Market Memory has no {label} timestamp")
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=f"M1 Market Memory has an invalid {label} timestamp") from exc
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+
+
+def _liquidity_test_dates(request: LiquidityBasketBacktestRequest, state: dict[str, Any]) -> tuple[str, str]:
+    oldest = _parse_stored_datetime(state.get("oldest_stored"), "oldest-candle")
+    latest = _parse_stored_datetime(state.get("latest_stored"), "latest-candle")
+    if latest <= oldest:
+        raise HTTPException(status_code=409, detail="M1 Market Memory date range is invalid")
+    if request.test_segment == "custom":
+        if request.date_from is None or request.date_to is None:
+            raise HTTPException(status_code=422, detail="Custom tests require both a start date and an end date")
+        start = request.date_from if request.date_from.tzinfo is not None else request.date_from.replace(tzinfo=timezone.utc)
+        end = request.date_to if request.date_to.tzinfo is not None else request.date_to.replace(tzinfo=timezone.utc)
+        if start < oldest and start.date() == oldest.date():
+            start = oldest
+        if end > latest and end.date() == latest.date():
+            end = latest
+    elif request.test_segment == "development":
+        start = oldest
+        split = oldest + (latest - oldest) * (2.0 / 3.0)
+        end = split - timedelta(microseconds=1)
+    elif request.test_segment == "untouched":
+        # Both database filters are inclusive, so development ends one
+        # microsecond before this boundary and no candle can enter both sets.
+        start = oldest + (latest - oldest) * (2.0 / 3.0)
+        end = latest
+    else:
+        start = request.date_from or oldest
+        end = request.date_to or latest
+        if start.tzinfo is None:
+            start = start.replace(tzinfo=timezone.utc)
+        if end.tzinfo is None:
+            end = end.replace(tzinfo=timezone.utc)
+    if start < oldest or end > latest:
+        raise HTTPException(status_code=422, detail="Selected dates fall outside stored M1 Market Memory")
+    if end <= start:
+        raise HTTPException(status_code=422, detail="Test end date must be later than its start date")
+    return start.isoformat(), end.isoformat()
+
+
+@app.post("/api/backtests/liquidity-basket", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])
+async def start_liquidity_basket_backtest(request: LiquidityBasketBacktestRequest) -> ApiEnvelope:
+    state = await repo.get_state(request.symbol, "1min")
+    if not state_is_historically_ready(state, "1min"):
+        raise HTTPException(status_code=409, detail="M1 Market Memory must be complete before this backtest can run")
+    if await repo.has_active_backtest():
+        raise HTTPException(status_code=409, detail="Another backtest is already running")
+    date_from, date_to = _liquidity_test_dates(request, state or {})
+    segment_names = {
+        "full": "Full M1 History",
+        "development": "Development First Two-Thirds",
+        "untouched": "Untouched Final Third",
+        "custom": "Custom M1 Period",
+    }
+    strategy_version_id = await backtests.ensure_liquidity_strategy_version()
+    settings_payload = request.model_dump(mode="json")
+    settings_payload.update({"date_from": date_from, "date_to": date_to, "strategy": "liquidity_basket"})
+    locked_development_run_id: str | None = None
+    if request.test_segment == "untouched":
+        recent_runs = await repo.list_backtest_runs(100)
+        matching_development = next(
+            (
+                candidate
+                for candidate in recent_runs
+                if candidate.get("status") == "complete"
+                and (candidate.get("settings") or {}).get("strategy") == "liquidity_basket"
+                and (candidate.get("settings") or {}).get("test_segment") == "development"
+                and liquidity_settings_match(candidate.get("settings") or {}, settings_payload)
+            ),
+            None,
+        )
+        if matching_development is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Run and complete the Development first-two-thirds test with these exact settings before the Untouched test",
+            )
+        locked_development_run_id = str(matching_development["id"])
+        settings_payload["locked_development_run_id"] = locked_development_run_id
+    run_name = f"Liquidity Basket v1 — {segment_names[request.test_segment]}"
+    run = await repo.create_backtest_run(
+        {
+            "strategy_version_id": strategy_version_id,
+            "name": run_name,
+            "symbol": request.symbol,
+            "interval": "1min",
+            "resolution": "m1_replay",
+            "status": "queued",
+            "date_from": date_from,
+            "date_to": date_to,
+            "starting_balance": request.starting_balance,
+            "settings": settings_payload,
+            "reliability": {
+                "progress_percent": 0,
+                "message": "Queued for Railway",
+                "accuracy": "M1 high-resolution candle replay",
+                "input_interval": "1min",
+                "strategy": "liquidity_basket",
+                "test_segment": request.test_segment,
+                "locked_development_run_id": locked_development_run_id,
+            },
+        }
+    )
+    run_id = str(run["id"])
+    await backtests.start_liquidity(run_id, settings_payload)
+    return ApiEnvelope(
+        data={
+            "id": run_id,
+            "status": "queued",
+            "name": run_name,
+            "date_from": date_from,
+            "date_to": date_to,
+            "test_segment": request.test_segment,
+        },
+        message="Liquidity Basket M1 replay started",
     )
 
 

@@ -619,22 +619,49 @@ async function queueBatchJobs(endpoint, button, label) {
 }
 
 function updateBacktestAvailability() {
+  const strategy = $("#testerStrategy")?.value || "liquidity_basket";
   const resolution = $("#resolutionMode")?.value || "candle";
-  const ready = resolution === "m1_replay" ? historicalReady["1min"] : historicalReady["5min"];
+  const liquidity = strategy === "liquidity_basket";
+  const requiredInterval = liquidity || resolution === "m1_replay" ? "1min" : "5min";
+  const ready = historicalReady[requiredInterval];
   const button = $("#runBacktest");
   if (!button) return;
   button.disabled = !ready || Boolean(activeBacktestId);
-  button.textContent = resolution === "m1_replay" ? "Run M1 high-resolution replay" : "Run M5 approximation";
-
-  if (resolution === "m1_replay") {
+  const segment = $("#testPeriod")?.value || "development";
+  if (liquidity) {
+    const labels = { full: "Run full M1 test", development: "Run development test", untouched: "Run untouched test", custom: "Run custom M1 test" };
+    button.textContent = labels[segment] || labels.full;
     $("#resolutionNote").textContent = historicalReady["1min"]
-      ? "M1 Market Memory is complete. This run uses every verified one-minute candle in sequence."
-      : "M1 replay is locked until the M1 historical dataset reaches 100%.";
+      ? "M1 Market Memory is ready. The signal candle must close before EVE enters at the next candle open. Spread, commission and slippage are included."
+      : "The Liquidity Basket test is locked until M1 Market Memory reaches 100%.";
   } else {
-    $("#resolutionNote").textContent = historicalReady["5min"]
-      ? "M5 baseline uses the completed broad historical dataset and a candle-path approximation."
-      : "M5 Market Memory must be complete before this run can start.";
+    button.textContent = resolution === "m1_replay" ? "Run Fixed Ladder M1 replay" : "Run Fixed Ladder M5 approximation";
+    $("#resolutionNote").textContent = ready
+      ? `${requiredInterval === "1min" ? "M1" : "M5"} Market Memory is ready for the legacy Fixed Ladder diagnostic.`
+      : `${requiredInterval === "1min" ? "M1" : "M5"} Market Memory must be complete before this run can start.`;
   }
+}
+
+function updateTesterForm() {
+  const strategy = $("#testerStrategy")?.value || "liquidity_basket";
+  const liquidity = strategy === "liquidity_basket";
+  document.querySelectorAll("[data-liquidity-field]").forEach((node) => { node.hidden = !liquidity; });
+  document.querySelectorAll("[data-fixed-field]").forEach((node) => { node.hidden = liquidity; });
+  const custom = liquidity && ($("#testPeriod")?.value || "development") === "custom";
+  document.querySelectorAll("[data-custom-date]").forEach((node) => { node.hidden = !custom; });
+  setText("#testerFormTitle", liquidity ? "Liquidity Basket v1" : "Fixed Ladder v2.61");
+  setText("#testerSourceName", liquidity ? "EVE Liquidity Basket v1 · Python M1 replay" : "EVE_Twelve_Data_Fixed_Ladder_v2.61.mq5");
+  setText("#testerSourceDetail", liquidity
+    ? "Confirmed sweep → next candle entry → four equal positions → combined-money exit"
+    : "Source-verified legacy reconstruction · SHA-256 f033bc756b8a…d02da9");
+  setHtml("#testerRuleStrip", liquidity
+    ? "<span>M1 LIQUIDITY SWEEP</span><span>ENTRY NEXT OPEN</span><span>4 EQUAL POSITIONS</span><span>ONE BASKET ONLY</span><span>NO MARTINGALE</span><span>COSTS INCLUDED</span>"
+    : "<span>8 BUY STOP</span><span>8 SELL STOP</span><span>3.000 SPACING</span><span>2.000 FALLBACK</span><span>0.750 FIRST CUT</span><span>BE +0.150 AT +1.500</span>");
+  if (liquidity && Number($("#fixedLot")?.value || 0) === 0.01) $("#fixedLot").value = "0.02";
+  if (!liquidity && Number($("#fixedLot")?.value || 0) === 0.02) $("#fixedLot").value = "0.01";
+  if (liquidity && Number($("#profitTarget")?.value || 0) === 5) $("#profitTarget").value = "4.00";
+  if (!liquidity && Number($("#profitTarget")?.value || 0) === 4) $("#profitTarget").value = "5.00";
+  updateBacktestAvailability();
 }
 
 
@@ -1032,8 +1059,41 @@ async function cancelLearning(button) {
 }
 
 function backtestPayload() {
+  const strategy = $("#testerStrategy")?.value || "liquidity_basket";
+  if (strategy === "liquidity_basket") {
+    const testSegment = $("#testPeriod")?.value || "development";
+    const startDate = $("#testDateFrom")?.value || "";
+    const endDate = $("#testDateTo")?.value || "";
+    return {
+      strategy,
+      name: "Liquidity Basket v1",
+      symbol: "XAU/USD",
+      interval: "1min",
+      resolution: "m1_replay",
+      test_segment: testSegment,
+      date_from: testSegment === "custom" && startDate ? `${startDate}T00:00:00Z` : null,
+      date_to: testSegment === "custom" && endDate ? `${endDate}T23:59:59Z` : null,
+      starting_balance: Number($("#startingBalance").value),
+      positions_per_basket: Number($("#positionsPerBasket").value),
+      fixed_lot: Number($("#fixedLot").value),
+      lookback_candles: Number($("#liquidityLookback").value),
+      trend_period: 50,
+      use_trend_filter: $("#trendFilter").value === "true",
+      minimum_sweep_price: Number($("#minimumSweep").value),
+      profit_target_money: Number($("#profitTarget").value),
+      basket_stop_money: Number($("#basketStop").value),
+      maximum_hold_minutes: Number($("#maximumHold").value),
+      cooldown_candles: Number($("#cooldownCandles").value),
+      spread_price: Number($("#spreadPrice").value),
+      commission_per_001_lot: Number($("#commission").value),
+      slippage_price: Number($("#slippagePrice").value),
+      money_per_price_per_001_lot: Number($("#moneyPerPrice").value),
+      path_mode: $("#pathMode").value,
+    };
+  }
   const resolution = $("#resolutionMode").value;
   return {
+    strategy: "fixed_ladder",
     name: resolution === "m1_replay" ? "Fixed Ladder v2.61 — Full M1 Replay" : "Fixed Ladder v2.61 — Full M5 History",
     symbol: "XAU/USD",
     interval: "5min",
@@ -1061,7 +1121,8 @@ function backtestPayload() {
 
 async function runBacktest(button) {
   const payloadBody = backtestPayload();
-  const requiredInterval = payloadBody.resolution === "m1_replay" ? "1min" : "5min";
+  const liquidity = payloadBody.strategy === "liquidity_basket";
+  const requiredInterval = liquidity || payloadBody.resolution === "m1_replay" ? "1min" : "5min";
   if (!historicalReady[requiredInterval]) {
     showToast(`${requiredInterval === "1min" ? "M1" : "M5"} Market Memory is not complete yet.`, true);
     return;
@@ -1073,17 +1134,24 @@ async function runBacktest(button) {
   setLegacyHistoryOpen(false);
   clearBacktestWorkspace({ message: "Starting a new test. Previous results remain archived and are not being reused." });
   try {
-    const payload = await api("backtests/fixed-ladder-v2-61", {
+    const endpoint = liquidity ? "backtests/liquidity-basket" : "backtests/fixed-ladder-v2-61";
+    const payload = await api(endpoint, {
       method: "POST",
       body: JSON.stringify(payloadBody),
     });
     activeBacktestId = payload.data.id;
     renderBacktest({
       id: activeBacktestId,
-      name: payloadBody.name,
+      name: payload.data.name || payloadBody.name,
       status: payload.data.status || "queued",
       resolution: payloadBody.resolution,
-      reliability: { progress_percent: 0, message: "Railway accepted this new test and is preparing the replay." },
+      settings: payloadBody,
+      reliability: {
+        progress_percent: 0,
+        message: "Railway accepted this new test and is preparing the replay.",
+        strategy: payloadBody.strategy,
+        test_segment: payloadBody.test_segment || "full",
+      },
       created_at: new Date().toISOString(),
     });
     showToast(payload.message || "Backtest started");
@@ -1120,6 +1188,17 @@ function clearBacktestMetrics() {
   $("#resultBaskets").textContent = "—";
   $("#resultBalance").textContent = "—";
   $("#resultAmbiguous").textContent = "—";
+  $("#resultWorstBasket").textContent = "—";
+  $("#resultLosingStreak").textContent = "—";
+  $("#resultFrequency").textContent = "—";
+  $("#resultExpectancy").textContent = "—";
+  $("#resultAverageWin").textContent = "—";
+  $("#resultAverageLoss").textContent = "—";
+  $("#backtestVerdict").hidden = true;
+  $("#backtestVerdict").removeAttribute("data-tone");
+  $("#testerEquityPanel").hidden = true;
+  $("#testerEquityCurve").innerHTML = "";
+  $("#testerEquityRange").textContent = "—";
 }
 
 function clearBacktestWorkspace({ message = "This panel will show only the test you start now, or an archived test you deliberately select." } = {}) {
@@ -1143,7 +1222,53 @@ function clearBacktestWorkspace({ message = "This panel will show only the test 
 }
 
 function backtestResolutionLabel(run = {}) {
+  const strategy = run.reliability?.strategy || run.settings?.strategy || "fixed_ladder";
+  if (strategy === "liquidity_basket") {
+    const segments = { full: "Full M1 history", development: "Development first ⅔", untouched: "Untouched final ⅓", custom: "Custom M1 period" };
+    return `Liquidity Basket · ${segments[run.reliability?.test_segment || run.settings?.test_segment] || "M1 replay"}`;
+  }
   return run.resolution === "m1_replay" ? "M1 high-resolution replay" : "M5 approximation";
+}
+
+function renderBacktestVerdict(run = {}) {
+  const verdict = run.reliability?.verdict;
+  const host = $("#backtestVerdict");
+  if (!verdict || run.status !== "complete") {
+    host.hidden = true;
+    return;
+  }
+  host.hidden = false;
+  host.dataset.tone = verdict.tone || "waiting";
+  setText("#backtestVerdictLabel", verdict.label || "RESULT COMPLETE");
+  setText("#backtestVerdictSummary", verdict.summary || "EVE completed the historical replay.");
+  setText("#backtestVerdictNext", verdict.next_action || "Inspect the evidence before doing anything else.");
+}
+
+function renderBacktestEquity(run = {}) {
+  const monthly = run.reliability?.monthly_net || {};
+  const entries = Object.entries(monthly).sort(([a], [b]) => a.localeCompare(b));
+  const panel = $("#testerEquityPanel");
+  const host = $("#testerEquityCurve");
+  if (run.status !== "complete" || !entries.length) {
+    panel.hidden = true;
+    host.innerHTML = "";
+    return;
+  }
+  const start = Number(run.starting_balance || run.settings?.starting_balance || 0);
+  let balance = start;
+  const values = [start, ...entries.map(([, pnl]) => (balance += Number(pnl || 0)))];
+  const minimum = Math.min(...values);
+  const maximum = Math.max(...values);
+  const range = Math.max(1, maximum - minimum);
+  const points = values.map((value, index) => {
+    const x = values.length === 1 ? 0 : index / (values.length - 1) * 100;
+    const y = 34 - ((value - minimum) / range * 30);
+    return `${x.toFixed(2)},${y.toFixed(2)}`;
+  }).join(" ");
+  const positive = values.at(-1) >= values[0];
+  host.innerHTML = `<svg viewBox="0 0 100 38" role="img" aria-label="Monthly balance path from ${escapeHtml(formatMoney(values[0]))} to ${escapeHtml(formatMoney(values.at(-1)))}" preserveAspectRatio="none"><line x1="0" y1="34" x2="100" y2="34"></line><polyline class="${positive ? "positive" : "negative"}" points="${points}"></polyline></svg>`;
+  setText("#testerEquityRange", `${entries[0][0]} → ${entries.at(-1)[0]} · ${formatMoney(values.at(-1))}`);
+  panel.hidden = false;
 }
 
 function renderBacktest(run = null, { archived = false } = {}) {
@@ -1175,18 +1300,29 @@ function renderBacktest(run = null, { archived = false } = {}) {
   $("#cancelBacktest").hidden = !active;
   $("#clearLegacySelection").hidden = !archived;
 
+  const basketMetrics = reliability.basket_metrics || {};
   $("#resultNet").textContent = formatMoney(run.net_profit);
-  $("#resultPF").textContent = run.profit_factor == null ? "—" : Number(run.profit_factor).toFixed(3);
+  $("#resultPF").textContent = run.profit_factor == null
+    ? (Number(basketMetrics.total_trades || 0) > 0 && Number(basketMetrics.losses || 0) === 0 ? "∞" : "—")
+    : Number(run.profit_factor).toFixed(3);
   $("#resultDD").textContent = run.max_drawdown_percent == null ? "—" : formatPercent(run.max_drawdown_percent);
   $("#resultBasketWin").textContent = run.basket_win_rate == null ? "—" : formatPercent(run.basket_win_rate);
   $("#resultPositions").textContent = run.total_positions == null ? "—" : formatNumber(run.total_positions);
   $("#resultBaskets").textContent = run.total_baskets == null ? "—" : formatNumber(run.total_baskets);
   $("#resultBalance").textContent = formatMoney(run.ending_balance);
   $("#resultAmbiguous").textContent = reliability.ambiguous_candles == null ? "—" : formatNumber(reliability.ambiguous_candles);
+  $("#resultWorstBasket").textContent = reliability.worst_basket == null ? "—" : formatMoney(reliability.worst_basket);
+  $("#resultLosingStreak").textContent = reliability.longest_losing_streak == null ? "—" : `${formatNumber(reliability.longest_losing_streak)} baskets`;
+  $("#resultFrequency").textContent = reliability.baskets_per_week == null ? "—" : Number(reliability.baskets_per_week).toFixed(2);
+  $("#resultExpectancy").textContent = run.expectancy == null ? "—" : formatMoney(run.expectancy);
+  $("#resultAverageWin").textContent = basketMetrics.average_win == null ? "—" : formatMoney(basketMetrics.average_win);
+  $("#resultAverageLoss").textContent = basketMetrics.average_loss == null ? "—" : formatMoney(-Math.abs(Number(basketMetrics.average_loss)));
   $("#ambiguousLabel").textContent = run.resolution === "m1_replay" ? "AMBIGUOUS M1 BARS" : "AMBIGUOUS M5 BARS";
   $("#accuracyWarning").textContent = archived
     ? "Archived diagnostic result. Do not treat it as current live evidence or as proof of profitability."
     : (reliability.warning || "M5 is an approximation. M1 reduces uncertainty but MT5 real-tick testing remains the execution standard.");
+  renderBacktestVerdict(run);
+  renderBacktestEquity(run);
   updateBacktestAvailability();
 }
 
@@ -1223,35 +1359,42 @@ function renderBaskets(baskets = [], { archived = false, hidden = false, run = n
 }
 
 function renderComparison(runs = []) {
-  const m5 = runs.find((run) => run.status === "complete" && run.resolution === "candle");
-  const m1 = runs.find((run) => run.status === "complete" && run.resolution === "m1_replay");
+  const liquidityRuns = runs.filter((run) => run.status === "complete" && (run.reliability?.strategy || run.settings?.strategy) === "liquidity_basket");
+  const m5 = liquidityRuns.find((run) => (run.reliability?.test_segment || run.settings?.test_segment) === "development");
+  const m1 = liquidityRuns.find((run) => (run.reliability?.test_segment || run.settings?.test_segment) === "untouched");
 
   $("#m5ComparePF").textContent = m5?.profit_factor == null ? "—" : Number(m5.profit_factor).toFixed(3);
   $("#m5CompareMeta").textContent = m5
     ? `${formatDate(m5.finished_at || m5.created_at, true)} · ${formatMoney(m5.net_profit)} net`
-    : "No archived M5 run";
+    : "No development run";
 
   $("#m1ComparePF").textContent = m1?.profit_factor == null ? "—" : Number(m1.profit_factor).toFixed(3);
   $("#m1CompareMeta").textContent = m1
     ? `${formatDate(m1.finished_at || m1.created_at, true)} · ${formatMoney(m1.net_profit)} net`
-    : "No archived M1 run";
+    : "No untouched run";
 
   if (m5 && m1) {
     const delta = Number(m1.net_profit || 0) - Number(m5.net_profit || 0);
     $("#compareProfitDelta").textContent = formatSignedMoney(delta);
-    const m5Ambiguous = Number(m5.reliability?.ambiguous_candles || 0);
-    const m1Ambiguous = Number(m1.reliability?.ambiguous_candles || 0);
-    $("#compareReliability").textContent = `${formatNumber(m5Ambiguous)} ambiguous M5 bars versus ${formatNumber(m1Ambiguous)} ambiguous M1 bars`;
+    const settingsMatch = [
+      "symbol", "starting_balance", "positions_per_basket", "fixed_lot", "lookback_candles", "trend_period",
+      "use_trend_filter", "minimum_sweep_price", "profit_target_money", "basket_stop_money", "maximum_hold_minutes",
+      "cooldown_candles", "spread_price", "commission_per_001_lot", "slippage_price", "money_per_price_per_001_lot", "path_mode",
+    ]
+      .every((key) => String(m5.settings?.[key]) === String(m1.settings?.[key]));
+    $("#compareReliability").textContent = settingsMatch
+      ? "Settings match — this is a valid locked comparison"
+      : "WARNING: settings differ, so this is not a valid untouched test";
   } else {
     $("#compareProfitDelta").textContent = "—";
-    $("#compareReliability").textContent = "Archive comparison only";
+    $("#compareReliability").textContent = "Run both periods with identical settings";
   }
 }
 
 function renderLegacyHistory(runs = []) {
   const host = $("#legacyHistoryList");
   if (!runs.length) {
-    host.innerHTML = '<div class="empty-state">No previous Fixed Ladder tests are stored.</div>';
+    host.innerHTML = '<div class="empty-state">No previous Strategy Tester runs are stored.</div>';
     return;
   }
   host.innerHTML = runs.map((run) => {
@@ -1331,25 +1474,22 @@ function setLegacyHistoryOpen(open) {
 }
 
 function setLegacyBacktesterOpen(open, { scroll = true, updateHash = true } = {}) {
-  const section = $("#backtester");
   const trigger = $("#openLegacyBacktester");
-  if (!section || !trigger) return;
+  if (!trigger) return;
   legacyBacktesterOpen = Boolean(open);
-  section.hidden = !legacyBacktesterOpen;
-  section.setAttribute("aria-hidden", String(!legacyBacktesterOpen));
   trigger.setAttribute("aria-expanded", String(legacyBacktesterOpen));
 
   if (legacyBacktesterOpen) {
     clearBacktestWorkspace();
     setLegacyHistoryOpen(false);
     restoreActiveBacktest(true);
-    if (updateHash && window.location.hash !== "#backtester") history.replaceState(null, "", "#backtester");
-    if (scroll) requestAnimationFrame(() => section.scrollIntoView({ behavior: "smooth", block: "start" }));
+    if (updateHash && window.location.hash !== "#backtester") window.location.hash = "#backtester";
+    else if (scroll) requestAnimationFrame(() => $("#backtester")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   } else {
     setLegacyHistoryOpen(false);
     clearBacktestWorkspace();
-    if (updateHash && window.location.hash === "#backtester") history.replaceState(null, "", "#advanced");
-    if (scroll) requestAnimationFrame(() => $("#advanced")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    if (updateHash && window.location.hash === "#backtester") window.location.hash = "#advanced";
+    else if (scroll) requestAnimationFrame(() => $("#advanced")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 }
 
@@ -2258,7 +2398,7 @@ async function refreshFleet(silent = false) {
 }
 
 function modeForRoute(route) {
-  if (route.workspace === "research" || route.workspace === "strategy" || route.workspace === "advanced") return "research";
+  if (route.workspace === "research" || route.workspace === "strategy" || route.workspace === "tester" || route.workspace === "advanced") return "research";
   if (route.workspace === "bot-library" && route.view === "files") return "research";
   return "operator";
 }
@@ -2284,7 +2424,8 @@ const WORKSPACE_ALIASES = {
   "strategy-factory": "strategy", "strategy-lab": "strategy", evolution: "strategy", validation: "strategy",
   "bot-library": "bot-library", "demo-lab": "bot-library", "mt5-lab": "bot-library",
   "demo-fleet": "demo-fleet",
-  advanced: "advanced", foundation: "advanced", memory: "advanced", backtester: "advanced", pipeline: "advanced", activity: "advanced",
+  backtester: "tester",
+  advanced: "advanced", foundation: "advanced", memory: "advanced", pipeline: "advanced", activity: "advanced",
 };
 
 function parseWorkspaceRoute() {
@@ -2310,7 +2451,6 @@ function showWorkspace(workspace, { stage = currentFactoryStage, view = currentB
     let visible = section.dataset.workspace === currentWorkspace;
     if (visible && currentWorkspace === "strategy" && section.dataset.factoryStage) visible = section.dataset.factoryStage === currentFactoryStage;
     if (visible && currentWorkspace === "bot-library" && section.dataset.botView) visible = section.dataset.botView === currentBotView;
-    if (visible && section.id === "backtester") visible = legacyBacktesterOpen;
     section.hidden = !visible;
     section.setAttribute("aria-hidden", visible ? "false" : "true");
   });
@@ -2348,6 +2488,8 @@ listen("#buildLearning", "click", (event) => buildLearning(event.currentTarget))
 listen("#runAutonomyNow", "click", (event) => runAutonomyNow(event.currentTarget));
 listen("#cancelLearning", "click", (event) => cancelLearning(event.currentTarget));
 listen("#refreshLearning", "click", async () => { await refreshLearning(); await refreshDiscoveryExplorer(true); });
+listen("#testerStrategy", "change", updateTesterForm);
+listen("#testPeriod", "change", updateTesterForm);
 listen("#resolutionMode", "change", updateBacktestAvailability);
 listen("#runBacktest", "click", (event) => runBacktest(event.currentTarget));
 listen("#cancelBacktest", "click", (event) => cancelBacktest(event.currentTarget));
@@ -2511,6 +2653,7 @@ document.querySelectorAll(".advanced-link-grid a").forEach((link) => {
 window.addEventListener("hashchange", applyWorkspaceRoute);
 setAppMode(currentAppMode);
 applyWorkspaceRoute();
+updateTesterForm();
 
 updateCommandCentre();
 (async () => {

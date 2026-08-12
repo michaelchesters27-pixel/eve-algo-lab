@@ -82,6 +82,16 @@ assert.equal(response.status, 200);
 assert.equal(calls.at(-1).url, "https://railway.example/api/backtests/active?limit=5");
 console.log("Netlify proxy active-backtest route: PASS");
 
+response = await proxy(new Request("https://eve.example/api/backtests/liquidity-basket", {
+  method: "POST",
+  body: JSON.stringify({ symbol: "XAU/USD", test_segment: "full" }),
+  headers: { "Content-Type": "application/json" },
+}));
+assert.equal(response.status, 200);
+assert.equal(calls.at(-1).url, "https://railway.example/api/backtests/liquidity-basket");
+assert.equal(calls.at(-1).options.headers["X-EVE-ADMIN-TOKEN"], "test-token");
+console.log("Netlify proxy Liquidity Basket route: PASS");
+
 response = await proxy(new Request("https://eve.example/api/fleet?symbol=XAU%2FUSD&limit=200"));
 assert.equal(response.status, 200);
 assert.equal(calls.at(-1).url, "https://railway.example/api/fleet?symbol=XAU%2FUSD&limit=200");

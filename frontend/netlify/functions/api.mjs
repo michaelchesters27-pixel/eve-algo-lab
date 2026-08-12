@@ -31,6 +31,7 @@ const ALLOWED = [
   /^backtests\/active$/,
   /^backtests\/[0-9a-f-]+$/i,
   /^backtests\/[0-9a-f-]+\/cancel$/i,
+  /^backtests\/liquidity-basket$/,
   /^backtests\/fixed-ladder-v2-61$/,
   /^backtests\/metrics-preview$/,
 ];
