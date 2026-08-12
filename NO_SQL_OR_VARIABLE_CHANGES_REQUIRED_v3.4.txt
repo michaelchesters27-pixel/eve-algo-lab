@@ -1,0 +1,3 @@
+EVE Algo Lab v3.4 requires no Supabase SQL migration and no new Railway or Netlify environment variables.
+
+Deploy the application code normally. Existing stored candles, prior backtests, research, strategy versions, MT5 packages and fleet records remain unchanged.

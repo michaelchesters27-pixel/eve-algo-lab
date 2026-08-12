@@ -15,6 +15,7 @@ from app.models.schemas import (
     ApiEnvelope,
     FixedLadderBacktestRequest,
     FleetHeartbeatRequest,
+    GoldH4TrendBacktestRequest,
     JobRequest,
     JobResponse,
     LearningBuildRequest,
@@ -23,7 +24,13 @@ from app.models.schemas import (
     MetricsPreviewRequest,
 )
 from app.services.autonomy import AutonomousLearningService
-from app.services.backtests import BacktestService, liquidity_identity, liquidity_settings_match, london_settings_match
+from app.services.backtests import (
+    BacktestService,
+    gold_h4_settings_match,
+    liquidity_identity,
+    liquidity_settings_match,
+    london_settings_match,
+)
 from app.services.ingestion import IngestionService, historical_backfill_complete
 from app.services.historical_research import ContinuousHistoricalResearchService
 from app.services.learning import LearningService, SNAPSHOT_INTERVAL
@@ -37,7 +44,7 @@ from app.services.supabase_repo import SupabaseError, SupabaseRepository
 from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
 from app.settings import Settings, get_settings
 
-APP_VERSION = "3.3"
+APP_VERSION = "3.4"
 
 settings = get_settings()
 logging.basicConfig(
@@ -559,7 +566,7 @@ def _parse_stored_datetime(value: Any, label: str) -> datetime:
 
 
 def _chronological_test_dates(
-    request: LiquidityBasketBacktestRequest | LondonOpeningRangeBacktestRequest,
+    request: GoldH4TrendBacktestRequest | LiquidityBasketBacktestRequest | LondonOpeningRangeBacktestRequest,
     state: dict[str, Any],
 ) -> tuple[str, str]:
     oldest = _parse_stored_datetime(state.get("oldest_stored"), "oldest-candle")
@@ -596,6 +603,102 @@ def _chronological_test_dates(
     if end <= start:
         raise HTTPException(status_code=422, detail="Test end date must be later than its start date")
     return start.isoformat(), end.isoformat()
+
+
+@app.post("/api/backtests/gold-h4-trend", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])
+async def start_gold_h4_trend_backtest(request: GoldH4TrendBacktestRequest) -> ApiEnvelope:
+    m1_state = await repo.get_state(request.symbol, "1min")
+    h4_state = await repo.get_state(request.symbol, "4h")
+    d1_state = await repo.get_state(request.symbol, "1day")
+    missing = [
+        label
+        for label, state, interval in (
+            ("M1", m1_state, "1min"),
+            ("H4", h4_state, "4h"),
+            ("D1", d1_state, "1day"),
+        )
+        if not state_is_historically_ready(state, interval)
+    ]
+    if missing:
+        raise HTTPException(status_code=409, detail=f"{' + '.join(missing)} Market Memory must be complete before this test can run")
+    if await repo.has_active_backtest():
+        raise HTTPException(status_code=409, detail="Another backtest is already running")
+    date_from, date_to = _chronological_test_dates(request, m1_state or {})
+    segment_names = {
+        "full": "Full History",
+        "development": "Development First Two-Thirds",
+        "untouched": "Untouched Final Third",
+        "custom": "Custom Period",
+    }
+    strategy_version_id = await backtests.ensure_gold_h4_strategy_version()
+    settings_payload = request.model_dump(mode="json")
+    settings_payload.update(
+        {
+            "date_from": date_from,
+            "date_to": date_to,
+            "strategy": "gold_h4_trend",
+        }
+    )
+    locked_development_run_id: str | None = None
+    if request.test_segment == "untouched":
+        recent_runs = await repo.list_backtest_runs(100)
+        matching_development = next(
+            (
+                candidate
+                for candidate in recent_runs
+                if candidate.get("status") == "complete"
+                and (candidate.get("settings") or {}).get("strategy") == "gold_h4_trend"
+                and (candidate.get("settings") or {}).get("test_segment") == "development"
+                and gold_h4_settings_match(candidate.get("settings") or {}, settings_payload)
+            ),
+            None,
+        )
+        if matching_development is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Run and complete the Development first-two-thirds test with these exact Gold H4 settings before the Untouched test",
+            )
+        locked_development_run_id = str(matching_development["id"])
+        settings_payload["locked_development_run_id"] = locked_development_run_id
+    run_name = f"Gold H4 Trend 55/20 v1 — {segment_names[request.test_segment]}"
+    run = await repo.create_backtest_run(
+        {
+            "strategy_version_id": strategy_version_id,
+            "name": run_name,
+            "symbol": request.symbol,
+            "interval": "1min",
+            "resolution": "m1_replay",
+            "status": "queued",
+            "date_from": date_from,
+            "date_to": date_to,
+            "starting_balance": request.starting_balance,
+            "settings": settings_payload,
+            "reliability": {
+                "progress_percent": 0,
+                "message": "Queued for Railway",
+                "accuracy": "Stored completed H4 and D1 signals with verified M1 execution, stop and gap replay",
+                "input_interval": "1min",
+                "signal_interval": "4h",
+                "context_interval": "1day",
+                "strategy": "gold_h4_trend",
+                "test_segment": request.test_segment,
+                "locked_development_run_id": locked_development_run_id,
+            },
+        }
+    )
+    run_id = str(run["id"])
+    await backtests.start_gold_h4(run_id, settings_payload)
+    return ApiEnvelope(
+        data={
+            "id": run_id,
+            "status": "queued",
+            "name": run_name,
+            "date_from": date_from,
+            "date_to": date_to,
+            "test_segment": request.test_segment,
+        },
+        message="Gold H4 Trend 55/20 v1 replay started",
+    )
 
 
 @app.post("/api/backtests/london-opening-range", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])

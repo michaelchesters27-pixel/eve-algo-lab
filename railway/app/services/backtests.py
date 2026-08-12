@@ -7,6 +7,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.backtesting.fixed_ladder_v261 import Candle, FixedLadderParameters, FixedLadderV261Backtester
+from app.backtesting.gold_h4_trend import (
+    GoldH4TrendBacktester,
+    GoldH4TrendParameters,
+    build_trend_events,
+)
 from app.backtesting.liquidity_basket import LiquidityBasketBacktester, LiquidityBasketParameters
 from app.backtesting.london_opening_range import LondonOpeningRangeBacktester, LondonOpeningRangeParameters
 from app.backtesting.metrics import calculate_metrics
@@ -29,6 +34,10 @@ LONDON_STRATEGY_SLUG = "eve-london-opening-range-v1"
 LONDON_STRATEGY_NAME = "EVE London Opening Range v1"
 LONDON_STRATEGY_VERSION = "1.0"
 LONDON_SOURCE_SHA256 = "28c65ec6f107790e74598dc04aed96f844c7758faba04a396c75450e8efd4681"
+GOLD_H4_STRATEGY_SLUG = "eve-gold-h4-trend-55-20-v1"
+GOLD_H4_STRATEGY_NAME = "EVE Gold H4 Trend 55/20 v1"
+GOLD_H4_STRATEGY_VERSION = "1.0"
+GOLD_H4_SOURCE_SHA256 = "db0f8e56d4ea447590046cfb20799c1e0b8e9df1ce22320af612e051f735f608"
 LIQUIDITY_LOCKED_SETTING_KEYS = (
     "strategy",
     "entry_model",
@@ -74,6 +83,28 @@ LONDON_LOCKED_SETTING_KEYS = (
     "money_per_price_per_001_lot",
     "path_mode",
 )
+GOLD_H4_LOCKED_SETTING_KEYS = (
+    "strategy",
+    "symbol",
+    "starting_balance",
+    "entry_lookback_h4",
+    "exit_lookback_h4",
+    "daily_trend_lookback",
+    "atr_period_h4",
+    "atr_multiplier",
+    "risk_percent",
+    "minimum_lot",
+    "lot_step",
+    "maximum_lot",
+    "spread_price",
+    "commission_per_001_lot",
+    "slippage_price",
+    "money_per_price_per_001_lot",
+    "overnight_long_cost_per_001_lot",
+    "overnight_short_cost_per_001_lot",
+    "triple_swap_weekday",
+    "path_mode",
+)
 
 
 def liquidity_identity(entry_model: str) -> dict[str, str]:
@@ -108,6 +139,12 @@ def london_settings_match(first: dict[str, Any], second: dict[str, Any]) -> bool
     """Require an untouched run to reuse every London rule and cost input."""
 
     return all(first.get(key) == second.get(key) for key in LONDON_LOCKED_SETTING_KEYS)
+
+
+def gold_h4_settings_match(first: dict[str, Any], second: dict[str, Any]) -> bool:
+    """Require the untouched H4 trend run to reuse every rule and cost."""
+
+    return all(first.get(key) == second.get(key) for key in GOLD_H4_LOCKED_SETTING_KEYS)
 
 
 def _longest_losing_streak(values: list[float]) -> int:
@@ -201,6 +238,89 @@ def _liquidity_verdict(
         "tone": "failed",
         "summary": "The complete historical sequence did not show a usable edge after costs.",
         "next_action": "Reject these settings. Change the entry hypothesis before testing again.",
+    }
+
+
+def _trend_verdict(
+    *,
+    net_profit: float,
+    profit_factor: float | None,
+    expectancy: float,
+    max_drawdown_percent: float,
+    total_trades: int,
+    test_segment: str,
+    locked_development_run_id: str | None = None,
+    account_ruined: bool = False,
+) -> dict[str, Any]:
+    """Stricter gate agreed for Gold H4 Trend 55/20 v1."""
+
+    pf = float(profit_factor or 0.0)
+    enough_evidence = total_trades >= 100
+    profitable = net_profit > 0 and expectancy > 0 and pf >= 1.25
+    controlled_drawdown = max_drawdown_percent <= 15.0
+    passed = enough_evidence and profitable and controlled_drawdown
+    if account_ruined:
+        return {
+            "code": "account_ruined",
+            "label": "ACCOUNT BLOWN — FAILED",
+            "tone": "failed",
+            "summary": "The trend strategy exhausted the test account. EVE stopped at zero.",
+            "next_action": "Reject it. Do not open the untouched period or build an EA.",
+        }
+    if test_segment == "untouched" and not locked_development_run_id:
+        return {
+            "code": "unlocked_untouched",
+            "label": "INVALID UNTOUCHED TEST — NO PASS",
+            "tone": "failed",
+            "summary": "No completed development run with identical frozen settings was linked.",
+            "next_action": "Run Development first, then reuse its exact settings.",
+        }
+    if passed and test_segment == "untouched":
+        return {
+            "code": "untouched_pass",
+            "label": "UNTOUCHED PASS — STRESS TEST NEXT",
+            "tone": "promising",
+            "summary": "The frozen H4 trend rules stayed profitable with controlled drawdown on unseen history.",
+            "next_action": "Challenge the neighbouring 45/15 and 65/25 channels, then verify with MT5 real ticks and demo trading.",
+        }
+    if passed and test_segment == "development":
+        return {
+            "code": "promising",
+            "label": "PROMISING — RUN UNTOUCHED TEST",
+            "tone": "promising",
+            "summary": "The development period cleared PF 1.25, positive expectancy, 100 trades and 15% drawdown.",
+            "next_action": "Freeze every setting and run the untouched final third.",
+        }
+    if passed:
+        return {
+            "code": "exploratory_pass",
+            "label": "EXPLORATORY PASS — NOT PROOF",
+            "tone": "warning",
+            "summary": "This period cleared the numbers but not the locked development-to-untouched sequence.",
+            "next_action": "Run Development first, then the untouched final third unchanged.",
+        }
+    if total_trades < 100:
+        return {
+            "code": "insufficient_evidence",
+            "label": "NOT ENOUGH TRADES — NO VERDICT",
+            "tone": "waiting",
+            "summary": f"Only {total_trades} completed trades were found; EVE requires 100 before judging this idea.",
+            "next_action": "Do not build an EA from this result.",
+        }
+    if net_profit > 0 and pf >= 1.0:
+        return {
+            "code": "mixed",
+            "label": "MIXED — DO NOT BUILD YET",
+            "tone": "warning",
+            "summary": "It made money, but failed PF 1.25, positive expectancy or the 15% drawdown ceiling.",
+            "next_action": "Reject v1 unless one pre-declared robustness test explains the weakness.",
+        }
+    return {
+        "code": "failed",
+        "label": "FAILED — DO NOT BUILD EA",
+        "tone": "failed",
+        "summary": "The complete historical sequence did not show a usable H4 trend edge after all modelled costs.",
+        "next_action": "Reject these rules and research a different hypothesis.",
     }
 
 
@@ -315,6 +435,42 @@ class BacktestService:
             )
         return str(version["id"])
 
+    async def ensure_gold_h4_strategy_version(self) -> str:
+        strategy = await self.repo.get_strategy_by_slug(GOLD_H4_STRATEGY_SLUG)
+        if strategy is None:
+            strategy = await self.repo.create_strategy(
+                GOLD_H4_STRATEGY_NAME,
+                GOLD_H4_STRATEGY_SLUG,
+                "One volatility-sized XAU/USD position following completed H4 breakouts in the 60-day daily direction.",
+            )
+        version = await self.repo.get_strategy_version(str(strategy["id"]), GOLD_H4_STRATEGY_VERSION)
+        if version is None:
+            rules = {
+                "signal_timeframe": "stored completed H4 candles",
+                "execution_timeframe": "verified M1 replay",
+                "direction_filter": "latest completed D1 close versus 60 trading-day prior close",
+                "entry": "completed H4 close beyond the previous 55-H4 high or low, then first available M1 open",
+                "initial_stop": "2.0 times simple H4 ATR(20)",
+                "exit": "completed H4 close through the opposite previous 20-H4 channel",
+                "take_profit": None,
+                "maximum_positions": 1,
+                "risk_percent": 0.25,
+                "martingale": False,
+                "averaging": False,
+                "spread_commission_slippage": True,
+                "overnight_financing": "fixed long/short costs per 0.01 lot with Wednesday triple charge",
+                "weekend_gaps": "filled at first available M1 open",
+                "source": "railway/app/backtesting/gold_h4_trend.py",
+            }
+            version = await self.repo.create_strategy_version(
+                str(strategy["id"]),
+                GOLD_H4_STRATEGY_VERSION,
+                rules,
+                GOLD_H4_SOURCE_SHA256,
+                "Research-led multi-day trend hypothesis. No MT5 EA exists unless locked development, untouched and robustness tests pass.",
+            )
+        return str(version["id"])
+
     async def start(self, run_id: str, request: dict[str, Any]) -> None:
         async with self._lock:
             if run_id in self.tasks and not self.tasks[run_id].done():
@@ -336,6 +492,14 @@ class BacktestService:
             if run_id in self.tasks and not self.tasks[run_id].done():
                 return
             task = asyncio.create_task(self._run_london(run_id, request), name=f"london-backtest-{run_id}")
+            self.tasks[run_id] = task
+            task.add_done_callback(lambda _: self.tasks.pop(run_id, None))
+
+    async def start_gold_h4(self, run_id: str, request: dict[str, Any]) -> None:
+        async with self._lock:
+            if run_id in self.tasks and not self.tasks[run_id].done():
+                return
+            task = asyncio.create_task(self._run_gold_h4(run_id, request), name=f"gold-h4-backtest-{run_id}")
             self.tasks[run_id] = task
             task.add_done_callback(lambda _: self.tasks.pop(run_id, None))
 
@@ -822,6 +986,319 @@ class BacktestService:
                 "backtester",
                 f"{strategy_name} backtest failed",
                 {"run_id": run_id, "error": str(exc), "entry_model": entry_model},
+            )
+
+    async def _load_signal_candles(self, symbol: str, interval: str, date_to: str | None) -> list[Candle]:
+        rows: list[Candle] = []
+        cursor: str | None = None
+        while True:
+            page = await self.repo.fetch_candles_page(
+                symbol=symbol,
+                interval=interval,
+                after=cursor,
+                date_from=None,
+                date_to=date_to,
+                limit=1000,
+            )
+            if not page:
+                break
+            rows.extend(Candle.from_row(item) for item in page)
+            cursor = str(page[-1]["candle_time"])
+            if len(page) < 1000:
+                break
+        return rows
+
+    async def _run_gold_h4(self, run_id: str, request: dict[str, Any]) -> None:
+        started_at = datetime.now(timezone.utc)
+        data_interval = "1min"
+        test_segment = str(request.get("test_segment", "full"))
+        strategy_code = "gold_h4_trend"
+        accuracy = "Stored completed H4 and D1 signals with verified M1 execution, stop and gap replay"
+        try:
+            await self.repo.update_backtest_run(
+                run_id,
+                status="running",
+                started_at=started_at.isoformat(),
+                reliability={
+                    "progress_percent": 0,
+                    "message": "Loading stored H4 and daily candles before the M1 execution replay",
+                    "accuracy": accuracy,
+                    "input_interval": data_interval,
+                    "signal_interval": "4h",
+                    "context_interval": "1day",
+                    "strategy": strategy_code,
+                    "test_segment": test_segment,
+                    "locked_development_run_id": request.get("locked_development_run_id"),
+                    "source_sha256": GOLD_H4_SOURCE_SHA256,
+                },
+            )
+            await self.repo.log_event(
+                "info",
+                "backtester",
+                f"{GOLD_H4_STRATEGY_NAME} M1 replay started",
+                {"run_id": run_id, "test_segment": test_segment},
+            )
+
+            params = GoldH4TrendParameters(
+                entry_lookback_h4=int(request.get("entry_lookback_h4", 55)),
+                exit_lookback_h4=int(request.get("exit_lookback_h4", 20)),
+                daily_trend_lookback=int(request.get("daily_trend_lookback", 60)),
+                atr_period_h4=int(request.get("atr_period_h4", 20)),
+                atr_multiplier=float(request.get("atr_multiplier", 2.0)),
+                risk_percent=float(request.get("risk_percent", 0.25)),
+                minimum_lot=float(request.get("minimum_lot", 0.01)),
+                lot_step=float(request.get("lot_step", 0.01)),
+                maximum_lot=float(request.get("maximum_lot", 1.0)),
+                spread_price=float(request.get("spread_price", 0.05)),
+                commission_per_001_lot=float(request.get("commission_per_001_lot", 0.08)),
+                slippage_price=float(request.get("slippage_price", 0.0)),
+                money_per_price_per_001_lot=float(request.get("money_per_price_per_001_lot", 1.0)),
+                overnight_long_cost_per_001_lot=float(request.get("overnight_long_cost_per_001_lot", 0.70)),
+                overnight_short_cost_per_001_lot=float(request.get("overnight_short_cost_per_001_lot", 0.70)),
+                triple_swap_weekday=int(request.get("triple_swap_weekday", 2)),
+                path_mode=str(request.get("path_mode", "candle_direction")),
+            )
+            symbol = str(request.get("symbol", "XAU/USD"))
+            date_from = request.get("date_from")
+            date_to = request.get("date_to")
+            start_dt = datetime.fromisoformat(str(date_from).replace("Z", "+00:00")) if date_from else None
+            end_dt = datetime.fromisoformat(str(date_to).replace("Z", "+00:00")) if date_to else None
+
+            h4_candles = await self._load_signal_candles(symbol, "4h", date_to)
+            daily_candles = await self._load_signal_candles(symbol, "1day", date_to)
+            if not h4_candles or not daily_candles:
+                raise RuntimeError("Complete H4 and D1 Market Memory are required for this strategy")
+            events = build_trend_events(h4_candles, daily_candles, params, date_from=start_dt, date_to=end_dt)
+            if not events:
+                raise RuntimeError("No completed H4 events remained after the 55-H4 and 60-day warm-up")
+            simulator = GoldH4TrendBacktester(float(request.get("starting_balance", 10_000.0)), params, events)
+
+            expected_rows = await self.repo.count_market_candles(symbol, data_interval, date_from, date_to)
+            if expected_rows <= 0:
+                raise RuntimeError("No M1 candles exist for the selected date range")
+
+            cursor: str | None = None
+            processed = 0
+            trade_buffer: list[dict[str, Any]] = []
+            basket_buffer: list[dict[str, Any]] = []
+            last_progress_update = 0
+            page_number = 0
+            while True:
+                if page_number % 10 == 0:
+                    run = await self.repo.get_backtest_run(run_id)
+                    if not run or run.get("status") == "cancelled":
+                        await self.repo.log_event(
+                            "warning",
+                            "backtester",
+                            "Gold H4 Trend backtest cancelled",
+                            {"run_id": run_id},
+                        )
+                        return
+                page = await self.repo.fetch_candles_page(
+                    symbol=symbol,
+                    interval=data_interval,
+                    after=cursor,
+                    date_from=date_from,
+                    date_to=date_to,
+                    limit=1000,
+                )
+                if not page:
+                    break
+                page_number += 1
+                page_processed = 0
+                last_processed_row: dict[str, Any] | None = None
+                for row in page:
+                    simulator.process_candle(Candle.from_row(row))
+                    page_processed += 1
+                    last_processed_row = row
+                    if simulator.account_ruined:
+                        break
+                processed += page_processed
+                if last_processed_row is not None:
+                    cursor = str(last_processed_row["candle_time"])
+
+                trade_buffer.extend(trade.to_trade_row(run_id) for trade in simulator.drain_trades())
+                basket_buffer.extend(basket.to_basket_row(run_id) for basket in simulator.drain_baskets())
+                if len(trade_buffer) >= 1000:
+                    await self.repo.bulk_insert_backtest_trades(trade_buffer)
+                    trade_buffer.clear()
+                if len(basket_buffer) >= 500:
+                    await self.repo.bulk_insert_backtest_baskets(basket_buffer)
+                    basket_buffer.clear()
+
+                progress = min(99.5, processed / expected_rows * 100.0)
+                if processed - last_progress_update >= 10_000 or processed == expected_rows:
+                    last_progress_update = processed
+                    await self.repo.update_backtest_run(
+                        run_id,
+                        reliability={
+                            "progress_percent": round(progress, 3),
+                            "message": f"Processed {processed:,} of {expected_rows:,} verified M1 candles",
+                            "accuracy": accuracy,
+                            "input_interval": data_interval,
+                            "signal_interval": "4h",
+                            "context_interval": "1day",
+                            "strategy": strategy_code,
+                            "test_segment": test_segment,
+                            "locked_development_run_id": request.get("locked_development_run_id"),
+                            "h4_events": len(events),
+                            "h4_events_processed": simulator.h4_events_processed,
+                            "signals_detected": simulator.signals_detected,
+                            "source_sha256": GOLD_H4_SOURCE_SHA256,
+                        },
+                    )
+                if simulator.account_ruined or len(page) < 1000:
+                    break
+
+            final_trades, final_baskets = simulator.finalise()
+            trade_buffer.extend(trade.to_trade_row(run_id) for trade in final_trades)
+            basket_buffer.extend(basket.to_basket_row(run_id) for basket in final_baskets)
+            if trade_buffer:
+                await self.repo.bulk_insert_backtest_trades(trade_buffer)
+            if basket_buffer:
+                await self.repo.bulk_insert_backtest_baskets(basket_buffer)
+
+            summary = simulator.summary()
+            if not summary.basket_pnls:
+                raise RuntimeError("No complete Gold H4 Trend trades were found in the selected period")
+            position_metrics = calculate_metrics(summary.position_pnls, summary.starting_balance)
+            trade_metrics = calculate_metrics(summary.basket_pnls, summary.starting_balance)
+            profit_factor = (
+                trade_metrics.profit_factor
+                if trade_metrics.profit_factor is not None and math.isfinite(trade_metrics.profit_factor)
+                else None
+            )
+            recovery_factor = (
+                trade_metrics.recovery_factor
+                if trade_metrics.recovery_factor is not None and math.isfinite(trade_metrics.recovery_factor)
+                else None
+            )
+            first = datetime.fromisoformat(summary.first_candle) if summary.first_candle else None
+            last = datetime.fromisoformat(summary.last_candle) if summary.last_candle else None
+            weeks = max(1.0 / 7.0, ((last - first).total_seconds() / 604800.0) if first and last else 0.0)
+            drawdown_percent = max(trade_metrics.max_drawdown_percent, summary.max_equity_drawdown_percent)
+            verdict = _trend_verdict(
+                net_profit=trade_metrics.net_profit,
+                profit_factor=trade_metrics.profit_factor,
+                expectancy=trade_metrics.expectancy,
+                max_drawdown_percent=drawdown_percent,
+                total_trades=summary.total_baskets,
+                test_segment=test_segment,
+                locked_development_run_id=request.get("locked_development_run_id"),
+                account_ruined=summary.account_ruined,
+            )
+            reliability = {
+                "progress_percent": 100,
+                "message": (
+                    f"{GOLD_H4_STRATEGY_NAME} stopped when the account reached $0"
+                    if summary.account_ruined
+                    else f"{GOLD_H4_STRATEGY_NAME} backtest complete"
+                ),
+                "accuracy": accuracy,
+                "warning": "H4 and D1 decisions use completed stored candles only. M1 replays stops and gaps, but any survivor still requires MT5 real-tick verification with the broker's live swap values.",
+                "input_interval": data_interval,
+                "signal_interval": "4h",
+                "context_interval": "1day",
+                "strategy": strategy_code,
+                "test_segment": test_segment,
+                "locked_development_run_id": request.get("locked_development_run_id"),
+                "candles_processed": summary.candles_processed,
+                "candles_available": expected_rows,
+                "h4_candles_loaded": len(h4_candles),
+                "daily_candles_loaded": len(daily_candles),
+                "h4_events": len(events),
+                "h4_events_processed": summary.h4_events_processed,
+                "terminated_early": summary.account_ruined and summary.candles_processed < expected_rows,
+                "account_ruined": summary.account_ruined,
+                "ruin_time": summary.ruin_time,
+                "ambiguous_candles": 0,
+                "ambiguous_percent": 0,
+                "raw_breakouts": summary.raw_breakouts,
+                "daily_filter_rejections": summary.daily_filter_rejections,
+                "signals_detected": summary.signals_detected,
+                "signals_filtered": summary.signals_filtered,
+                "risk_size_skips": summary.risk_size_skips,
+                "channel_exits": summary.channel_exits,
+                "gap_stop_fills": summary.gap_stop_fills,
+                "overnight_rollovers": summary.overnight_rollovers,
+                "financing_costs": summary.financing_costs,
+                "first_candle": summary.first_candle,
+                "last_candle": summary.last_candle,
+                "exit_reasons": summary.exit_reasons,
+                "monthly_net": summary.monthly_net,
+                "yearly_net": summary.yearly_net,
+                "position_metrics": position_metrics.as_dict(),
+                "basket_metrics": trade_metrics.as_dict(),
+                "trade_metrics": trade_metrics.as_dict(),
+                "worst_basket": round(min(summary.basket_pnls), 2),
+                "worst_trade": round(min(summary.basket_pnls), 2),
+                "longest_losing_streak": _longest_losing_streak(summary.basket_pnls),
+                "baskets_per_week": round(summary.total_baskets / weeks, 3),
+                "trades_per_week": round(summary.total_baskets / weeks, 3),
+                "risk_model": "0.25% of current balance to the 2x H4 ATR stop, rounded down to broker lot step",
+                "verdict": verdict,
+                "source_sha256": GOLD_H4_SOURCE_SHA256,
+            }
+            await self.repo.update_backtest_run(
+                run_id,
+                status="complete",
+                ending_balance=summary.ending_balance,
+                net_profit=trade_metrics.net_profit,
+                gross_profit=trade_metrics.gross_profit,
+                gross_loss=trade_metrics.gross_loss,
+                profit_factor=profit_factor,
+                max_balance_drawdown=trade_metrics.max_drawdown,
+                max_equity_drawdown=summary.max_equity_drawdown,
+                max_drawdown_percent=drawdown_percent,
+                total_positions=summary.total_positions,
+                total_baskets=summary.total_baskets,
+                winning_baskets=summary.winning_baskets,
+                losing_baskets=summary.losing_baskets,
+                basket_win_rate=(summary.winning_baskets / summary.total_baskets * 100.0) if summary.total_baskets else 0,
+                expectancy=trade_metrics.expectancy,
+                recovery_factor=recovery_factor,
+                reliability=reliability,
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+            await self.repo.log_event(
+                "success",
+                "backtester",
+                f"{GOLD_H4_STRATEGY_NAME} completed: {verdict['label']}",
+                {
+                    "run_id": run_id,
+                    "candles": summary.candles_processed,
+                    "trades": summary.total_baskets,
+                    "net_profit": trade_metrics.net_profit,
+                    "profit_factor": profit_factor,
+                    "verdict": verdict["code"],
+                    "test_segment": test_segment,
+                },
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception("Gold H4 Trend backtest %s failed", run_id)
+            await self.repo.update_backtest_run(
+                run_id,
+                status="failed",
+                error=str(exc),
+                reliability={
+                    "progress_percent": 0,
+                    "message": str(exc),
+                    "accuracy": accuracy,
+                    "input_interval": data_interval,
+                    "signal_interval": "4h",
+                    "context_interval": "1day",
+                    "strategy": strategy_code,
+                    "test_segment": test_segment,
+                },
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+            await self.repo.log_event(
+                "error",
+                "backtester",
+                f"{GOLD_H4_STRATEGY_NAME} backtest failed",
+                {"run_id": run_id, "error": str(exc)},
             )
 
     async def _run_london(self, run_id: str, request: dict[str, Any]) -> None:

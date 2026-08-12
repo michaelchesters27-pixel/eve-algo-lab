@@ -21,8 +21,10 @@ const formatDate = (value, includeTime = false) => {
 
 const LIQUIDITY_STRATEGIES = new Set(["liquidity_continuation", "liquidity_basket"]);
 const isLiquidityStrategy = (strategy) => LIQUIDITY_STRATEGIES.has(strategy);
+const isTrendStrategy = (strategy) => strategy === "gold_h4_trend";
 const isLondonStrategy = (strategy) => strategy === "london_opening_range";
-const isChronologicalStrategy = (strategy) => isLondonStrategy(strategy) || isLiquidityStrategy(strategy);
+const isChronologicalStrategy = (strategy) => isTrendStrategy(strategy) || isLondonStrategy(strategy) || isLiquidityStrategy(strategy);
+const isSinglePositionStrategy = (strategy) => isTrendStrategy(strategy) || isLondonStrategy(strategy);
 const liquidityEntryModel = (strategy) => strategy === "liquidity_continuation" ? "breakout_continuation" : "sweep_reversal";
 const liquidityStrategyName = (strategy) => strategy === "liquidity_continuation" ? "Liquidity Continuation v1" : "Liquidity Basket v1";
 
@@ -626,12 +628,15 @@ async function queueBatchJobs(endpoint, button, label) {
 }
 
 function updateBacktestAvailability() {
-  const strategy = $("#testerStrategy")?.value || "london_opening_range";
+  const strategy = $("#testerStrategy")?.value || "gold_h4_trend";
   const resolution = $("#resolutionMode")?.value || "candle";
   const chronological = isChronologicalStrategy(strategy);
+  const trend = isTrendStrategy(strategy);
   const london = isLondonStrategy(strategy);
   const requiredInterval = chronological || resolution === "m1_replay" ? "1min" : "5min";
-  const ready = historicalReady[requiredInterval];
+  const ready = trend
+    ? historicalReady["1min"] && historicalReady["4h"] && historicalReady["1day"]
+    : historicalReady[requiredInterval];
   const button = $("#runBacktest");
   if (!button) return;
   button.disabled = !ready || Boolean(activeBacktestId);
@@ -639,11 +644,13 @@ function updateBacktestAvailability() {
   if (chronological) {
     const labels = { full: "Run full M1 test", development: "Run development test", untouched: "Run untouched test", custom: "Run custom M1 test" };
     button.textContent = labels[segment] || labels.full;
-    $("#resolutionNote").textContent = historicalReady["1min"]
-      ? (london
+    $("#resolutionNote").textContent = ready
+      ? (trend
+        ? "M1, H4 and D1 Market Memory are ready. Signals use completed H4/D1 candles; entries, stops, costs, overnight financing and gaps use M1 replay."
+        : (london
         ? "M1 Market Memory is ready. EVE reconstructs completed M5 candles, applies London daylight-saving time, sizes risk, and includes spread and commission."
-        : "M1 Market Memory is ready. The signal candle must close before EVE enters at the next candle open. Costs and the zero-balance account stop are included.")
-      : "This test is locked until M1 Market Memory reaches 100%.";
+        : "M1 Market Memory is ready. The signal candle must close before EVE enters at the next candle open. Costs and the zero-balance account stop are included."))
+      : (trend ? "This test is locked until M1, H4 and D1 Market Memory all reach 100%." : "This test is locked until M1 Market Memory reaches 100%.");
   } else {
     button.textContent = resolution === "m1_replay" ? "Run Fixed Ladder M1 replay" : "Run Fixed Ladder M5 approximation";
     $("#resolutionNote").textContent = ready
@@ -653,44 +660,50 @@ function updateBacktestAvailability() {
 }
 
 function updateTesterForm() {
-  const strategy = $("#testerStrategy")?.value || "london_opening_range";
+  const strategy = $("#testerStrategy")?.value || "gold_h4_trend";
   const liquidity = isLiquidityStrategy(strategy);
+  const trend = isTrendStrategy(strategy);
   const london = isLondonStrategy(strategy);
+  const riskSized = trend || london;
   const chronological = isChronologicalStrategy(strategy);
   const continuation = strategy === "liquidity_continuation";
   document.querySelectorAll("[data-liquidity-field]").forEach((node) => { node.hidden = !liquidity; });
+  document.querySelectorAll("[data-trend-field]").forEach((node) => { node.hidden = !trend; });
   document.querySelectorAll("[data-london-field]").forEach((node) => { node.hidden = !london; });
   document.querySelectorAll("[data-chronological-field]").forEach((node) => { node.hidden = !chronological; });
   document.querySelectorAll("[data-replay-field]").forEach((node) => { node.hidden = !chronological; });
-  document.querySelectorAll("[data-non-london-field]").forEach((node) => { node.hidden = london; });
+  document.querySelectorAll("[data-non-london-field]").forEach((node) => { node.hidden = riskSized; });
   document.querySelectorAll("[data-fixed-field]").forEach((node) => { node.hidden = chronological; });
   const custom = chronological && ($("#testPeriod")?.value || "development") === "custom";
   document.querySelectorAll("[data-custom-date]").forEach((node) => { node.hidden = !custom; });
-  setText("#testerFormTitle", london ? "London Opening Range v1" : (liquidity ? liquidityStrategyName(strategy) : "Fixed Ladder v2.61"));
-  setText("#testerSourceName", london
-    ? "EVE London Opening Range v1 · M5 signal / M1 replay"
-    : (liquidity ? `EVE ${liquidityStrategyName(strategy)} · Python M1 replay` : "EVE_Twelve_Data_Fixed_Ladder_v2.61.mq5"));
-  setText("#testerSourceDetail", london
-    ? "08:00–08:30 London range → confirmed M5 breakout → next M5 open → midpoint stop → 2R"
+  setText("#testerFormTitle", trend ? "Gold H4 Trend 55/20 v1" : (london ? "London Opening Range v1" : (liquidity ? liquidityStrategyName(strategy) : "Fixed Ladder v2.61")));
+  setText("#testerSourceName", trend
+    ? "EVE Gold H4 Trend 55/20 v1 · H4/D1 signal / M1 replay"
+    : (london ? "EVE London Opening Range v1 · M5 signal / M1 replay"
+    : (liquidity ? `EVE ${liquidityStrategyName(strategy)} · Python M1 replay` : "EVE_Twelve_Data_Fixed_Ladder_v2.61.mq5")));
+  setText("#testerSourceDetail", trend
+    ? "60-day direction → 55-H4 breakout → first M1 open → 2 ATR stop → 20-H4 trailing exit"
+    : (london ? "08:00–08:30 London range → confirmed M5 breakout → next M5 open → midpoint stop → 2R"
     : (liquidity
     ? (continuation
       ? "Close beyond prior liquidity → follow breakout at next open → four equal positions → combined-money exit"
       : "Sweep and close back inside → reverse at next open → four equal positions → combined-money exit")
-    : "Source-verified legacy reconstruction · SHA-256 f033bc756b8a…d02da9"));
-  setHtml("#testerRuleStrip", london
-    ? "<span>08:00–08:30 LONDON</span><span>M5 CLOSE CONFIRMS</span><span>NEXT M5 OPEN</span><span>0.25% RISK</span><span>MIDPOINT STOP</span><span>2R TARGET</span>"
+    : "Source-verified legacy reconstruction · SHA-256 f033bc756b8a…d02da9")));
+  setHtml("#testerRuleStrip", trend
+    ? "<span>60-DAY DIRECTION</span><span>55-H4 BREAKOUT</span><span>FIRST M1 OPEN</span><span>0.25% RISK</span><span>2 ATR STOP</span><span>20-H4 EXIT</span>"
+    : (london ? "<span>08:00–08:30 LONDON</span><span>M5 CLOSE CONFIRMS</span><span>NEXT M5 OPEN</span><span>0.25% RISK</span><span>MIDPOINT STOP</span><span>2R TARGET</span>"
     : (liquidity
     ? (continuation
       ? "<span>CLOSE BEYOND LIQUIDITY</span><span>FOLLOW BREAKOUT</span><span>ENTRY NEXT OPEN</span><span>4 EQUAL POSITIONS</span><span>ZERO-BALANCE STOP</span><span>COSTS INCLUDED</span>"
       : "<span>SWEEP + CLOSE INSIDE</span><span>FADE SWEEP</span><span>ENTRY NEXT OPEN</span><span>4 EQUAL POSITIONS</span><span>ZERO-BALANCE STOP</span><span>COSTS INCLUDED</span>")
-    : "<span>8 BUY STOP</span><span>8 SELL STOP</span><span>3.000 SPACING</span><span>2.000 FALLBACK</span><span>0.750 FIRST CUT</span><span>BE +0.150 AT +1.500</span>"));
+    : "<span>8 BUY STOP</span><span>8 SELL STOP</span><span>3.000 SPACING</span><span>2.000 FALLBACK</span><span>0.750 FIRST CUT</span><span>BE +0.150 AT +1.500</span>")));
   setText("#minimumMoveLabel", continuation ? "Minimum close beyond level" : "Minimum sweep distance");
   if (liquidity && Number($("#fixedLot")?.value || 0) === 0.01) $("#fixedLot").value = "0.02";
   if (!liquidity && Number($("#fixedLot")?.value || 0) === 0.02) $("#fixedLot").value = "0.01";
   if (liquidity && Number($("#profitTarget")?.value || 0) === 5) $("#profitTarget").value = "4.00";
   if (!liquidity && Number($("#profitTarget")?.value || 0) === 4) $("#profitTarget").value = "5.00";
-  if (london && Number($("#startingBalance")?.value || 0) === 1000) $("#startingBalance").value = "10000";
-  if (!london && Number($("#startingBalance")?.value || 0) === 10000) $("#startingBalance").value = "1000";
+  if (riskSized && Number($("#startingBalance")?.value || 0) === 1000) $("#startingBalance").value = "10000";
+  if (!riskSized && Number($("#startingBalance")?.value || 0) === 10000) $("#startingBalance").value = "1000";
   if (legacyBacktestRuns.length) renderComparison(legacyBacktestRuns);
   updateBacktestAvailability();
 }
@@ -1090,7 +1103,40 @@ async function cancelLearning(button) {
 }
 
 function backtestPayload() {
-  const strategy = $("#testerStrategy")?.value || "london_opening_range";
+  const strategy = $("#testerStrategy")?.value || "gold_h4_trend";
+  if (isTrendStrategy(strategy)) {
+    const testSegment = $("#testPeriod")?.value || "development";
+    const startDate = $("#testDateFrom")?.value || "";
+    const endDate = $("#testDateTo")?.value || "";
+    return {
+      strategy,
+      name: "Gold H4 Trend 55/20 v1",
+      symbol: "XAU/USD",
+      interval: "1min",
+      resolution: "m1_replay",
+      test_segment: testSegment,
+      date_from: testSegment === "custom" && startDate ? `${startDate}T00:00:00Z` : null,
+      date_to: testSegment === "custom" && endDate ? `${endDate}T23:59:59Z` : null,
+      starting_balance: Number($("#startingBalance").value),
+      entry_lookback_h4: 55,
+      exit_lookback_h4: 20,
+      daily_trend_lookback: 60,
+      atr_period_h4: 20,
+      atr_multiplier: 2.0,
+      risk_percent: Number($("#trendRiskPercent").value),
+      minimum_lot: Number($("#trendMinimumLot").value),
+      lot_step: Number($("#trendLotStep").value),
+      maximum_lot: Number($("#trendMaximumLot").value),
+      spread_price: Number($("#spreadPrice").value),
+      commission_per_001_lot: Number($("#commission").value),
+      slippage_price: Number($("#slippagePrice").value),
+      money_per_price_per_001_lot: Number($("#moneyPerPrice").value),
+      overnight_long_cost_per_001_lot: Number($("#trendLongOvernight").value),
+      overnight_short_cost_per_001_lot: Number($("#trendShortOvernight").value),
+      triple_swap_weekday: 2,
+      path_mode: $("#pathMode").value,
+    };
+  }
   if (isLondonStrategy(strategy)) {
     const testSegment = $("#testPeriod")?.value || "development";
     const startDate = $("#testDateFrom")?.value || "";
@@ -1190,8 +1236,13 @@ async function runBacktest(button) {
   const payloadBody = backtestPayload();
   const chronological = isChronologicalStrategy(payloadBody.strategy);
   const requiredInterval = chronological || payloadBody.resolution === "m1_replay" ? "1min" : "5min";
-  if (!historicalReady[requiredInterval]) {
-    showToast(`${requiredInterval === "1min" ? "M1" : "M5"} Market Memory is not complete yet.`, true);
+  const memoryReady = isTrendStrategy(payloadBody.strategy)
+    ? historicalReady["1min"] && historicalReady["4h"] && historicalReady["1day"]
+    : historicalReady[requiredInterval];
+  if (!memoryReady) {
+    showToast(isTrendStrategy(payloadBody.strategy)
+      ? "M1, H4 and D1 Market Memory must all be complete first."
+      : `${requiredInterval === "1min" ? "M1" : "M5"} Market Memory is not complete yet.`, true);
     return;
   }
   button.disabled = true;
@@ -1201,9 +1252,11 @@ async function runBacktest(button) {
   setLegacyHistoryOpen(false);
   clearBacktestWorkspace({ message: "Starting a new test. Previous results remain archived and are not being reused." });
   try {
-    const endpoint = isLondonStrategy(payloadBody.strategy)
+    const endpoint = isTrendStrategy(payloadBody.strategy)
+      ? "backtests/gold-h4-trend"
+      : (isLondonStrategy(payloadBody.strategy)
       ? "backtests/london-opening-range"
-      : (isLiquidityStrategy(payloadBody.strategy) ? "backtests/liquidity-basket" : "backtests/fixed-ladder-v2-61");
+      : (isLiquidityStrategy(payloadBody.strategy) ? "backtests/liquidity-basket" : "backtests/fixed-ladder-v2-61"));
     const payload = await api(endpoint, {
       method: "POST",
       body: JSON.stringify(payloadBody),
@@ -1292,6 +1345,10 @@ function clearBacktestWorkspace({ message = "This panel will show only the test 
 
 function backtestResolutionLabel(run = {}) {
   const strategy = run.reliability?.strategy || run.settings?.strategy || "fixed_ladder";
+  if (isTrendStrategy(strategy)) {
+    const segments = { full: "Full history", development: "Development first ⅔", untouched: "Untouched final ⅓", custom: "Custom period" };
+    return `Gold H4 Trend 55/20 v1 · ${segments[run.reliability?.test_segment || run.settings?.test_segment] || "H4/D1 signal with M1 replay"}`;
+  }
   if (isLondonStrategy(strategy)) {
     const segments = { full: "Full M1 history", development: "Development first ⅔", untouched: "Untouched final ⅓", custom: "Custom M1 period" };
     return `London Opening Range v1 · ${segments[run.reliability?.test_segment || run.settings?.test_segment] || "M1 replay"}`;
@@ -1374,13 +1431,14 @@ function renderBacktest(run = null, { archived = false } = {}) {
   $("#clearLegacySelection").hidden = !archived;
 
   const basketMetrics = reliability.basket_metrics || {};
-  const london = isLondonStrategy(reliability.strategy || run.settings?.strategy);
-  setText("#resultPFLabel", london ? "TRADE PROFIT FACTOR" : "BASKET PROFIT FACTOR");
-  setText("#resultWinLabel", london ? "TRADE WIN RATE" : "BASKET WIN RATE");
-  setText("#resultCountLabel", london ? "TRADES" : "BASKETS");
-  setText("#resultWorstLabel", london ? "WORST TRADE" : "WORST BASKET");
-  setText("#resultFrequencyLabel", london ? "TRADES / WEEK" : "BASKETS / WEEK");
-  setText("#resultExpectancyLabel", london ? "EXPECTANCY / TRADE" : "EXPECTANCY / BASKET");
+  const strategy = reliability.strategy || run.settings?.strategy;
+  const singlePosition = isSinglePositionStrategy(strategy);
+  setText("#resultPFLabel", singlePosition ? "TRADE PROFIT FACTOR" : "BASKET PROFIT FACTOR");
+  setText("#resultWinLabel", singlePosition ? "TRADE WIN RATE" : "BASKET WIN RATE");
+  setText("#resultCountLabel", singlePosition ? "TRADES" : "BASKETS");
+  setText("#resultWorstLabel", singlePosition ? "WORST TRADE" : "WORST BASKET");
+  setText("#resultFrequencyLabel", singlePosition ? "TRADES / WEEK" : "BASKETS / WEEK");
+  setText("#resultExpectancyLabel", singlePosition ? "EXPECTANCY / TRADE" : "EXPECTANCY / BASKET");
   $("#resultNet").textContent = formatMoney(run.net_profit);
   $("#resultPF").textContent = run.profit_factor == null
     ? (Number(basketMetrics.total_trades || 0) > 0 && Number(basketMetrics.losses || 0) === 0 ? "∞" : "—")
@@ -1392,7 +1450,7 @@ function renderBacktest(run = null, { archived = false } = {}) {
   $("#resultBalance").textContent = formatMoney(run.ending_balance);
   $("#resultAmbiguous").textContent = reliability.ambiguous_candles == null ? "—" : formatNumber(reliability.ambiguous_candles);
   $("#resultWorstBasket").textContent = reliability.worst_basket == null ? "—" : formatMoney(reliability.worst_basket);
-  $("#resultLosingStreak").textContent = reliability.longest_losing_streak == null ? "—" : `${formatNumber(reliability.longest_losing_streak)} ${london ? "trades" : "baskets"}`;
+  $("#resultLosingStreak").textContent = reliability.longest_losing_streak == null ? "—" : `${formatNumber(reliability.longest_losing_streak)} ${singlePosition ? "trades" : "baskets"}`;
   $("#resultFrequency").textContent = reliability.baskets_per_week == null ? "—" : Number(reliability.baskets_per_week).toFixed(2);
   $("#resultExpectancy").textContent = run.expectancy == null ? "—" : formatMoney(run.expectancy);
   $("#resultAverageWin").textContent = basketMetrics.average_win == null ? "—" : formatMoney(basketMetrics.average_win);
@@ -1439,8 +1497,8 @@ function renderBaskets(baskets = [], { archived = false, hidden = false, run = n
 }
 
 function renderComparison(runs = []) {
-  const selected = $("#testerStrategy")?.value || "london_opening_range";
-  const strategy = isChronologicalStrategy(selected) ? selected : "london_opening_range";
+  const selected = $("#testerStrategy")?.value || "gold_h4_trend";
+  const strategy = isChronologicalStrategy(selected) ? selected : "gold_h4_trend";
   const strategyRuns = runs.filter((run) => run.status === "complete" && (run.reliability?.strategy || run.settings?.strategy) === strategy);
   const m5 = strategyRuns.find((run) => (run.reliability?.test_segment || run.settings?.test_segment) === "development");
   const m1 = strategyRuns.find((run) => (run.reliability?.test_segment || run.settings?.test_segment) === "untouched");
@@ -1458,7 +1516,14 @@ function renderComparison(runs = []) {
   if (m5 && m1) {
     const delta = Number(m1.net_profit || 0) - Number(m5.net_profit || 0);
     $("#compareProfitDelta").textContent = formatSignedMoney(delta);
-    const settingsKeys = isLondonStrategy(strategy)
+    const settingsKeys = isTrendStrategy(strategy)
+      ? [
+        "strategy", "symbol", "starting_balance", "entry_lookback_h4", "exit_lookback_h4", "daily_trend_lookback",
+        "atr_period_h4", "atr_multiplier", "risk_percent", "minimum_lot", "lot_step", "maximum_lot", "spread_price",
+        "commission_per_001_lot", "slippage_price", "money_per_price_per_001_lot", "overnight_long_cost_per_001_lot",
+        "overnight_short_cost_per_001_lot", "triple_swap_weekday", "path_mode",
+      ]
+      : (isLondonStrategy(strategy)
       ? [
         "strategy", "symbol", "starting_balance", "risk_percent", "breakout_buffer_fraction", "reward_risk",
         "minimum_lot", "lot_step", "maximum_lot", "timezone_name", "range_start_hour", "range_start_minute",
@@ -1469,7 +1534,7 @@ function renderComparison(runs = []) {
         "strategy", "entry_model", "symbol", "starting_balance", "positions_per_basket", "fixed_lot", "lookback_candles", "trend_period",
         "use_trend_filter", "minimum_sweep_price", "profit_target_money", "basket_stop_money", "maximum_hold_minutes",
         "cooldown_candles", "spread_price", "commission_per_001_lot", "slippage_price", "money_per_price_per_001_lot", "path_mode",
-      ];
+      ]);
     const settingsMatch = settingsKeys
       .every((key) => String(m5.settings?.[key]) === String(m1.settings?.[key]));
     $("#compareReliability").textContent = settingsMatch
@@ -2503,7 +2568,7 @@ function setAppMode(mode, { navigate = false } = {}) {
     button.setAttribute("aria-selected", active ? "true" : "false");
   });
   document.querySelectorAll("[data-mode-nav]").forEach((group) => { group.hidden = group.dataset.modeNav !== currentAppMode; });
-  setText("#topbarEyebrow", currentAppMode === "operator" ? "EVE OPERATOR · v3.3" : "EVE RESEARCH ENGINE · v3.3");
+  setText("#topbarEyebrow", currentAppMode === "operator" ? "EVE OPERATOR · v3.4" : "EVE RESEARCH ENGINE · v3.4");
   setText("#topbarSummary", currentAppMode === "operator" ? "See only what is running, what is waiting and what you need to do." : "Inspect research, controlled mutations, validation and generated MT5 packages.");
   if (navigate) window.location.hash = currentAppMode === "operator" ? "#home" : "#research";
 }
