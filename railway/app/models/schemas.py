@@ -104,6 +104,44 @@ class LiquidityBasketBacktestRequest(BaseModel):
         return value
 
 
+class LondonOpeningRangeBacktestRequest(BaseModel):
+    name: str = Field(default="London Opening Range v1 — M1 Replay", min_length=3, max_length=120)
+    symbol: str = Field(default="XAU/USD", min_length=3, max_length=40)
+    interval: Literal["1min"] = "1min"
+    resolution: Literal["m1_replay"] = "m1_replay"
+    test_segment: BacktestTestSegment = "full"
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    starting_balance: float = Field(default=10_000.0, gt=0, le=100_000_000)
+    risk_percent: float = Field(default=0.25, ge=0.01, le=5.0)
+    breakout_buffer_fraction: float = Field(default=0.10, ge=0.0, le=2.0)
+    reward_risk: float = Field(default=2.0, ge=0.1, le=20.0)
+    minimum_lot: float = Field(default=0.01, gt=0, le=100)
+    lot_step: float = Field(default=0.01, gt=0, le=100)
+    maximum_lot: float = Field(default=1.0, gt=0, le=100)
+    timezone_name: Literal["Europe/London"] = "Europe/London"
+    range_start_hour: Literal[8] = 8
+    range_start_minute: Literal[0] = 0
+    range_minutes: Literal[30] = 30
+    entry_cutoff_hour: Literal[11] = 11
+    entry_cutoff_minute: Literal[30] = 30
+    force_exit_hour: Literal[16] = 16
+    force_exit_minute: Literal[0] = 0
+    spread_price: float = Field(default=0.05, ge=0, le=100)
+    commission_per_001_lot: float = Field(default=0.08, ge=0, le=1000)
+    slippage_price: float = Field(default=0.0, ge=0, le=100)
+    money_per_price_per_001_lot: float = Field(default=1.0, gt=0, le=10_000)
+    path_mode: PathMode = "candle_direction"
+
+    @field_validator("date_to")
+    @classmethod
+    def validate_date_range(cls, value: datetime | None, info):
+        start = info.data.get("date_from")
+        if value is not None and start is not None and value <= start:
+            raise ValueError("date_to must be later than date_from")
+        return value
+
+
 class FleetHeartbeatRequest(BaseModel):
     package_id: str = Field(min_length=8, max_length=80)
     strategy_code: str = Field(min_length=3, max_length=120)

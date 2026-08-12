@@ -5,13 +5,14 @@ import test from "node:test";
 const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const js = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
 
-test("Strategy Tester is a dedicated research workspace with continuation, the rejected hypothesis and the legacy diagnostic", () => {
+test("Strategy Tester is a dedicated research workspace with London v1, rejected hypotheses and the legacy diagnostic", () => {
   assert.match(html, /id="openLegacyBacktester"/);
   assert.match(html, /id="backtester"[^>]*hidden[^>]*aria-hidden="true"/);
   assert.match(html, /id="closeLegacyBacktester"/);
   assert.match(html, /data-workspace="tester"/);
-  assert.match(html, /Liquidity Continuation v1 — breakout direction \(new\)/);
-  assert.match(html, /Liquidity Basket v1 — sweep reversal \(failed\)/);
+  assert.match(html, /London Opening Range v1 — M5 London breakout \(new\)/);
+  assert.match(html, /Liquidity Continuation v1 — failed development/);
+  assert.match(html, /Liquidity Basket v1 — failed development/);
   assert.match(html, /Fixed Ladder v2\.61 — legacy diagnostic/);
   assert.match(html, /Why an uploaded MQ5 file still needs MT5/);
 });
@@ -33,14 +34,16 @@ test("completed history is not automatically rendered as current", () => {
   assert.match(js, /if \(legacyBacktesterOpen && \(activeBacktestId \|\| legacyBacktestHistoryOpen\)\) await refreshBacktests\(true\)/);
 });
 
-test("liquidity basket controls and blunt result verdict are present", () => {
+test("London and archived liquidity controls plus blunt result verdict are present", () => {
   for (const id of [
     "testerStrategy", "testPeriod", "positionsPerBasket", "liquidityLookback", "basketStop", "slippagePrice", "moneyPerPrice",
-    "maximumHold", "cooldownCandles", "minimumMoveLabel", "backtestVerdict", "resultWorstBasket", "resultLosingStreak",
+    "maximumHold", "cooldownCandles", "minimumMoveLabel", "londonRiskPercent", "londonBreakoutBuffer", "londonRewardRisk",
+    "londonMinimumLot", "londonLotStep", "londonMaximumLot", "backtestVerdict", "resultWorstBasket", "resultLosingStreak",
   ]) assert.match(html, new RegExp(`id="${id}"`));
+  assert.match(js, /backtests\/london-opening-range/);
   assert.match(js, /backtests\/liquidity-basket/);
   assert.match(js, /breakout_continuation/);
-  assert.match(js, /ZERO-BALANCE STOP/);
+  assert.match(js, /MIDPOINT STOP/);
   assert.match(js, /renderBacktestVerdict/);
   assert.match(js, /renderBacktestEquity/);
 });

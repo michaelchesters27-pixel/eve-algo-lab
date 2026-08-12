@@ -1,6 +1,18 @@
-# EVE Command Centre v3.2.1
+# EVE Command Centre v3.3
 
 EVE is a private XAU/USD research, strategy-evolution and MT5 bot-development platform using Supabase, Railway, Netlify and Twelve Data.
+
+## What v3.3 changes
+
+- Adds **London Opening Range v1**, a separate XAU/USD hypothesis after both four-position liquidity experiments failed development testing.
+- Builds the 08:00–08:30 Europe/London range from six complete M5 candles reconstructed from verified M1 history, including daylight-saving-time changes.
+- Requires the first directional M5 close at least 10% of the range width beyond the boundary and enters only at the next M5 open.
+- Trades one position per London day, risks 0.25% of current balance, stops at the range midpoint, targets 2R and force-closes at 16:00 London.
+- Rounds position size down to the broker lot step and skips a signal when the minimum lot would breach the risk cap.
+- Includes spread, commission and optional slippage, stores every completed trade, and applies the same locked development-to-untouched proof gate used by EVE's Strategy Tester.
+- Uses a $10,000 research balance by default so 0.25% sizing can be represented with a 0.01 minimum XAU/USD lot. This is a simulator balance, not a recommendation to fund an account.
+
+No Supabase SQL or new Railway/Netlify variables are required for v3.3.
 
 ## What v3.2.1 changes
 
