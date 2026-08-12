@@ -9,10 +9,22 @@ from app.backtesting.fixed_ladder_v261 import Candle, PathMode
 
 
 Side = Literal["buy", "sell"]
+EntryModel = Literal["sweep_reversal", "breakout_continuation"]
+
+
+def strategy_code_for(entry_model: EntryModel) -> str:
+    return "liquidity_continuation" if entry_model == "breakout_continuation" else "liquidity_basket"
+
+
+def entry_protocol_for(entry_model: EntryModel) -> str:
+    if entry_model == "breakout_continuation":
+        return "confirmed M1 close beyond prior liquidity with EMA alignment; entry at next candle open"
+    return "confirmed M1 liquidity sweep and close back inside; entry at next candle open"
 
 
 @dataclass(frozen=True)
 class LiquidityBasketParameters:
+    entry_model: EntryModel = "sweep_reversal"
     positions_per_basket: int = 4
     fixed_lot: float = 0.02
     lookback_candles: int = 20
@@ -30,6 +42,8 @@ class LiquidityBasketParameters:
     path_mode: PathMode = "candle_direction"
 
     def validate(self) -> None:
+        if self.entry_model not in {"sweep_reversal", "breakout_continuation"}:
+            raise ValueError("Unsupported liquidity entry model")
         if not 1 <= self.positions_per_basket <= 20:
             raise ValueError("Positions per basket must be between 1 and 20")
         if self.fixed_lot <= 0:
@@ -66,6 +80,7 @@ class LiquiditySignal:
     swept_level: float
     signal_close: float
     ema_value: float | None
+    entry_model: EntryModel
 
 
 @dataclass
@@ -114,13 +129,14 @@ class LiquidityCompletedTrade:
             "net_pnl": round(self.net_pnl, 6),
             "exit_reason": self.exit_reason,
             "metadata": {
-                "strategy": "liquidity_basket",
+                "strategy": strategy_code_for(self.signal.entry_model),
                 "strategy_version": "1.0",
+                "entry_model": self.signal.entry_model,
                 "signal_time": self.signal.signal_time.isoformat(),
                 "swept_level": round(self.signal.swept_level, 10),
                 "signal_close": round(self.signal.signal_close, 10),
                 "ema_value": round(self.signal.ema_value, 10) if self.signal.ema_value is not None else None,
-                "entry_protocol": "confirmed M1 liquidity sweep; entry at next candle open",
+                "entry_protocol": entry_protocol_for(self.signal.entry_model),
             },
         }
 
@@ -156,8 +172,9 @@ class LiquidityCompletedBasket:
             "max_positions": self.positions,
             "exit_reason": self.exit_reason,
             "metadata": {
-                "strategy": "liquidity_basket",
+                "strategy": strategy_code_for(self.signal.entry_model),
                 "strategy_version": "1.0",
+                "entry_model": self.signal.entry_model,
                 "signal_time": self.signal.signal_time.isoformat(),
                 "swept_level": round(self.signal.swept_level, 10),
                 "signal_close": round(self.signal.signal_close, 10),
@@ -183,6 +200,8 @@ class LiquiditySimulationSummary:
     candles_processed: int
     signals_detected: int
     signals_filtered: int
+    account_ruined: bool
+    ruin_time: str | None
     exit_reasons: dict[str, int]
     monthly_net: dict[str, float]
     yearly_net: dict[str, float]
@@ -195,7 +214,7 @@ class LiquiditySimulationSummary:
 
 
 class LiquidityBasketBacktester:
-    """Deterministic M1 replay for the four-position liquidity-sweep experiment.
+    """Deterministic M1 replay for the four-position liquidity experiment.
 
     A signal is created only after a candle has closed. The basket opens at the
     following candle's open, which prevents the replay from using future data.
@@ -247,6 +266,8 @@ class LiquidityBasketBacktester:
         self.candles_processed = 0
         self.first_candle: datetime | None = None
         self.last_candle: datetime | None = None
+        self.account_ruined = False
+        self.ruin_time: datetime | None = None
 
     @property
     def half_spread(self) -> float:
@@ -300,7 +321,9 @@ class LiquidityBasketBacktester:
         return self.balance + self.basket_net(mid)
 
     def _update_extremes(self, mid: float) -> None:
-        equity = self.equity(mid)
+        # The research account uses a zero-equity stop. Reporting equity below
+        # zero would create impossible drawdowns above 100% after insolvency.
+        equity = max(0.0, self.equity(mid))
         self._equity_peak = max(self._equity_peak, equity)
         drawdown = self._equity_peak - equity
         self.max_equity_drawdown = max(self.max_equity_drawdown, drawdown)
@@ -327,6 +350,11 @@ class LiquidityBasketBacktester:
         return exit_price - self.half_spread - self.params.slippage_price
 
     def _open_basket(self, at: datetime, mid: float, signal: LiquiditySignal) -> None:
+        if self.account_ruined or self.balance <= self.EPS:
+            self.balance = 0.0
+            self.account_ruined = True
+            self.ruin_time = at
+            return
         self._basket_sequence += 1
         self.basket_id = f"LIQ-BASKET-{self._basket_sequence:08d}"
         self.basket_opened_at = at
@@ -350,6 +378,8 @@ class LiquidityBasketBacktester:
         self.basket_peak_floating = opening_floating
         self.basket_worst_floating = opening_floating
         self._update_extremes(mid)
+        if opening_floating <= -self.balance + self.EPS:
+            self._close_basket(at, mid, "ACCOUNT RUIN LIMIT")
 
     def _close_basket(self, at: datetime, mid: float, reason: str) -> None:
         if not self.positions or self.basket_id is None or self.basket_opened_at is None or self.basket_signal is None:
@@ -387,7 +417,24 @@ class LiquidityBasketBacktester:
         gross_total = sum(item.gross_pnl for item in trade_rows)
         costs_total = sum(item.costs for item in trade_rows)
         net_total = gross_total - costs_total
-        self.balance += net_total
+        if reason == "ACCOUNT RUIN LIMIT":
+            # The threshold price is calculated to consume exactly the balance.
+            # Normalise tiny floating-point residue and permanently stop entries.
+            net_total = -self.balance
+            per_trade_net = net_total / len(trade_rows)
+            for item in trade_rows:
+                item.net_pnl = per_trade_net
+                item.gross_pnl = per_trade_net + item.costs
+            gross_total = sum(item.gross_pnl for item in trade_rows)
+            self.balance = 0.0
+            self.account_ruined = True
+            self.ruin_time = at
+        else:
+            self.balance += net_total
+            if self.balance <= self.EPS:
+                self.balance = 0.0
+                self.account_ruined = True
+                self.ruin_time = at
         self.completed_trades.extend(trade_rows)
         self.position_pnls.extend(item.net_pnl for item in trade_rows)
         basket = LiquidityCompletedBasket(
@@ -433,9 +480,20 @@ class LiquidityBasketBacktester:
             return target
         profit_price = self._threshold_price(self.params.profit_target_money)
         stop_price = self._threshold_price(-self.params.basket_stop_money)
+        ruin_price = self._threshold_price(-self.balance)
+
+        # Model zero-balance protection deterministically on a gap. Without
+        # broker leverage/margin data, this is the only honest account floor.
+        if gap and self.basket_net(target) <= -self.balance + self.EPS:
+            self._update_extremes(ruin_price)
+            self._close_basket(at, ruin_price, "ACCOUNT RUIN LIMIT")
+            return target
+
         events: list[tuple[float, str]] = []
         if self._crosses(current, target, profit_price):
             events.append((profit_price, "BASKET PROFIT TARGET"))
+        if self._crosses(current, target, ruin_price):
+            events.append((ruin_price, "ACCOUNT RUIN LIMIT"))
         if self._crosses(current, target, stop_price):
             events.append((stop_price, "HARD BASKET LOSS LIMIT"))
         if not events:
@@ -444,7 +502,7 @@ class LiquidityBasketBacktester:
 
         up = target > current
         event_price, reason = min(events, key=lambda item: item[0]) if up else max(events, key=lambda item: item[0])
-        fill_mid = target if gap else event_price
+        fill_mid = event_price if reason == "ACCOUNT RUIN LIMIT" else (target if gap else event_price)
         self._update_extremes(fill_mid)
         self._close_basket(at, fill_mid, reason)
         return target
@@ -462,8 +520,9 @@ class LiquidityBasketBacktester:
         if not self.positions:
             return False
         profit_price = self._threshold_price(self.params.profit_target_money)
-        stop_price = self._threshold_price(-self.params.basket_stop_money)
-        return candle.low <= profit_price <= candle.high and candle.low <= stop_price <= candle.high
+        effective_loss = min(self.params.basket_stop_money, self.balance)
+        loss_price = self._threshold_price(-effective_loss)
+        return candle.low <= profit_price <= candle.high and candle.low <= loss_price <= candle.high
 
     def _update_ema(self, close: float) -> float:
         self._ema_samples += 1
@@ -479,6 +538,39 @@ class LiquidityBasketBacktester:
             return None
         prior_high = max(item.high for item in self._lookback)
         prior_low = min(item.low for item in self._lookback)
+        if self.params.entry_model == "breakout_continuation":
+            high_breakout = (
+                candle.close >= prior_high + self.params.minimum_sweep_price
+                and candle.close > candle.open
+            )
+            low_breakout = (
+                candle.close <= prior_low - self.params.minimum_sweep_price
+                and candle.close < candle.open
+            )
+            if high_breakout and low_breakout:
+                self.signals_filtered += 1
+                return None
+            if not high_breakout and not low_breakout:
+                return None
+
+            self.signals_detected += 1
+            if self.params.use_trend_filter and self._ema_samples < self.params.trend_period:
+                self.signals_filtered += 1
+                return None
+            if high_breakout:
+                if self.params.use_trend_filter and candle.close <= ema_value:
+                    self.signals_filtered += 1
+                    return None
+                return LiquiditySignal(
+                    "buy", candle.candle_time, prior_high, candle.close, ema_value, self.params.entry_model
+                )
+            if self.params.use_trend_filter and candle.close >= ema_value:
+                self.signals_filtered += 1
+                return None
+            return LiquiditySignal(
+                "sell", candle.candle_time, prior_low, candle.close, ema_value, self.params.entry_model
+            )
+
         high_sweep = (
             candle.high >= prior_high + self.params.minimum_sweep_price
             and candle.close < prior_high
@@ -503,11 +595,15 @@ class LiquidityBasketBacktester:
             if self.params.use_trend_filter and candle.close > ema_value:
                 self.signals_filtered += 1
                 return None
-            return LiquiditySignal("sell", candle.candle_time, prior_high, candle.close, ema_value)
+            return LiquiditySignal(
+                "sell", candle.candle_time, prior_high, candle.close, ema_value, self.params.entry_model
+            )
         if self.params.use_trend_filter and candle.close < ema_value:
             self.signals_filtered += 1
             return None
-        return LiquiditySignal("buy", candle.candle_time, prior_low, candle.close, ema_value)
+        return LiquiditySignal(
+            "buy", candle.candle_time, prior_low, candle.close, ema_value, self.params.entry_model
+        )
 
     def process_candle(self, candle: Candle) -> None:
         if self.first_candle is None:
@@ -515,13 +611,13 @@ class LiquidityBasketBacktester:
         self.last_candle = candle.candle_time
         self.candles_processed += 1
 
-        if not self.positions and self._cooldown_remaining > 0:
+        if not self.positions and not self.account_ruined and self._cooldown_remaining > 0:
             self._cooldown_remaining -= 1
 
         opened_this_candle = False
         pending = self._pending_signal
         self._pending_signal = None
-        if pending is not None and not self.positions and self._cooldown_remaining == 0:
+        if pending is not None and not self.positions and not self.account_ruined and self._cooldown_remaining == 0:
             self._open_basket(candle.candle_time, candle.open, pending)
             opened_this_candle = True
 
@@ -546,7 +642,7 @@ class LiquidityBasketBacktester:
         self._last_mid = candle.close
         self._update_extremes(candle.close)
         ema_value = self._update_ema(candle.close)
-        if not self.positions and self._cooldown_remaining == 0:
+        if not self.positions and not self.account_ruined and self._cooldown_remaining == 0:
             self._pending_signal = self._detect_signal(candle, ema_value)
         self._lookback.append(candle)
 
@@ -584,6 +680,8 @@ class LiquidityBasketBacktester:
             candles_processed=self.candles_processed,
             signals_detected=self.signals_detected,
             signals_filtered=self.signals_filtered,
+            account_ruined=self.account_ruined,
+            ruin_time=self.ruin_time.isoformat() if self.ruin_time else None,
             exit_reasons=dict(self.exit_reasons),
             monthly_net={key: round(value, 6) for key, value in sorted(self.monthly_net.items())},
             yearly_net={key: round(value, 6) for key, value in sorted(self.yearly_net.items())},

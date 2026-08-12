@@ -71,6 +71,7 @@ class FixedLadderBacktestRequest(BaseModel):
 
 class LiquidityBasketBacktestRequest(BaseModel):
     name: str = Field(default="Liquidity Basket v1 — Full M1 History", min_length=3, max_length=120)
+    entry_model: Literal["sweep_reversal", "breakout_continuation"] = "sweep_reversal"
     symbol: str = Field(default="XAU/USD", min_length=3, max_length=40)
     interval: Literal["1min"] = "1min"
     resolution: Literal["m1_replay"] = "m1_replay"

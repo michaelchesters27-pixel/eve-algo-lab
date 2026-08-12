@@ -1,0 +1,1 @@
+EVE v3.2.1 requires no Supabase SQL migration and no new Railway or Netlify environment variables.

@@ -22,7 +22,7 @@ from app.models.schemas import (
     MetricsPreviewRequest,
 )
 from app.services.autonomy import AutonomousLearningService
-from app.services.backtests import BacktestService, liquidity_settings_match
+from app.services.backtests import BacktestService, liquidity_identity, liquidity_settings_match
 from app.services.ingestion import IngestionService, historical_backfill_complete
 from app.services.historical_research import ContinuousHistoricalResearchService
 from app.services.learning import LearningService, SNAPSHOT_INTERVAL
@@ -36,7 +36,7 @@ from app.services.supabase_repo import SupabaseError, SupabaseRepository
 from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
 from app.settings import Settings, get_settings
 
-APP_VERSION = "3.2"
+APP_VERSION = "3.2.1"
 
 settings = get_settings()
 logging.basicConfig(
@@ -608,9 +608,10 @@ async def start_liquidity_basket_backtest(request: LiquidityBasketBacktestReques
         "untouched": "Untouched Final Third",
         "custom": "Custom M1 Period",
     }
-    strategy_version_id = await backtests.ensure_liquidity_strategy_version()
+    identity = liquidity_identity(request.entry_model)
+    strategy_version_id = await backtests.ensure_liquidity_strategy_version(request.entry_model)
     settings_payload = request.model_dump(mode="json")
-    settings_payload.update({"date_from": date_from, "date_to": date_to, "strategy": "liquidity_basket"})
+    settings_payload.update({"date_from": date_from, "date_to": date_to, "strategy": identity["code"]})
     locked_development_run_id: str | None = None
     if request.test_segment == "untouched":
         recent_runs = await repo.list_backtest_runs(100)
@@ -619,7 +620,7 @@ async def start_liquidity_basket_backtest(request: LiquidityBasketBacktestReques
                 candidate
                 for candidate in recent_runs
                 if candidate.get("status") == "complete"
-                and (candidate.get("settings") or {}).get("strategy") == "liquidity_basket"
+                and (candidate.get("settings") or {}).get("strategy") == identity["code"]
                 and (candidate.get("settings") or {}).get("test_segment") == "development"
                 and liquidity_settings_match(candidate.get("settings") or {}, settings_payload)
             ),
@@ -632,7 +633,7 @@ async def start_liquidity_basket_backtest(request: LiquidityBasketBacktestReques
             )
         locked_development_run_id = str(matching_development["id"])
         settings_payload["locked_development_run_id"] = locked_development_run_id
-    run_name = f"Liquidity Basket v1 — {segment_names[request.test_segment]}"
+    run_name = f"{identity['name'].removeprefix('EVE ')} — {segment_names[request.test_segment]}"
     run = await repo.create_backtest_run(
         {
             "strategy_version_id": strategy_version_id,
@@ -650,7 +651,8 @@ async def start_liquidity_basket_backtest(request: LiquidityBasketBacktestReques
                 "message": "Queued for Railway",
                 "accuracy": "M1 high-resolution candle replay",
                 "input_interval": "1min",
-                "strategy": "liquidity_basket",
+                "strategy": identity["code"],
+                "entry_model": request.entry_model,
                 "test_segment": request.test_segment,
                 "locked_development_run_id": locked_development_run_id,
             },
@@ -667,7 +669,7 @@ async def start_liquidity_basket_backtest(request: LiquidityBasketBacktestReques
             "date_to": date_to,
             "test_segment": request.test_segment,
         },
-        message="Liquidity Basket M1 replay started",
+        message=f"{identity['name'].removeprefix('EVE ')} M1 replay started",
     )
 
 

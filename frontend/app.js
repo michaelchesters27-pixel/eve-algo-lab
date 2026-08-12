@@ -19,6 +19,11 @@ const formatDate = (value, includeTime = false) => {
   }).format(date);
 };
 
+const LIQUIDITY_STRATEGIES = new Set(["liquidity_continuation", "liquidity_basket"]);
+const isLiquidityStrategy = (strategy) => LIQUIDITY_STRATEGIES.has(strategy);
+const liquidityEntryModel = (strategy) => strategy === "liquidity_continuation" ? "breakout_continuation" : "sweep_reversal";
+const liquidityStrategyName = (strategy) => strategy === "liquidity_continuation" ? "Liquidity Continuation v1" : "Liquidity Basket v1";
+
 function setText(selector, value) {
   const node = $(selector);
   if (node) node.textContent = value == null ? "" : String(value);
@@ -619,9 +624,9 @@ async function queueBatchJobs(endpoint, button, label) {
 }
 
 function updateBacktestAvailability() {
-  const strategy = $("#testerStrategy")?.value || "liquidity_basket";
+  const strategy = $("#testerStrategy")?.value || "liquidity_continuation";
   const resolution = $("#resolutionMode")?.value || "candle";
-  const liquidity = strategy === "liquidity_basket";
+  const liquidity = isLiquidityStrategy(strategy);
   const requiredInterval = liquidity || resolution === "m1_replay" ? "1min" : "5min";
   const ready = historicalReady[requiredInterval];
   const button = $("#runBacktest");
@@ -632,8 +637,8 @@ function updateBacktestAvailability() {
     const labels = { full: "Run full M1 test", development: "Run development test", untouched: "Run untouched test", custom: "Run custom M1 test" };
     button.textContent = labels[segment] || labels.full;
     $("#resolutionNote").textContent = historicalReady["1min"]
-      ? "M1 Market Memory is ready. The signal candle must close before EVE enters at the next candle open. Spread, commission and slippage are included."
-      : "The Liquidity Basket test is locked until M1 Market Memory reaches 100%.";
+      ? "M1 Market Memory is ready. The signal candle must close before EVE enters at the next candle open. Costs and the zero-balance account stop are included."
+      : "The liquidity test is locked until M1 Market Memory reaches 100%.";
   } else {
     button.textContent = resolution === "m1_replay" ? "Run Fixed Ladder M1 replay" : "Run Fixed Ladder M5 approximation";
     $("#resolutionNote").textContent = ready
@@ -643,24 +648,31 @@ function updateBacktestAvailability() {
 }
 
 function updateTesterForm() {
-  const strategy = $("#testerStrategy")?.value || "liquidity_basket";
-  const liquidity = strategy === "liquidity_basket";
+  const strategy = $("#testerStrategy")?.value || "liquidity_continuation";
+  const liquidity = isLiquidityStrategy(strategy);
+  const continuation = strategy === "liquidity_continuation";
   document.querySelectorAll("[data-liquidity-field]").forEach((node) => { node.hidden = !liquidity; });
   document.querySelectorAll("[data-fixed-field]").forEach((node) => { node.hidden = liquidity; });
   const custom = liquidity && ($("#testPeriod")?.value || "development") === "custom";
   document.querySelectorAll("[data-custom-date]").forEach((node) => { node.hidden = !custom; });
-  setText("#testerFormTitle", liquidity ? "Liquidity Basket v1" : "Fixed Ladder v2.61");
-  setText("#testerSourceName", liquidity ? "EVE Liquidity Basket v1 · Python M1 replay" : "EVE_Twelve_Data_Fixed_Ladder_v2.61.mq5");
+  setText("#testerFormTitle", liquidity ? liquidityStrategyName(strategy) : "Fixed Ladder v2.61");
+  setText("#testerSourceName", liquidity ? `EVE ${liquidityStrategyName(strategy)} · Python M1 replay` : "EVE_Twelve_Data_Fixed_Ladder_v2.61.mq5");
   setText("#testerSourceDetail", liquidity
-    ? "Confirmed sweep → next candle entry → four equal positions → combined-money exit"
+    ? (continuation
+      ? "Close beyond prior liquidity → follow breakout at next open → four equal positions → combined-money exit"
+      : "Sweep and close back inside → reverse at next open → four equal positions → combined-money exit")
     : "Source-verified legacy reconstruction · SHA-256 f033bc756b8a…d02da9");
   setHtml("#testerRuleStrip", liquidity
-    ? "<span>M1 LIQUIDITY SWEEP</span><span>ENTRY NEXT OPEN</span><span>4 EQUAL POSITIONS</span><span>ONE BASKET ONLY</span><span>NO MARTINGALE</span><span>COSTS INCLUDED</span>"
+    ? (continuation
+      ? "<span>CLOSE BEYOND LIQUIDITY</span><span>FOLLOW BREAKOUT</span><span>ENTRY NEXT OPEN</span><span>4 EQUAL POSITIONS</span><span>ZERO-BALANCE STOP</span><span>COSTS INCLUDED</span>"
+      : "<span>SWEEP + CLOSE INSIDE</span><span>FADE SWEEP</span><span>ENTRY NEXT OPEN</span><span>4 EQUAL POSITIONS</span><span>ZERO-BALANCE STOP</span><span>COSTS INCLUDED</span>")
     : "<span>8 BUY STOP</span><span>8 SELL STOP</span><span>3.000 SPACING</span><span>2.000 FALLBACK</span><span>0.750 FIRST CUT</span><span>BE +0.150 AT +1.500</span>");
+  setText("#minimumMoveLabel", continuation ? "Minimum close beyond level" : "Minimum sweep distance");
   if (liquidity && Number($("#fixedLot")?.value || 0) === 0.01) $("#fixedLot").value = "0.02";
   if (!liquidity && Number($("#fixedLot")?.value || 0) === 0.02) $("#fixedLot").value = "0.01";
   if (liquidity && Number($("#profitTarget")?.value || 0) === 5) $("#profitTarget").value = "4.00";
   if (!liquidity && Number($("#profitTarget")?.value || 0) === 4) $("#profitTarget").value = "5.00";
+  if (legacyBacktestRuns.length) renderComparison(legacyBacktestRuns);
   updateBacktestAvailability();
 }
 
@@ -1059,14 +1071,15 @@ async function cancelLearning(button) {
 }
 
 function backtestPayload() {
-  const strategy = $("#testerStrategy")?.value || "liquidity_basket";
-  if (strategy === "liquidity_basket") {
+  const strategy = $("#testerStrategy")?.value || "liquidity_continuation";
+  if (isLiquidityStrategy(strategy)) {
     const testSegment = $("#testPeriod")?.value || "development";
     const startDate = $("#testDateFrom")?.value || "";
     const endDate = $("#testDateTo")?.value || "";
     return {
       strategy,
-      name: "Liquidity Basket v1",
+      name: liquidityStrategyName(strategy),
+      entry_model: liquidityEntryModel(strategy),
       symbol: "XAU/USD",
       interval: "1min",
       resolution: "m1_replay",
@@ -1121,7 +1134,7 @@ function backtestPayload() {
 
 async function runBacktest(button) {
   const payloadBody = backtestPayload();
-  const liquidity = payloadBody.strategy === "liquidity_basket";
+  const liquidity = isLiquidityStrategy(payloadBody.strategy);
   const requiredInterval = liquidity || payloadBody.resolution === "m1_replay" ? "1min" : "5min";
   if (!historicalReady[requiredInterval]) {
     showToast(`${requiredInterval === "1min" ? "M1" : "M5"} Market Memory is not complete yet.`, true);
@@ -1223,9 +1236,9 @@ function clearBacktestWorkspace({ message = "This panel will show only the test 
 
 function backtestResolutionLabel(run = {}) {
   const strategy = run.reliability?.strategy || run.settings?.strategy || "fixed_ladder";
-  if (strategy === "liquidity_basket") {
+  if (isLiquidityStrategy(strategy)) {
     const segments = { full: "Full M1 history", development: "Development first ⅔", untouched: "Untouched final ⅓", custom: "Custom M1 period" };
-    return `Liquidity Basket · ${segments[run.reliability?.test_segment || run.settings?.test_segment] || "M1 replay"}`;
+    return `${liquidityStrategyName(strategy)} · ${segments[run.reliability?.test_segment || run.settings?.test_segment] || "M1 replay"}`;
   }
   return run.resolution === "m1_replay" ? "M1 high-resolution replay" : "M5 approximation";
 }
@@ -1359,7 +1372,9 @@ function renderBaskets(baskets = [], { archived = false, hidden = false, run = n
 }
 
 function renderComparison(runs = []) {
-  const liquidityRuns = runs.filter((run) => run.status === "complete" && (run.reliability?.strategy || run.settings?.strategy) === "liquidity_basket");
+  const selected = $("#testerStrategy")?.value || "liquidity_continuation";
+  const strategy = isLiquidityStrategy(selected) ? selected : "liquidity_continuation";
+  const liquidityRuns = runs.filter((run) => run.status === "complete" && (run.reliability?.strategy || run.settings?.strategy) === strategy);
   const m5 = liquidityRuns.find((run) => (run.reliability?.test_segment || run.settings?.test_segment) === "development");
   const m1 = liquidityRuns.find((run) => (run.reliability?.test_segment || run.settings?.test_segment) === "untouched");
 
@@ -1377,7 +1392,7 @@ function renderComparison(runs = []) {
     const delta = Number(m1.net_profit || 0) - Number(m5.net_profit || 0);
     $("#compareProfitDelta").textContent = formatSignedMoney(delta);
     const settingsMatch = [
-      "symbol", "starting_balance", "positions_per_basket", "fixed_lot", "lookback_candles", "trend_period",
+      "strategy", "entry_model", "symbol", "starting_balance", "positions_per_basket", "fixed_lot", "lookback_candles", "trend_period",
       "use_trend_filter", "minimum_sweep_price", "profit_target_money", "basket_stop_money", "maximum_hold_minutes",
       "cooldown_candles", "spread_price", "commission_per_001_lot", "slippage_price", "money_per_price_per_001_lot", "path_mode",
     ]
@@ -2413,7 +2428,7 @@ function setAppMode(mode, { navigate = false } = {}) {
     button.setAttribute("aria-selected", active ? "true" : "false");
   });
   document.querySelectorAll("[data-mode-nav]").forEach((group) => { group.hidden = group.dataset.modeNav !== currentAppMode; });
-  setText("#topbarEyebrow", currentAppMode === "operator" ? "EVE OPERATOR · v3.2" : "EVE RESEARCH ENGINE · v3.2");
+  setText("#topbarEyebrow", currentAppMode === "operator" ? "EVE OPERATOR · v3.2.1" : "EVE RESEARCH ENGINE · v3.2.1");
   setText("#topbarSummary", currentAppMode === "operator" ? "See only what is running, what is waiting and what you need to do." : "Inspect research, controlled mutations, validation and generated MT5 packages.");
   if (navigate) window.location.hash = currentAppMode === "operator" ? "#home" : "#research";
 }
