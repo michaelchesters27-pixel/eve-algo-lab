@@ -20,8 +20,13 @@ SOURCE_SHA256 = "f033bc756b8a066b8fdfe780ca36fe82363b3b70c2e4dd4a15e7d57546d02da
 LIQUIDITY_STRATEGY_SLUG = "eve-liquidity-basket-v1"
 LIQUIDITY_STRATEGY_NAME = "EVE Liquidity Basket v1"
 LIQUIDITY_STRATEGY_VERSION = "1.0"
-LIQUIDITY_SOURCE_SHA256 = "dbf0b0ad6edf4b09c04dca17b0ffeac087096199c586929b8e442111b84cbe6b"
+LIQUIDITY_CONTINUATION_STRATEGY_SLUG = "eve-liquidity-continuation-v1"
+LIQUIDITY_CONTINUATION_STRATEGY_NAME = "EVE Liquidity Continuation v1"
+LIQUIDITY_CONTINUATION_STRATEGY_VERSION = "1.0"
+LIQUIDITY_SOURCE_SHA256 = "e05ab200478844a8822c564fba7775dea52a32869807e8704a5d18f9b743217a"
 LIQUIDITY_LOCKED_SETTING_KEYS = (
+    "strategy",
+    "entry_model",
     "symbol",
     "starting_balance",
     "positions_per_basket",
@@ -40,6 +45,28 @@ LIQUIDITY_LOCKED_SETTING_KEYS = (
     "money_per_price_per_001_lot",
     "path_mode",
 )
+
+
+def liquidity_identity(entry_model: str) -> dict[str, str]:
+    if entry_model == "breakout_continuation":
+        return {
+            "code": "liquidity_continuation",
+            "name": LIQUIDITY_CONTINUATION_STRATEGY_NAME,
+            "slug": LIQUIDITY_CONTINUATION_STRATEGY_SLUG,
+            "version": LIQUIDITY_CONTINUATION_STRATEGY_VERSION,
+            "description": "Four equal XAU/USD M1 positions after a confirmed close beyond liquidity in the breakout direction.",
+            "signal": "close beyond the previous N-candle high/low with a directional candle and EMA alignment",
+            "note": "Second measurable liquidity hypothesis. It follows confirmed breakout direction after the sweep-reversal version failed development testing.",
+        }
+    return {
+        "code": "liquidity_basket",
+        "name": LIQUIDITY_STRATEGY_NAME,
+        "slug": LIQUIDITY_STRATEGY_SLUG,
+        "version": LIQUIDITY_STRATEGY_VERSION,
+        "description": "Four equal XAU/USD M1 positions after a confirmed liquidity sweep, managed as one money basket.",
+        "signal": "sweep previous N-candle high/low and close back inside with rejection candle",
+        "note": "Initial measurable reconstruction of the four-position liquidity basket idea. Research only; no MT5 EA exists yet.",
+    }
 
 
 def liquidity_settings_match(first: dict[str, Any], second: dict[str, Any]) -> bool:
@@ -69,12 +96,21 @@ def _liquidity_verdict(
     total_baskets: int,
     test_segment: str,
     locked_development_run_id: str | None = None,
+    account_ruined: bool = False,
 ) -> dict[str, Any]:
     pf = float(profit_factor or 0.0)
     enough_evidence = total_baskets >= 100
     profitable = net_profit > 0 and expectancy > 0 and pf >= 1.20
     controlled_drawdown = max_drawdown_percent <= 20.0
     passed = enough_evidence and profitable and controlled_drawdown
+    if account_ruined:
+        return {
+            "code": "account_ruined",
+            "label": "ACCOUNT BLOWN — FAILED",
+            "tone": "failed",
+            "summary": "The strategy exhausted the test account. EVE stopped the replay at zero instead of reporting an impossible negative balance.",
+            "next_action": "Reject this strategy. Do not build an EA or run the untouched period.",
+        }
     if test_segment == "untouched" and not locked_development_run_id:
         return {
             "code": "unlocked_untouched",
@@ -172,18 +208,20 @@ class BacktestService:
             )
         return str(version["id"])
 
-    async def ensure_liquidity_strategy_version(self) -> str:
-        strategy = await self.repo.get_strategy_by_slug(LIQUIDITY_STRATEGY_SLUG)
+    async def ensure_liquidity_strategy_version(self, entry_model: str = "sweep_reversal") -> str:
+        identity = liquidity_identity(entry_model)
+        strategy = await self.repo.get_strategy_by_slug(identity["slug"])
         if strategy is None:
             strategy = await self.repo.create_strategy(
-                LIQUIDITY_STRATEGY_NAME,
-                LIQUIDITY_STRATEGY_SLUG,
-                "Four equal XAU/USD M1 positions after a confirmed liquidity sweep, managed as one money basket.",
+                identity["name"],
+                identity["slug"],
+                identity["description"],
             )
-        version = await self.repo.get_strategy_version(str(strategy["id"]), LIQUIDITY_STRATEGY_VERSION)
+        version = await self.repo.get_strategy_version(str(strategy["id"]), identity["version"])
         if version is None:
             rules = {
-                "signal": "sweep previous N-candle high/low and close back inside with rejection candle",
+                "entry_model": entry_model,
+                "signal": identity["signal"],
                 "entry": "next M1 candle open only",
                 "positions_per_basket": 4,
                 "fixed_lot": 0.02,
@@ -198,10 +236,10 @@ class BacktestService:
             }
             version = await self.repo.create_strategy_version(
                 str(strategy["id"]),
-                LIQUIDITY_STRATEGY_VERSION,
+                identity["version"],
                 rules,
                 LIQUIDITY_SOURCE_SHA256,
-                "Initial measurable reconstruction of the four-position liquidity basket idea. Research only; no MT5 EA exists yet.",
+                identity["note"],
             )
         return str(version["id"])
 
@@ -446,6 +484,10 @@ class BacktestService:
         started_at = datetime.now(timezone.utc)
         data_interval = "1min"
         test_segment = str(request.get("test_segment", "full"))
+        entry_model = str(request.get("entry_model", "sweep_reversal"))
+        identity = liquidity_identity(entry_model)
+        strategy_code = identity["code"]
+        strategy_name = identity["name"]
         accuracy = "M1 high-resolution candle replay"
         try:
             await self.repo.update_backtest_run(
@@ -457,7 +499,8 @@ class BacktestService:
                     "message": "Loading verified XAU/USD M1 candles from Market Memory",
                     "accuracy": accuracy,
                     "input_interval": data_interval,
-                    "strategy": "liquidity_basket",
+                    "strategy": strategy_code,
+                    "entry_model": entry_model,
                     "test_segment": test_segment,
                     "locked_development_run_id": request.get("locked_development_run_id"),
                     "source_sha256": LIQUIDITY_SOURCE_SHA256,
@@ -466,11 +509,12 @@ class BacktestService:
             await self.repo.log_event(
                 "info",
                 "backtester",
-                "Liquidity Basket v1 M1 backtest started",
-                {"run_id": run_id, "test_segment": test_segment},
+                f"{strategy_name} M1 backtest started",
+                {"run_id": run_id, "test_segment": test_segment, "entry_model": entry_model},
             )
 
             params = LiquidityBasketParameters(
+                entry_model=entry_model,
                 positions_per_basket=int(request.get("positions_per_basket", 4)),
                 fixed_lot=float(request.get("fixed_lot", 0.02)),
                 lookback_candles=int(request.get("lookback_candles", 20)),
@@ -520,10 +564,17 @@ class BacktestService:
                 if not page:
                     break
                 page_number += 1
+                page_processed = 0
+                last_processed_row: dict[str, Any] | None = None
                 for row in page:
                     simulator.process_candle(Candle.from_row(row))
-                processed += len(page)
-                cursor = str(page[-1]["candle_time"])
+                    page_processed += 1
+                    last_processed_row = row
+                    if simulator.account_ruined:
+                        break
+                processed += page_processed
+                if last_processed_row is not None:
+                    cursor = str(last_processed_row["candle_time"])
 
                 trade_buffer.extend(trade.to_row(run_id) for trade in simulator.drain_trades())
                 basket_buffer.extend(basket.to_row(run_id) for basket in simulator.drain_baskets())
@@ -544,7 +595,8 @@ class BacktestService:
                             "message": f"Processed {processed:,} of {expected_rows:,} verified M1 candles",
                             "accuracy": accuracy,
                             "input_interval": data_interval,
-                            "strategy": "liquidity_basket",
+                            "strategy": strategy_code,
+                            "entry_model": entry_model,
                             "test_segment": test_segment,
                             "locked_development_run_id": request.get("locked_development_run_id"),
                             "ambiguous_candles": simulator.ambiguous_candles,
@@ -552,7 +604,7 @@ class BacktestService:
                             "source_sha256": LIQUIDITY_SOURCE_SHA256,
                         },
                     )
-                if len(page) < 1000:
+                if simulator.account_ruined or len(page) < 1000:
                     break
 
             final_trades, final_baskets = simulator.finalise()
@@ -593,17 +645,27 @@ class BacktestService:
                 total_baskets=summary.total_baskets,
                 test_segment=test_segment,
                 locked_development_run_id=request.get("locked_development_run_id"),
+                account_ruined=summary.account_ruined,
             )
             reliability = {
                 "progress_percent": 100,
-                "message": "Liquidity Basket backtest complete",
+                "message": (
+                    f"{strategy_name} stopped when the account reached $0"
+                    if summary.account_ruined
+                    else f"{strategy_name} backtest complete"
+                ),
                 "accuracy": accuracy,
-                "warning": "M1 bars still cannot prove the tick order when target and loss limit occur in the same minute. Verify any survivor in MT5 using real ticks.",
+                "warning": "The account is capped at zero. M1 bars still cannot prove the tick order when target and loss limit occur in the same minute. Verify any survivor in MT5 using real ticks.",
                 "input_interval": data_interval,
-                "strategy": "liquidity_basket",
+                "strategy": strategy_code,
+                "entry_model": entry_model,
                 "test_segment": test_segment,
                 "locked_development_run_id": request.get("locked_development_run_id"),
                 "candles_processed": summary.candles_processed,
+                "candles_available": expected_rows,
+                "terminated_early": summary.account_ruined and summary.candles_processed < expected_rows,
+                "account_ruined": summary.account_ruined,
+                "ruin_time": summary.ruin_time,
                 "ambiguous_candles": summary.ambiguous_candles,
                 "ambiguous_percent": round(summary.ambiguous_candles / summary.candles_processed * 100, 5) if summary.candles_processed else 0,
                 "signals_detected": summary.signals_detected,
@@ -645,7 +707,7 @@ class BacktestService:
             await self.repo.log_event(
                 "success",
                 "backtester",
-                f"Liquidity Basket v1 completed: {verdict['label']}",
+                f"{strategy_name} completed: {verdict['label']}",
                 {
                     "run_id": run_id,
                     "candles": summary.candles_processed,
@@ -669,7 +731,8 @@ class BacktestService:
                     "message": str(exc),
                     "accuracy": accuracy,
                     "input_interval": data_interval,
-                    "strategy": "liquidity_basket",
+                    "strategy": strategy_code,
+                    "entry_model": entry_model,
                     "test_segment": test_segment,
                 },
                 finished_at=datetime.now(timezone.utc).isoformat(),
@@ -677,6 +740,6 @@ class BacktestService:
             await self.repo.log_event(
                 "error",
                 "backtester",
-                "Liquidity Basket backtest failed",
-                {"run_id": run_id, "error": str(exc)},
+                f"{strategy_name} backtest failed",
+                {"run_id": run_id, "error": str(exc), "entry_model": entry_model},
             )

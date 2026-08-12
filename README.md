@@ -1,6 +1,16 @@
-# EVE Command Centre v3.2
+# EVE Command Centre v3.2.1
 
 EVE is a private XAU/USD research, strategy-evolution and MT5 bot-development platform using Supabase, Railway, Netlify and Twelve Data.
+
+## What v3.2.1 changes
+
+- Adds **Liquidity Continuation v1**, a genuinely different entry hypothesis that follows a confirmed close beyond prior M1 liquidity instead of fading the sweep.
+- Keeps the same four 0.02-lot positions, combined $4 target and $8 basket loss limit so the entry rule is compared fairly.
+- Stops a liquidity replay permanently when account equity reaches zero; ending balance and drawdown can no longer become impossible negative values above 100% loss.
+- Stores continuation runs under their own strategy identity, so they cannot be mixed with the rejected Liquidity Basket v1 development evidence.
+- Makes Liquidity Continuation v1 the default Strategy Tester selection while retaining the failed sweep-reversal run in the archive.
+
+No Supabase SQL or new Railway/Netlify variables are required for v3.2.1.
 
 ## What v3.2 changes
 

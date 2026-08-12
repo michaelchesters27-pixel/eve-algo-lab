@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3.2">
+  <link rel="stylesheet" href="styles.css?v=3.2.1">
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -51,7 +51,7 @@
     <main>
       <header class="topbar command-topbar">
         <div>
-          <p class="eyebrow" id="topbarEyebrow">EVE OPERATOR · v3.2</p>
+          <p class="eyebrow" id="topbarEyebrow">EVE OPERATOR · v3.2.1</p>
           <h1 id="briefingGreeting">Good afternoon.</h1>
           <p class="topbar-summary" id="topbarSummary">See only what is running, what is waiting and what you need to do.</p>
         </div>
@@ -875,11 +875,11 @@
           <div class="legacy-scope-copy">
             <p class="label">WHAT THIS TOOL DOES</p>
             <h2>Proves exact rules before we waste time building an EA</h2>
-            <p>The first experiment is the <strong>four-position Liquidity Basket</strong>: a confirmed M1 sweep, entry at the next candle open, a combined profit target and a hard combined loss limit. The old Fixed Ladder replay remains available for diagnosis.</p>
+            <p>The first sweep-reversal experiment failed. The current experiment is <strong>Liquidity Continuation v1</strong>: wait for an M1 candle to close beyond prior liquidity, enter in that breakout direction at the next candle open, then manage four positions as one basket.</p>
           </div>
           <div class="legacy-scope-actions">
-            <div><small>NEW EXPERIMENT</small><strong>Liquidity Basket v1</strong></div>
-            <div><small>ALSO AVAILABLE</small><strong>Fixed Ladder v2.61</strong></div>
+            <div><small>CURRENT EXPERIMENT</small><strong>Liquidity Continuation v1</strong></div>
+            <div><small>ARCHIVED HYPOTHESIS</small><strong>Liquidity Basket v1 — failed</strong></div>
           </div>
           <details class="mt5-test-guide">
             <summary>Why an uploaded MQ5 file still needs MT5</summary>
@@ -907,15 +907,15 @@
         <div class="backtest-layout">
           <article class="panel backtest-form-panel">
             <div class="panel-head">
-              <div><p class="label">RUN A NEW TEST</p><h2 id="testerFormTitle">Liquidity Basket v1</h2></div>
+              <div><p class="label">RUN A NEW TEST</p><h2 id="testerFormTitle">Liquidity Continuation v1</h2></div>
               <span class="status-pill complete">RULES LOCKED PER RUN</span>
             </div>
             <div class="strategy-source">
-              <strong id="testerSourceName">EVE Liquidity Basket v1 · Python M1 replay</strong>
-              <small id="testerSourceDetail">Confirmed sweep → next candle entry → four equal positions → basket exit</small>
+              <strong id="testerSourceName">EVE Liquidity Continuation v1 · Python M1 replay</strong>
+              <small id="testerSourceDetail">Close beyond liquidity → next candle entry in breakout direction → four equal positions → basket exit</small>
             </div>
             <form id="backtestForm" class="form-grid">
-              <label class="form-grid-wide"><span>Strategy</span><select id="testerStrategy"><option value="liquidity_basket">Liquidity Basket v1 — four positions</option><option value="fixed_ladder">Fixed Ladder v2.61 — legacy diagnostic</option></select></label>
+              <label class="form-grid-wide"><span>Strategy</span><select id="testerStrategy"><option value="liquidity_continuation">Liquidity Continuation v1 — breakout direction (new)</option><option value="liquidity_basket">Liquidity Basket v1 — sweep reversal (failed)</option><option value="fixed_ladder">Fixed Ladder v2.61 — legacy diagnostic</option></select></label>
               <label data-liquidity-field><span>Test period</span><select id="testPeriod"><option value="development">1. Development — first two-thirds</option><option value="untouched">2. Untouched — final third</option><option value="full">Full history — exploratory only</option><option value="custom">Custom dates — exploratory only</option></select></label>
               <label data-custom-date hidden><span>Start date</span><input id="testDateFrom" type="date"></label>
               <label data-custom-date hidden><span>End date</span><input id="testDateTo" type="date"></label>
@@ -925,8 +925,8 @@
               <label><span>Lot size for each position</span><input id="fixedLot" type="number" value="0.02" min="0.01" step="0.01"></label>
               <label data-liquidity-field><span>Positions in basket</span><input id="positionsPerBasket" type="number" value="4" min="1" max="20" step="1"></label>
               <label data-liquidity-field><span>Liquidity lookback (M1 candles)</span><input id="liquidityLookback" type="number" value="20" min="3" max="500" step="1"></label>
-              <label data-liquidity-field><span>Trend filter</span><select id="trendFilter"><option value="true">EMA 50 — trade with trend</option><option value="false">Off — test every confirmed sweep</option></select></label>
-              <label data-liquidity-field><span>Minimum sweep distance</span><input id="minimumSweep" type="number" value="0.05" min="0" step="0.01"></label>
+              <label data-liquidity-field><span>Trend filter</span><select id="trendFilter"><option value="true">EMA 50 — trade with trend</option><option value="false">Off — test every qualifying signal</option></select></label>
+              <label data-liquidity-field><span id="minimumMoveLabel">Minimum close beyond level</span><input id="minimumSweep" type="number" value="0.05" min="0" step="0.01"></label>
               <label><span>Spread price</span><input id="spreadPrice" type="number" value="0.05" min="0" step="0.01"></label>
               <label><span>Round-trip commission / 0.01 lot ($)</span><input id="commission" type="number" value="0.08" min="0" step="0.01"></label>
               <label data-liquidity-field><span>Slippage at entry and exit (price)</span><input id="slippagePrice" type="number" value="0.00" min="0" step="0.01"></label>
@@ -940,7 +940,7 @@
             </form>
             <div class="resolution-note" id="resolutionNote">Checking M5 and M1 replay readiness.</div>
             <div class="rule-strip" id="testerRuleStrip">
-              <span>M1 LIQUIDITY SWEEP</span><span>ENTRY NEXT OPEN</span><span>4 EQUAL POSITIONS</span><span>ONE BASKET ONLY</span><span>NO MARTINGALE</span><span>COSTS INCLUDED</span>
+              <span>CLOSE BEYOND LIQUIDITY</span><span>FOLLOW BREAKOUT</span><span>ENTRY NEXT OPEN</span><span>4 EQUAL POSITIONS</span><span>ZERO-BALANCE STOP</span><span>COSTS INCLUDED</span>
             </div>
             <div class="actions">
               <button class="button button-primary" id="runBacktest">Run development test</button>
@@ -1049,11 +1049,11 @@
         <div class="activity-list" id="activityList"><div class="empty-state">Waiting for Supabase activity…</div></div>
       </section>
 
-      <footer><span>EVE COMMAND CENTRE · v3.2</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
+      <footer><span>EVE COMMAND CENTRE · v3.2.1</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
     </main>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=3.2" defer></script>
+  <script src="app.js?v=3.2.1" defer></script>
 </body>
 </html>
