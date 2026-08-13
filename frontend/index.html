@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3.4">
+  <link rel="stylesheet" href="styles.css?v=3.5">
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -51,7 +51,7 @@
     <main>
       <header class="topbar command-topbar">
         <div>
-          <p class="eyebrow" id="topbarEyebrow">EVE OPERATOR · v3.4</p>
+          <p class="eyebrow" id="topbarEyebrow">EVE OPERATOR · v3.5</p>
           <h1 id="briefingGreeting">Good afternoon.</h1>
           <p class="topbar-summary" id="topbarSummary">See only what is running, what is waiting and what you need to do.</p>
         </div>
@@ -804,7 +804,7 @@
         <div class="advanced-link-grid">
           <a href="#foundation"><small>01</small><strong>Foundation status</strong><span>Latest price, dataset readiness and gap count.</span></a>
           <a href="#memory"><small>02</small><strong>Market memory</strong><span>Inspect each stored timeframe from M1 to D1.</span></a>
-          <button type="button" class="advanced-tool-card" id="openLegacyBacktester" aria-controls="backtester" aria-expanded="false"><small>03</small><strong>Strategy Tester</strong><span>Run Gold H4 Trend 55/20 v1 or inspect earlier experiments.</span></button>
+          <button type="button" class="advanced-tool-card" id="openLegacyBacktester" aria-controls="backtester" aria-expanded="false"><small>03</small><strong>Strategy Tester</strong><span>Run Gold H1 Trend 55/20 v1 or inspect earlier experiments.</span></button>
           <a href="#pipeline"><small>04</small><strong>Build history</strong><span>See how the platform reached its current stage.</span></a>
           <a href="#activity"><small>05</small><strong>System activity</strong><span>Read recent Supabase and worker events.</span></a>
         </div>
@@ -875,11 +875,11 @@
           <div class="legacy-scope-copy">
             <p class="label">WHAT THIS TOOL DOES</p>
             <h2>Proves exact rules before we waste time building an EA</h2>
-            <p>The liquidity baskets and London breakout failed development testing. The current experiment is <strong>Gold H4 Trend 55/20 v1</strong>: follow a completed H4 breakout only when the 60-day daily move agrees, risk 0.25% on one position and let the trend run.</p>
+            <p>Gold H4 Trend was profitable but produced only 62 development trades, so EVE withheld a verdict. The pre-declared follow-up is <strong>Gold H1 Trend 55/20 v1</strong>: the same one-position trend premise on completed H1 candles, tested from scratch without opening the untouched period.</p>
           </div>
           <div class="legacy-scope-actions">
-            <div><small>CURRENT EXPERIMENT</small><strong>Gold H4 Trend 55/20 v1</strong></div>
-            <div><small>REJECTED EXPERIMENTS</small><strong>London breakout + both liquidity baskets</strong></div>
+            <div><small>CURRENT EXPERIMENT</small><strong>Gold H1 Trend 55/20 v1</strong></div>
+            <div><small>ARCHIVED EVIDENCE</small><strong>H4 inconclusive · London + liquidity rejected</strong></div>
           </div>
           <details class="mt5-test-guide">
             <summary>Why an uploaded MQ5 file still needs MT5</summary>
@@ -907,15 +907,15 @@
         <div class="backtest-layout">
           <article class="panel backtest-form-panel">
             <div class="panel-head">
-              <div><p class="label">RUN A NEW TEST</p><h2 id="testerFormTitle">Gold H4 Trend 55/20 v1</h2></div>
+              <div><p class="label">RUN A NEW TEST</p><h2 id="testerFormTitle">Gold H1 Trend 55/20 v1</h2></div>
               <span class="status-pill complete">RULES LOCKED PER RUN</span>
             </div>
             <div class="strategy-source">
-              <strong id="testerSourceName">EVE Gold H4 Trend 55/20 v1 · H4/D1 signal / M1 replay</strong>
-              <small id="testerSourceDetail">60-day direction → 55-H4 breakout → first M1 open → 2 ATR stop → 20-H4 trailing exit</small>
+              <strong id="testerSourceName">EVE Gold H1 Trend 55/20 v1 · H1/D1 signal / M1 replay</strong>
+              <small id="testerSourceDetail">60-day direction → 55-H1 breakout → first M1 open → 2 ATR stop → 20-H1 trailing exit</small>
             </div>
             <form id="backtestForm" class="form-grid">
-              <label class="form-grid-wide"><span>Strategy</span><select id="testerStrategy"><option value="gold_h4_trend">Gold H4 Trend 55/20 v1 — multi-day trend (new)</option><option value="london_opening_range">London Opening Range v1 — failed development</option><option value="liquidity_continuation">Liquidity Continuation v1 — failed development</option><option value="liquidity_basket">Liquidity Basket v1 — failed development</option><option value="fixed_ladder">Fixed Ladder v2.61 — legacy diagnostic</option></select></label>
+              <label class="form-grid-wide"><span>Strategy</span><select id="testerStrategy"><option value="gold_h1_trend">Gold H1 Trend 55/20 v1 — current experiment</option><option value="gold_h4_trend">Gold H4 Trend 55/20 v1 — inconclusive (62 trades)</option><option value="london_opening_range">London Opening Range v1 — failed development</option><option value="liquidity_continuation">Liquidity Continuation v1 — failed development</option><option value="liquidity_basket">Liquidity Basket v1 — failed development</option><option value="fixed_ladder">Fixed Ladder v2.61 — legacy diagnostic</option></select></label>
               <label data-chronological-field><span>Test period</span><select id="testPeriod"><option value="development">1. Development — first two-thirds</option><option value="untouched">2. Untouched — final third</option><option value="full">Full history — exploratory only</option><option value="custom">Custom dates — exploratory only</option></select></label>
               <label data-custom-date hidden><span>Start date</span><input id="testDateFrom" type="date"></label>
               <label data-custom-date hidden><span>End date</span><input id="testDateTo" type="date"></label>
@@ -952,7 +952,7 @@
             </form>
             <div class="resolution-note" id="resolutionNote">Checking M5 and M1 replay readiness.</div>
             <div class="rule-strip" id="testerRuleStrip">
-              <span>60-DAY DIRECTION</span><span>55-H4 BREAKOUT</span><span>FIRST M1 OPEN</span><span>0.25% RISK</span><span>2 ATR STOP</span><span>20-H4 EXIT</span>
+              <span>60-DAY DIRECTION</span><span>55-H1 BREAKOUT</span><span>FIRST M1 OPEN</span><span>0.25% RISK</span><span>2 ATR STOP</span><span>20-H1 EXIT</span>
             </div>
             <div class="actions">
               <button class="button button-primary" id="runBacktest">Run development test</button>
@@ -1061,11 +1061,11 @@
         <div class="activity-list" id="activityList"><div class="empty-state">Waiting for Supabase activity…</div></div>
       </section>
 
-      <footer><span>EVE COMMAND CENTRE · v3.4</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
+      <footer><span>EVE COMMAND CENTRE · v3.5</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
     </main>
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  <script src="app.js?v=3.4" defer></script>
+  <script src="app.js?v=3.5" defer></script>
 </body>
 </html>
