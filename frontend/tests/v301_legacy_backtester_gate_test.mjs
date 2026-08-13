@@ -10,6 +10,8 @@ test("Strategy Tester is a dedicated research workspace with the current abnorma
   assert.match(html, /id="backtester"[^>]*hidden[^>]*aria-hidden="true"/);
   assert.match(html, /id="closeLegacyBacktester"/);
   assert.match(html, /data-workspace="tester"/);
+  assert.match(html, /The current experiment is <strong>Gold Abnormal Momentum v1<\/strong>/);
+  assert.match(html, /Gold Abnormal Momentum v1 · max one trade\/day/);
   assert.match(html, /Gold Abnormal Momentum v1 — current once-a-day experiment/);
   assert.match(html, /Asia Session Long v1 — failed development/);
   assert.match(html, /Shanghai Day Long v1 — failed development/);
