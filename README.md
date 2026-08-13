@@ -1,6 +1,19 @@
-# EVE Command Centre v3.6
+# EVE Command Centre v3.7
 
 EVE is a private XAU/USD research, strategy-evolution and MT5 bot-development platform using Supabase, Railway, Netlify and Twelve Data.
+
+## What v3.7 changes
+
+- Adds **COMEX Closing Momentum v1**, a pre-declared XAU/USD hypothesis with at most one fixed 0.01-lot trade per New York weekday.
+- Uses the prior valid 13:29 New York M1 close as the spot-price proxy for the 13:30 COMEX gold settlement.
+- Buys at the 13:00 New York M1 open when price is above that reference and sells when below; an equal price or missing reference skips the day.
+- Force-closes at the 13:30 New York M1 open and caps any earlier loss at 0.25% of current balance.
+- Includes spread, commission, optional slippage, daylight-saving conversion, gap-stop fills and a hard zero-balance limit.
+- Freezes the development gate before results: at least 500 trades, positive net profit and expectancy, PF 1.20, no more than 15% drawdown, and at least three profitable calendar years.
+- Keeps the untouched final third sealed unless the completed development run is reused with every rule, risk and cost input unchanged.
+- Archives New York Morning Momentum v1 as a failed development hypothesis rather than tuning it after seeing the result.
+
+No Supabase SQL or new Railway/Netlify variables are required for v3.7.
 
 ## What v3.6 changes
 

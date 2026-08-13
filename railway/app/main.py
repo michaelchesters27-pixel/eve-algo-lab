@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.backtesting.metrics import calculate_metrics
 from app.models.schemas import (
     ApiEnvelope,
+    ComexClosingMomentumBacktestRequest,
     FixedLadderBacktestRequest,
     FleetHeartbeatRequest,
     GoldH1TrendBacktestRequest,
@@ -28,6 +29,7 @@ from app.models.schemas import (
 from app.services.autonomy import AutonomousLearningService
 from app.services.backtests import (
     BacktestService,
+    comex_closing_momentum_settings_match,
     gold_h1_settings_match,
     gold_h4_settings_match,
     liquidity_identity,
@@ -48,7 +50,7 @@ from app.services.supabase_repo import SupabaseError, SupabaseRepository
 from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
 from app.settings import Settings, get_settings
 
-APP_VERSION = "3.6"
+APP_VERSION = "3.7"
 
 settings = get_settings()
 logging.basicConfig(
@@ -570,7 +572,7 @@ def _parse_stored_datetime(value: Any, label: str) -> datetime:
 
 
 def _chronological_test_dates(
-    request: GoldH1TrendBacktestRequest | GoldH4TrendBacktestRequest | LiquidityBasketBacktestRequest | LondonOpeningRangeBacktestRequest | NewYorkMorningMomentumBacktestRequest,
+    request: ComexClosingMomentumBacktestRequest | GoldH1TrendBacktestRequest | GoldH4TrendBacktestRequest | LiquidityBasketBacktestRequest | LondonOpeningRangeBacktestRequest | NewYorkMorningMomentumBacktestRequest,
     state: dict[str, Any],
 ) -> tuple[str, str]:
     oldest = _parse_stored_datetime(state.get("oldest_stored"), "oldest-candle")
@@ -799,6 +801,91 @@ async def start_gold_h4_trend_backtest(request: GoldH4TrendBacktestRequest) -> A
             "test_segment": request.test_segment,
         },
         message="Gold H4 Trend 55/20 v1 replay started",
+    )
+
+
+@app.post("/api/backtests/comex-closing-momentum", response_model=ApiEnvelope, dependencies=[Depends(require_admin)])
+async def start_comex_closing_momentum_backtest(request: ComexClosingMomentumBacktestRequest) -> ApiEnvelope:
+    state = await repo.get_state(request.symbol, "1min")
+    if not state_is_historically_ready(state, "1min"):
+        raise HTTPException(status_code=409, detail="M1 Market Memory must be complete before this backtest can run")
+    if await repo.has_active_backtest():
+        raise HTTPException(status_code=409, detail="Another backtest is already running")
+    date_from, date_to = _chronological_test_dates(request, state or {})
+    segment_names = {
+        "full": "Full M1 History",
+        "development": "Development First Two-Thirds",
+        "untouched": "Untouched Final Third",
+        "custom": "Custom M1 Period",
+    }
+    strategy_version_id = await backtests.ensure_comex_closing_momentum_strategy_version()
+    settings_payload = request.model_dump(mode="json")
+    settings_payload.update(
+        {
+            "date_from": date_from,
+            "date_to": date_to,
+            "strategy": "comex_closing_momentum",
+        }
+    )
+    locked_development_run_id: str | None = None
+    if request.test_segment == "untouched":
+        recent_runs = await repo.list_backtest_runs(100)
+        matching_development = next(
+            (
+                candidate
+                for candidate in recent_runs
+                if candidate.get("status") == "complete"
+                and (candidate.get("settings") or {}).get("strategy") == "comex_closing_momentum"
+                and (candidate.get("settings") or {}).get("test_segment") == "development"
+                and comex_closing_momentum_settings_match(candidate.get("settings") or {}, settings_payload)
+            ),
+            None,
+        )
+        if matching_development is None:
+            raise HTTPException(
+                status_code=409,
+                detail="Run and complete Development with these exact COMEX settings before the Untouched test",
+            )
+        locked_development_run_id = str(matching_development["id"])
+        settings_payload["locked_development_run_id"] = locked_development_run_id
+    run_name = f"COMEX Closing Momentum v1 — {segment_names[request.test_segment]}"
+    run = await repo.create_backtest_run(
+        {
+            "strategy_version_id": strategy_version_id,
+            "name": run_name,
+            "symbol": request.symbol,
+            "interval": "1min",
+            "resolution": "m1_replay",
+            "status": "queued",
+            "date_from": date_from,
+            "date_to": date_to,
+            "starting_balance": request.starting_balance,
+            "settings": settings_payload,
+            "reliability": {
+                "progress_percent": 0,
+                "message": "Queued for Railway",
+                "accuracy": "Verified M1 reference, 13:00 entry, hard-money stop and exact 13:30 exit replay",
+                "input_interval": "1min",
+                "signal_interval": "1min",
+                "strategy": "comex_closing_momentum",
+                "test_segment": request.test_segment,
+                "maximum_trades_per_day": 1,
+                "locked_development_run_id": locked_development_run_id,
+            },
+        }
+    )
+    run_id = str(run["id"])
+    await backtests.start_comex_closing_momentum(run_id, settings_payload)
+    return ApiEnvelope(
+        data={
+            "id": run_id,
+            "status": "queued",
+            "name": run_name,
+            "date_from": date_from,
+            "date_to": date_to,
+            "test_segment": request.test_segment,
+        },
+        message="COMEX Closing Momentum v1 once-a-day replay started",
     )
 
 
