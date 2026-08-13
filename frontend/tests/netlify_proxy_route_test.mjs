@@ -112,6 +112,16 @@ assert.equal(calls.at(-1).url, "https://railway.example/api/backtests/gold-h1-tr
 assert.equal(calls.at(-1).options.headers["X-EVE-ADMIN-TOKEN"], "test-token");
 console.log("Netlify proxy Gold H1 Trend route: PASS");
 
+response = await proxy(new Request("https://eve.example/api/backtests/new-york-morning-momentum", {
+  method: "POST",
+  body: JSON.stringify({ symbol: "XAU/USD", test_segment: "development" }),
+  headers: { "Content-Type": "application/json" },
+}));
+assert.equal(response.status, 200);
+assert.equal(calls.at(-1).url, "https://railway.example/api/backtests/new-york-morning-momentum");
+assert.equal(calls.at(-1).options.headers["X-EVE-ADMIN-TOKEN"], "test-token");
+console.log("Netlify proxy New York Morning Momentum route: PASS");
+
 response = await proxy(new Request("https://eve.example/api/backtests/london-opening-range", {
   method: "POST",
   body: JSON.stringify({ symbol: "XAU/USD", test_segment: "development" }),

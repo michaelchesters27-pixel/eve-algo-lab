@@ -142,6 +142,42 @@ class LondonOpeningRangeBacktestRequest(BaseModel):
         return value
 
 
+class NewYorkMorningMomentumBacktestRequest(BaseModel):
+    name: str = Field(default="New York Morning Momentum v1 — M1 Replay", min_length=3, max_length=120)
+    symbol: str = Field(default="XAU/USD", min_length=3, max_length=40)
+    interval: Literal["1min"] = "1min"
+    resolution: Literal["m1_replay"] = "m1_replay"
+    test_segment: BacktestTestSegment = "full"
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    starting_balance: float = Field(default=10_000.0, gt=0, le=100_000_000)
+    risk_percent: float = Field(default=0.25, ge=0.01, le=5.0)
+    minimum_lot: float = Field(default=0.01, gt=0, le=100)
+    lot_step: float = Field(default=0.01, gt=0, le=100)
+    maximum_lot: float = Field(default=1.0, gt=0, le=100)
+    timezone_name: Literal["America/New_York"] = "America/New_York"
+    signal_start_hour: Literal[8] = 8
+    signal_start_minute: Literal[30] = 30
+    signal_minutes: Literal[30] = 30
+    entry_hour: Literal[9] = 9
+    entry_minute: Literal[0] = 0
+    force_exit_hour: Literal[15] = 15
+    force_exit_minute: Literal[55] = 55
+    spread_price: float = Field(default=0.05, ge=0, le=100)
+    commission_per_001_lot: float = Field(default=0.08, ge=0, le=1000)
+    slippage_price: float = Field(default=0.0, ge=0, le=100)
+    money_per_price_per_001_lot: float = Field(default=1.0, gt=0, le=10_000)
+    path_mode: PathMode = "candle_direction"
+
+    @field_validator("date_to")
+    @classmethod
+    def validate_date_range(cls, value: datetime | None, info):
+        start = info.data.get("date_from")
+        if value is not None and start is not None and value <= start:
+            raise ValueError("date_to must be later than date_from")
+        return value
+
+
 class GoldH4TrendBacktestRequest(BaseModel):
     name: str = Field(default="Gold H4 Trend 55/20 v1 — M1 Replay", min_length=3, max_length=120)
     symbol: str = Field(default="XAU/USD", min_length=3, max_length=40)

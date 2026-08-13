@@ -1,6 +1,17 @@
-# EVE Command Centre v3.5
+# EVE Command Centre v3.6
 
 EVE is a private XAU/USD research, strategy-evolution and MT5 bot-development platform using Supabase, Railway, Netlify and Twelve Data.
+
+## What v3.6 changes
+
+- Adds **New York Morning Momentum v1**, a deliberately simple XAU/USD intraday hypothesis with at most one trade per New York weekday.
+- Uses every verified M1 candle from 08:30–09:00 `America/New_York`, follows that window's direction at the 09:00 open, and skips the day if any signal minute is missing or the window is a doji.
+- Risks 0.25% of current balance, rounds size down to the broker lot step, places a hard stop at the opposite edge of the morning range, and force-closes at 15:55 New York.
+- Includes spread, commission, optional slippage, daylight-saving-time conversion, gap-stop fills, and a hard zero-balance limit.
+- Freezes the development gate before results: at least 500 trades, positive net profit and expectancy, PF 1.20, no more than 15% drawdown, and at least three profitable calendar years.
+- Keeps the untouched final third sealed unless the completed development run is reused with every rule, risk and cost input unchanged.
+
+No Supabase SQL or new Railway/Netlify variables are required for v3.6.
 
 ## What v3.5 changes
 
