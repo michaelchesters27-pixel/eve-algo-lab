@@ -20,6 +20,10 @@ from app.backtesting.gold_h1_trend import (
 from app.backtesting.liquidity_basket import LiquidityBasketBacktester, LiquidityBasketParameters
 from app.backtesting.london_opening_range import LondonOpeningRangeBacktester, LondonOpeningRangeParameters
 from app.backtesting.metrics import calculate_metrics
+from app.backtesting.new_york_morning_momentum import (
+    NewYorkMorningMomentumBacktester,
+    NewYorkMorningMomentumParameters,
+)
 from app.services.supabase_repo import SupabaseRepository
 
 logger = logging.getLogger(__name__)
@@ -39,6 +43,10 @@ LONDON_STRATEGY_SLUG = "eve-london-opening-range-v1"
 LONDON_STRATEGY_NAME = "EVE London Opening Range v1"
 LONDON_STRATEGY_VERSION = "1.0"
 LONDON_SOURCE_SHA256 = "28c65ec6f107790e74598dc04aed96f844c7758faba04a396c75450e8efd4681"
+NEW_YORK_MOMENTUM_STRATEGY_SLUG = "eve-new-york-morning-momentum-v1"
+NEW_YORK_MOMENTUM_STRATEGY_NAME = "EVE New York Morning Momentum v1"
+NEW_YORK_MOMENTUM_STRATEGY_VERSION = "1.0"
+NEW_YORK_MOMENTUM_SOURCE_SHA256 = "a2896828482bb3ff1fe8d8ef165d0038e9ff0e737ebdb02a2c20f14f2f641fc0"
 GOLD_H4_STRATEGY_SLUG = "eve-gold-h4-trend-55-20-v1"
 GOLD_H4_STRATEGY_NAME = "EVE Gold H4 Trend 55/20 v1"
 GOLD_H4_STRATEGY_VERSION = "1.0"
@@ -84,6 +92,28 @@ LONDON_LOCKED_SETTING_KEYS = (
     "range_minutes",
     "entry_cutoff_hour",
     "entry_cutoff_minute",
+    "force_exit_hour",
+    "force_exit_minute",
+    "spread_price",
+    "commission_per_001_lot",
+    "slippage_price",
+    "money_per_price_per_001_lot",
+    "path_mode",
+)
+NEW_YORK_MOMENTUM_LOCKED_SETTING_KEYS = (
+    "strategy",
+    "symbol",
+    "starting_balance",
+    "risk_percent",
+    "minimum_lot",
+    "lot_step",
+    "maximum_lot",
+    "timezone_name",
+    "signal_start_hour",
+    "signal_start_minute",
+    "signal_minutes",
+    "entry_hour",
+    "entry_minute",
     "force_exit_hour",
     "force_exit_minute",
     "spread_price",
@@ -170,6 +200,12 @@ def london_settings_match(first: dict[str, Any], second: dict[str, Any]) -> bool
     """Require an untouched run to reuse every London rule and cost input."""
 
     return all(first.get(key) == second.get(key) for key in LONDON_LOCKED_SETTING_KEYS)
+
+
+def new_york_momentum_settings_match(first: dict[str, Any], second: dict[str, Any]) -> bool:
+    """Require the untouched daily-momentum run to reuse every rule and cost."""
+
+    return all(first.get(key) == second.get(key) for key in NEW_YORK_MOMENTUM_LOCKED_SETTING_KEYS)
 
 
 def gold_h4_settings_match(first: dict[str, Any], second: dict[str, Any]) -> bool:
@@ -275,6 +311,96 @@ def _liquidity_verdict(
         "tone": "failed",
         "summary": "The complete historical sequence did not show a usable edge after costs.",
         "next_action": "Reject these settings. Change the entry hypothesis before testing again.",
+    }
+
+
+def _daily_momentum_verdict(
+    *,
+    net_profit: float,
+    profit_factor: float | None,
+    expectancy: float,
+    max_drawdown_percent: float,
+    total_trades: int,
+    yearly_net: dict[str, float],
+    test_segment: str,
+    locked_development_run_id: str | None = None,
+    account_ruined: bool = False,
+) -> dict[str, Any]:
+    """Pre-declared proof gate for the once-per-day New York hypothesis."""
+
+    pf = float(profit_factor or 0.0)
+    profitable_years = sum(float(value) > 0 for value in yearly_net.values())
+    enough_evidence = total_trades >= 500
+    repeatable = profitable_years >= 3
+    profitable = net_profit > 0 and expectancy > 0 and pf >= 1.20
+    controlled_drawdown = max_drawdown_percent <= 15.0
+    passed = enough_evidence and repeatable and profitable and controlled_drawdown
+    if account_ruined:
+        return {
+            "code": "account_ruined",
+            "label": "ACCOUNT BLOWN — FAILED",
+            "tone": "failed",
+            "summary": "The once-a-day strategy exhausted the test account. EVE stopped at zero.",
+            "next_action": "Reject it. Do not open the untouched period or build an EA.",
+        }
+    if test_segment == "untouched" and not locked_development_run_id:
+        return {
+            "code": "unlocked_untouched",
+            "label": "INVALID UNTOUCHED TEST — NO PASS",
+            "tone": "failed",
+            "summary": "No completed development run with identical frozen rules was linked.",
+            "next_action": "Run Development first, then reuse its exact settings.",
+        }
+    if passed and test_segment == "untouched":
+        return {
+            "code": "untouched_pass",
+            "label": "UNTOUCHED PASS — STRESS TEST NEXT",
+            "tone": "promising",
+            "summary": "The frozen once-a-day rules stayed profitable on unseen history with controlled drawdown.",
+            "next_action": "Verify with MT5 real ticks, adverse-cost tests and a demo forward test before considering live use.",
+        }
+    if passed and test_segment == "development":
+        return {
+            "code": "promising",
+            "label": "PROMISING — RUN UNTOUCHED TEST",
+            "tone": "promising",
+            "summary": "Development cleared 500 trades, PF 1.20, positive expectancy, three profitable years and 15% drawdown.",
+            "next_action": "Freeze every setting and run the untouched final third.",
+        }
+    if passed:
+        return {
+            "code": "exploratory_pass",
+            "label": "EXPLORATORY PASS — NOT PROOF",
+            "tone": "warning",
+            "summary": "This period cleared the numbers but not the locked development-to-untouched sequence.",
+            "next_action": "Run Development first, then the untouched final third unchanged.",
+        }
+    failed_gates: list[str] = []
+    if total_trades < 500:
+        failed_gates.append(f"only {total_trades} of 500 required trades")
+    if pf < 1.20:
+        failed_gates.append(f"profit factor {pf:.3f} below 1.20")
+    if net_profit <= 0 or expectancy <= 0:
+        failed_gates.append("profit or expectancy not positive")
+    if max_drawdown_percent > 15.0:
+        failed_gates.append(f"drawdown {max_drawdown_percent:.2f}% above 15%")
+    if profitable_years < 3:
+        failed_gates.append(f"only {profitable_years} profitable calendar years")
+    evidence_only = total_trades < 500 and net_profit > 0 and expectancy > 0 and pf >= 1.20 and controlled_drawdown
+    if evidence_only:
+        return {
+            "code": "insufficient_evidence",
+            "label": "NOT ENOUGH TRADES — NO VERDICT",
+            "tone": "waiting",
+            "summary": f"Only {total_trades} completed trades were found; EVE locked the minimum at 500 before this run.",
+            "next_action": "Do not build an EA from this sample.",
+        }
+    return {
+        "code": "failed",
+        "label": "FAILED — DO NOT BUILD EA",
+        "tone": "failed",
+        "summary": "The locked daily strategy failed: " + "; ".join(failed_gates) + ".",
+        "next_action": "Reject v1. Do not tune it on the same development result.",
     }
 
 
@@ -473,6 +599,43 @@ class BacktestService:
             )
         return str(version["id"])
 
+    async def ensure_new_york_momentum_strategy_version(self) -> str:
+        strategy = await self.repo.get_strategy_by_slug(NEW_YORK_MOMENTUM_STRATEGY_SLUG)
+        if strategy is None:
+            strategy = await self.repo.create_strategy(
+                NEW_YORK_MOMENTUM_STRATEGY_NAME,
+                NEW_YORK_MOMENTUM_STRATEGY_SLUG,
+                "At most one risk-sized XAU/USD trade per New York weekday, following the 08:30-09:00 morning impulse.",
+            )
+        version = await self.repo.get_strategy_version(str(strategy["id"]), NEW_YORK_MOMENTUM_STRATEGY_VERSION)
+        if version is None:
+            rules = {
+                "signal_timeframe": "verified M1 candles",
+                "execution_timeframe": "M1 replay",
+                "timezone": "America/New_York with DST",
+                "signal_window": "08:30-09:00 New York",
+                "direction": "buy when window close exceeds open; sell when close is below open",
+                "entry": "09:00 M1 open only; no late entry",
+                "stop": "opposite edge of the complete 30-minute signal range",
+                "target": None,
+                "force_exit": "15:55 New York",
+                "maximum_trades_per_day": 1,
+                "risk_percent": 0.25,
+                "martingale": False,
+                "averaging": False,
+                "spread_commission_slippage": True,
+                "missing_minutes": "skip the day",
+                "source": "railway/app/backtesting/new_york_morning_momentum.py",
+            }
+            version = await self.repo.create_strategy_version(
+                str(strategy["id"]),
+                NEW_YORK_MOMENTUM_STRATEGY_VERSION,
+                rules,
+                NEW_YORK_MOMENTUM_SOURCE_SHA256,
+                "Pre-declared once-per-day intraday momentum hypothesis. No EA exists unless locked development and untouched tests pass.",
+            )
+        return str(version["id"])
+
     async def ensure_gold_h4_strategy_version(self) -> str:
         strategy = await self.repo.get_strategy_by_slug(GOLD_H4_STRATEGY_SLUG)
         if strategy is None:
@@ -566,6 +729,17 @@ class BacktestService:
             if run_id in self.tasks and not self.tasks[run_id].done():
                 return
             task = asyncio.create_task(self._run_london(run_id, request), name=f"london-backtest-{run_id}")
+            self.tasks[run_id] = task
+            task.add_done_callback(lambda _: self.tasks.pop(run_id, None))
+
+    async def start_new_york_momentum(self, run_id: str, request: dict[str, Any]) -> None:
+        async with self._lock:
+            if run_id in self.tasks and not self.tasks[run_id].done():
+                return
+            task = asyncio.create_task(
+                self._run_new_york_momentum(run_id, request),
+                name=f"new-york-momentum-backtest-{run_id}",
+            )
             self.tasks[run_id] = task
             task.add_done_callback(lambda _: self.tasks.pop(run_id, None))
 
@@ -1951,5 +2125,284 @@ class BacktestService:
                 "error",
                 "backtester",
                 f"{LONDON_STRATEGY_NAME} backtest failed",
+                {"run_id": run_id, "error": str(exc)},
+            )
+
+    async def _run_new_york_momentum(self, run_id: str, request: dict[str, Any]) -> None:
+        started_at = datetime.now(timezone.utc)
+        data_interval = "1min"
+        test_segment = str(request.get("test_segment", "full"))
+        strategy_code = "new_york_morning_momentum"
+        accuracy = "Complete M1 signal window with M1 entry, stop, gap and forced-exit replay"
+        try:
+            await self.repo.update_backtest_run(
+                run_id,
+                status="running",
+                started_at=started_at.isoformat(),
+                reliability={
+                    "progress_percent": 0,
+                    "message": "Loading verified XAU/USD M1 candles for the once-a-day New York replay",
+                    "accuracy": accuracy,
+                    "input_interval": data_interval,
+                    "signal_interval": "1min",
+                    "strategy": strategy_code,
+                    "test_segment": test_segment,
+                    "locked_development_run_id": request.get("locked_development_run_id"),
+                    "source_sha256": NEW_YORK_MOMENTUM_SOURCE_SHA256,
+                },
+            )
+            await self.repo.log_event(
+                "info",
+                "backtester",
+                f"{NEW_YORK_MOMENTUM_STRATEGY_NAME} M1 replay started",
+                {"run_id": run_id, "test_segment": test_segment},
+            )
+
+            params = NewYorkMorningMomentumParameters(
+                timezone_name=str(request.get("timezone_name", "America/New_York")),
+                signal_start_hour=int(request.get("signal_start_hour", 8)),
+                signal_start_minute=int(request.get("signal_start_minute", 30)),
+                signal_minutes=int(request.get("signal_minutes", 30)),
+                entry_hour=int(request.get("entry_hour", 9)),
+                entry_minute=int(request.get("entry_minute", 0)),
+                force_exit_hour=int(request.get("force_exit_hour", 15)),
+                force_exit_minute=int(request.get("force_exit_minute", 55)),
+                risk_percent=float(request.get("risk_percent", 0.25)),
+                minimum_lot=float(request.get("minimum_lot", 0.01)),
+                lot_step=float(request.get("lot_step", 0.01)),
+                maximum_lot=float(request.get("maximum_lot", 1.0)),
+                spread_price=float(request.get("spread_price", 0.05)),
+                commission_per_001_lot=float(request.get("commission_per_001_lot", 0.08)),
+                slippage_price=float(request.get("slippage_price", 0.0)),
+                money_per_price_per_001_lot=float(request.get("money_per_price_per_001_lot", 1.0)),
+                path_mode=str(request.get("path_mode", "candle_direction")),
+            )
+            simulator = NewYorkMorningMomentumBacktester(
+                float(request.get("starting_balance", 10_000.0)),
+                params,
+            )
+
+            symbol = str(request.get("symbol", "XAU/USD"))
+            date_from = request.get("date_from")
+            date_to = request.get("date_to")
+            expected_rows = await self.repo.count_market_candles(symbol, data_interval, date_from, date_to)
+            if expected_rows <= 0:
+                raise RuntimeError("No M1 candles exist for the selected date range")
+
+            cursor: str | None = None
+            processed = 0
+            trade_buffer: list[dict[str, Any]] = []
+            basket_buffer: list[dict[str, Any]] = []
+            last_progress_update = 0
+            page_number = 0
+
+            while True:
+                if page_number % 10 == 0:
+                    run = await self.repo.get_backtest_run(run_id)
+                    if not run or run.get("status") == "cancelled":
+                        await self.repo.log_event(
+                            "warning",
+                            "backtester",
+                            "New York Morning Momentum backtest cancelled",
+                            {"run_id": run_id},
+                        )
+                        return
+                page = await self.repo.fetch_candles_page(
+                    symbol=symbol,
+                    interval=data_interval,
+                    after=cursor,
+                    date_from=date_from,
+                    date_to=date_to,
+                    limit=1000,
+                )
+                if not page:
+                    break
+                page_number += 1
+                page_processed = 0
+                last_processed_row: dict[str, Any] | None = None
+                for row in page:
+                    simulator.process_candle(Candle.from_row(row))
+                    page_processed += 1
+                    last_processed_row = row
+                    if simulator.account_ruined:
+                        break
+                processed += page_processed
+                if last_processed_row is not None:
+                    cursor = str(last_processed_row["candle_time"])
+
+                trade_buffer.extend(trade.to_trade_row(run_id) for trade in simulator.drain_trades())
+                basket_buffer.extend(trade.to_basket_row(run_id) for trade in simulator.drain_baskets())
+                if len(trade_buffer) >= 1000:
+                    await self.repo.bulk_insert_backtest_trades(trade_buffer)
+                    trade_buffer.clear()
+                if len(basket_buffer) >= 500:
+                    await self.repo.bulk_insert_backtest_baskets(basket_buffer)
+                    basket_buffer.clear()
+
+                progress = min(99.5, processed / expected_rows * 100.0)
+                if processed - last_progress_update >= 10_000 or processed == expected_rows:
+                    last_progress_update = processed
+                    await self.repo.update_backtest_run(
+                        run_id,
+                        reliability={
+                            "progress_percent": round(progress, 3),
+                            "message": f"Processed {processed:,} of {expected_rows:,} verified M1 candles",
+                            "accuracy": accuracy,
+                            "input_interval": data_interval,
+                            "signal_interval": "1min",
+                            "strategy": strategy_code,
+                            "test_segment": test_segment,
+                            "locked_development_run_id": request.get("locked_development_run_id"),
+                            "sessions_traded": simulator.sessions_traded,
+                            "maximum_trades_per_day": 1,
+                            "source_sha256": NEW_YORK_MOMENTUM_SOURCE_SHA256,
+                        },
+                    )
+                if simulator.account_ruined or len(page) < 1000:
+                    break
+
+            final_trades, final_baskets = simulator.finalise()
+            trade_buffer.extend(trade.to_trade_row(run_id) for trade in final_trades)
+            basket_buffer.extend(trade.to_basket_row(run_id) for trade in final_baskets)
+            if trade_buffer:
+                await self.repo.bulk_insert_backtest_trades(trade_buffer)
+            if basket_buffer:
+                await self.repo.bulk_insert_backtest_baskets(basket_buffer)
+
+            summary = simulator.summary()
+            if not summary.basket_pnls:
+                raise RuntimeError("No complete New York Morning Momentum trades were found in the selected period")
+            position_metrics = calculate_metrics(summary.position_pnls, summary.starting_balance)
+            trade_metrics = calculate_metrics(summary.basket_pnls, summary.starting_balance)
+            profit_factor = (
+                trade_metrics.profit_factor
+                if trade_metrics.profit_factor is not None and math.isfinite(trade_metrics.profit_factor)
+                else None
+            )
+            recovery_factor = (
+                trade_metrics.recovery_factor
+                if trade_metrics.recovery_factor is not None and math.isfinite(trade_metrics.recovery_factor)
+                else None
+            )
+            first = datetime.fromisoformat(summary.first_candle) if summary.first_candle else None
+            last = datetime.fromisoformat(summary.last_candle) if summary.last_candle else None
+            weeks = max(1.0 / 7.0, ((last - first).total_seconds() / 604800.0) if first and last else 0.0)
+            drawdown_percent = max(trade_metrics.max_drawdown_percent, summary.max_equity_drawdown_percent)
+            verdict = _daily_momentum_verdict(
+                net_profit=trade_metrics.net_profit,
+                profit_factor=trade_metrics.profit_factor,
+                expectancy=trade_metrics.expectancy,
+                max_drawdown_percent=drawdown_percent,
+                total_trades=summary.total_baskets,
+                yearly_net=summary.yearly_net,
+                test_segment=test_segment,
+                locked_development_run_id=request.get("locked_development_run_id"),
+                account_ruined=summary.account_ruined,
+            )
+            reliability = {
+                "progress_percent": 100,
+                "message": (
+                    f"{NEW_YORK_MOMENTUM_STRATEGY_NAME} stopped when the account reached $0"
+                    if summary.account_ruined
+                    else f"{NEW_YORK_MOMENTUM_STRATEGY_NAME} backtest complete"
+                ),
+                "accuracy": accuracy,
+                "warning": "Signals and execution use verified M1 bars. M1 still cannot prove tick ordering or exact broker fills; verify any survivor with MT5 real ticks.",
+                "input_interval": data_interval,
+                "signal_interval": "1min",
+                "strategy": strategy_code,
+                "test_segment": test_segment,
+                "locked_development_run_id": request.get("locked_development_run_id"),
+                "candles_processed": summary.candles_processed,
+                "candles_available": expected_rows,
+                "terminated_early": summary.account_ruined and summary.candles_processed < expected_rows,
+                "account_ruined": summary.account_ruined,
+                "ruin_time": summary.ruin_time,
+                "ambiguous_candles": 0,
+                "maximum_trades_per_day": 1,
+                "sessions_seen": summary.sessions_seen,
+                "eligible_sessions": summary.eligible_sessions,
+                "complete_signal_windows": summary.complete_signal_windows,
+                "sessions_traded": summary.sessions_traded,
+                "incomplete_window_skips": summary.incomplete_window_skips,
+                "doji_skips": summary.doji_skips,
+                "risk_size_skips": summary.risk_size_skips,
+                "gap_stop_fills": summary.gap_stop_fills,
+                "first_candle": summary.first_candle,
+                "last_candle": summary.last_candle,
+                "exit_reasons": summary.exit_reasons,
+                "monthly_net": summary.monthly_net,
+                "yearly_net": summary.yearly_net,
+                "profitable_years": sum(float(value) > 0 for value in summary.yearly_net.values()),
+                "position_metrics": position_metrics.as_dict(),
+                "basket_metrics": trade_metrics.as_dict(),
+                "trade_metrics": trade_metrics.as_dict(),
+                "worst_basket": round(min(summary.basket_pnls), 2),
+                "worst_trade": round(min(summary.basket_pnls), 2),
+                "longest_losing_streak": _longest_losing_streak(summary.basket_pnls),
+                "baskets_per_week": round(summary.total_baskets / weeks, 3),
+                "trades_per_week": round(summary.total_baskets / weeks, 3),
+                "risk_model": "0.25% of current balance, rounded down to broker lot step",
+                "verdict": verdict,
+                "source_sha256": NEW_YORK_MOMENTUM_SOURCE_SHA256,
+            }
+            await self.repo.update_backtest_run(
+                run_id,
+                status="complete",
+                ending_balance=summary.ending_balance,
+                net_profit=trade_metrics.net_profit,
+                gross_profit=trade_metrics.gross_profit,
+                gross_loss=trade_metrics.gross_loss,
+                profit_factor=profit_factor,
+                max_balance_drawdown=trade_metrics.max_drawdown,
+                max_equity_drawdown=summary.max_equity_drawdown,
+                max_drawdown_percent=drawdown_percent,
+                total_positions=summary.total_positions,
+                total_baskets=summary.total_baskets,
+                winning_baskets=summary.winning_baskets,
+                losing_baskets=summary.losing_baskets,
+                basket_win_rate=(summary.winning_baskets / summary.total_baskets * 100.0) if summary.total_baskets else 0,
+                expectancy=trade_metrics.expectancy,
+                recovery_factor=recovery_factor,
+                reliability=reliability,
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+            await self.repo.log_event(
+                "success",
+                "backtester",
+                f"{NEW_YORK_MOMENTUM_STRATEGY_NAME} completed: {verdict['label']}",
+                {
+                    "run_id": run_id,
+                    "candles": summary.candles_processed,
+                    "trades": summary.total_baskets,
+                    "net_profit": trade_metrics.net_profit,
+                    "profit_factor": profit_factor,
+                    "verdict": verdict["code"],
+                    "test_segment": test_segment,
+                },
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception("New York Morning Momentum backtest %s failed", run_id)
+            await self.repo.update_backtest_run(
+                run_id,
+                status="failed",
+                error=str(exc),
+                reliability={
+                    "progress_percent": 0,
+                    "message": str(exc),
+                    "accuracy": accuracy,
+                    "input_interval": data_interval,
+                    "signal_interval": "1min",
+                    "strategy": strategy_code,
+                    "test_segment": test_segment,
+                },
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+            await self.repo.log_event(
+                "error",
+                "backtester",
+                f"{NEW_YORK_MOMENTUM_STRATEGY_NAME} backtest failed",
                 {"run_id": run_id, "error": str(exc)},
             )

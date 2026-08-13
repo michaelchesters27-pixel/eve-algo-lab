@@ -5,12 +5,13 @@ import test from "node:test";
 const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const js = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
 
-test("Strategy Tester is a dedicated research workspace with Gold H1 Trend v1, archived hypotheses and the legacy diagnostic", () => {
+test("Strategy Tester is a dedicated research workspace with the once-a-day New York experiment and archived hypotheses", () => {
   assert.match(html, /id="openLegacyBacktester"/);
   assert.match(html, /id="backtester"[^>]*hidden[^>]*aria-hidden="true"/);
   assert.match(html, /id="closeLegacyBacktester"/);
   assert.match(html, /data-workspace="tester"/);
-  assert.match(html, /Gold H1 Trend 55\/20 v1 — current experiment/);
+  assert.match(html, /New York Morning Momentum v1 — current once-a-day experiment/);
+  assert.match(html, /Gold H1 Trend 55\/20 v1 — failed development/);
   assert.match(html, /Gold H4 Trend 55\/20 v1 — inconclusive \(62 trades\)/);
   assert.match(html, /London Opening Range v1 — failed development/);
   assert.match(html, /Liquidity Continuation v1 — failed development/);
@@ -36,7 +37,7 @@ test("completed history is not automatically rendered as current", () => {
   assert.match(js, /if \(legacyBacktesterOpen && \(activeBacktestId \|\| legacyBacktestHistoryOpen\)\) await refreshBacktests\(true\)/);
 });
 
-test("Gold trend, London and archived liquidity controls plus blunt result verdict are present", () => {
+test("New York daily momentum, Gold trend, London and archived liquidity controls plus blunt verdict are present", () => {
   for (const id of [
     "testerStrategy", "testPeriod", "positionsPerBasket", "liquidityLookback", "basketStop", "slippagePrice", "moneyPerPrice",
     "maximumHold", "cooldownCandles", "minimumMoveLabel", "londonRiskPercent", "londonBreakoutBuffer", "londonRewardRisk",
@@ -45,10 +46,12 @@ test("Gold trend, London and archived liquidity controls plus blunt result verdi
   ]) assert.match(html, new RegExp(`id="${id}"`));
   assert.match(js, /backtests\/gold-h1-trend/);
   assert.match(js, /backtests\/gold-h4-trend/);
+  assert.match(js, /backtests\/new-york-morning-momentum/);
   assert.match(js, /backtests\/london-opening-range/);
   assert.match(js, /backtests\/liquidity-basket/);
   assert.match(js, /breakout_continuation/);
   assert.match(js, /MIDPOINT STOP/);
+  assert.match(js, /MAX 1 TRADE\/DAY/);
   assert.match(js, /55-\$\{trendFrame\} BREAKOUT/);
   assert.match(js, /renderBacktestVerdict/);
   assert.match(js, /renderBacktestEquity/);
