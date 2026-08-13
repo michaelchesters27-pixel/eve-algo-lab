@@ -1,6 +1,15 @@
-# EVE Command Centre v4.1
+# EVE Command Centre v4.2
 
 EVE is a private XAU/USD research, strategy-evolution and MT5 bot-development platform using Supabase, Railway, Netlify and Twelve Data.
+
+## What v4.2 changes
+
+- Adds **Gold Rest-of-Day Close Momentum v1**, translating published futures evidence that the move since the previous close predicts the final half-hour.
+- At 15:30 New York it follows the direction from the previous eligible 16:00 close, then exits at 16:00 with one fixed 0.01-lot trade per complete weekday.
+- Keeps the same costs, 0.25% hard stop, no re-entry and locked 500-trade development gate.
+- Archives Gold Intraday Close Momentum v1 after its 1,015-trade development loss instead of changing its predictor after seeing the result.
+
+No Supabase SQL or new Railway/Netlify variables are required for v4.2.
 
 ## What v4.1 changes
 

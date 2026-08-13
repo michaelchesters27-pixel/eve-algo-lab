@@ -376,6 +376,47 @@ def test_intraday_close_momentum_uses_the_predeclared_daily_gate() -> None:
     assert verdict["code"] == "promising"
 
 
+def test_rest_of_day_close_momentum_uses_prior_close_and_exits_at_1600() -> None:
+    simulator = GoldSessionAnomalyBacktester(
+        10_000.0,
+        parameters("rest_of_day_close_momentum"),
+    )
+    simulator.process_candle(minute(new_york_time(2, 16, 0), 100.0, 100.0, 100.0, 100.0))
+    simulator.process_candle(minute(new_york_time(5, 15, 30), 105.0, 105.0, 105.0, 105.0))
+
+    assert simulator.position is not None
+    assert simulator.position.side == "buy"
+    assert simulator.position.signal.predictor_start_price == 100.0
+    assert simulator.position.signal.predictor_end_price == 105.0
+
+    simulator.process_candle(minute(new_york_time(5, 16, 0), 107.0, 107.0, 107.0, 107.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 1
+    assert trades[0].net_pnl == pytest.approx(2.0)
+    assert trades[0].exit_reason == "FROZEN SESSION EXIT"
+    assert trades[0].strategy_code == "gold_rest_of_day_close_momentum"
+
+
+def test_rest_of_day_close_momentum_trades_all_five_complete_weekdays() -> None:
+    simulator = GoldSessionAnomalyBacktester(
+        10_000.0,
+        parameters("rest_of_day_close_momentum"),
+    )
+    simulator.process_candle(minute(new_york_time(2, 16, 0), 100.0, 100.0, 100.0, 100.0))
+    reference = 100.0
+    for day in range(5, 10):
+        entry = reference + 1.0
+        close = entry + 1.0
+        simulator.process_candle(minute(new_york_time(day, 15, 30), entry, entry, entry, entry))
+        simulator.process_candle(minute(new_york_time(day, 16, 0), close, close, close, close))
+        reference = close
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 5
+    assert simulator.summary().sessions_traded == 5
+
+
 def abnormal_time(day: int, hour: int, minute_: int = 0) -> datetime:
     # The published study uses a fixed GMT+3 clock.
     gmt_plus_three = timezone(timedelta(hours=3))
@@ -618,6 +659,15 @@ class FakeGoldSessionRepository:
                 minute(new_york_time(5, 16, 0), 110.0, 110.0, 110.0, 110.0),
             ],
             "gold_intraday_close_momentum",
+        ),
+        (
+            "rest_of_day_close_momentum",
+            [
+                minute(new_york_time(2, 16, 0), 100.0, 100.0, 100.0, 100.0),
+                minute(new_york_time(5, 15, 30), 105.0, 105.0, 105.0, 105.0),
+                minute(new_york_time(5, 16, 0), 110.0, 110.0, 110.0, 110.0),
+            ],
+            "gold_rest_of_day_close_momentum",
         ),
     ],
 )
