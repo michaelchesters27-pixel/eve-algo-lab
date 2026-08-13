@@ -10,9 +10,10 @@ test("Strategy Tester is a dedicated research workspace with the current everyda
   assert.match(html, /id="backtester"[^>]*hidden[^>]*aria-hidden="true"/);
   assert.match(html, /id="closeLegacyBacktester"/);
   assert.match(html, /data-workspace="tester"/);
-  assert.match(html, /The current experiment is <strong>Gold Intraday Close Momentum v1<\/strong>/);
-  assert.match(html, /Gold Intraday Close Momentum v1 · one trade every complete weekday/);
-  assert.match(html, /Gold Intraday Close Momentum v1 — current everyday experiment/);
+  assert.match(html, /The current experiment is <strong>Gold Rest-of-Day Close Momentum v1<\/strong>/);
+  assert.match(html, /Gold Rest-of-Day Close Momentum v1 · one trade every complete weekday/);
+  assert.match(html, /Gold Rest-of-Day Close Momentum v1 — current everyday experiment/);
+  assert.match(html, /Gold Intraday Close Momentum v1 — failed development/);
   assert.match(html, /Gold Abnormal Momentum v1 — profitable but too infrequent/);
   assert.match(html, /Asia Session Long v1 — failed development/);
   assert.match(html, /Shanghai Day Long v1 — failed development/);
@@ -66,6 +67,8 @@ test("Gold session, COMEX and New York daily momentum, Gold trend, London and ar
   assert.match(js, /MAX 1 TRADE\/DAY/);
   assert.match(js, /2-SIGMA TRIGGER/);
   assert.match(js, /11:30-12:00 DIRECTION/);
+  assert.match(js, /PRIOR 16:00 REFERENCE/);
+  assert.match(js, /15:30 FOLLOW DIRECTION/);
   assert.match(js, /15:30 ENTRY/);
   assert.match(js, /ONE TRADE EVERY COMPLETE WEEKDAY/);
   assert.match(js, /17:00 SHORT \/ 19:00 BUY/);

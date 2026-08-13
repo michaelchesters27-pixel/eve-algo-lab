@@ -71,8 +71,10 @@ GOLD_ABNORMAL_MOMENTUM_STRATEGY_SLUG = "eve-gold-abnormal-momentum-v1"
 GOLD_ABNORMAL_MOMENTUM_STRATEGY_NAME = "EVE Gold Abnormal Momentum v1"
 GOLD_INTRADAY_CLOSE_MOMENTUM_STRATEGY_SLUG = "eve-gold-intraday-close-momentum-v1"
 GOLD_INTRADAY_CLOSE_MOMENTUM_STRATEGY_NAME = "EVE Gold Intraday Close Momentum v1"
+GOLD_REST_OF_DAY_CLOSE_MOMENTUM_STRATEGY_SLUG = "eve-gold-rest-of-day-close-momentum-v1"
+GOLD_REST_OF_DAY_CLOSE_MOMENTUM_STRATEGY_NAME = "EVE Gold Rest-of-Day Close Momentum v1"
 GOLD_SESSION_ANOMALY_STRATEGY_VERSION = "1.0"
-GOLD_SESSION_ANOMALY_SOURCE_SHA256 = "709e9a0f93d2415e6421c9c83f8f45b5a728b270b6b80e3d1fa663fd839d3b69"
+GOLD_SESSION_ANOMALY_SOURCE_SHA256 = "d65a8bcde55c262922b9ba1fa04aacbbdbf31405f5fe91a96efba899c11f2984"
 GOLD_H4_STRATEGY_SLUG = "eve-gold-h4-trend-55-20-v1"
 GOLD_H4_STRATEGY_NAME = "EVE Gold H4 Trend 55/20 v1"
 GOLD_H4_STRATEGY_VERSION = "1.0"
@@ -304,6 +306,15 @@ def comex_closing_momentum_settings_match(first: dict[str, Any], second: dict[st
 
 
 def gold_session_anomaly_identity(session_leg: str) -> dict[str, str]:
+    if session_leg == "rest_of_day_close_momentum":
+        return {
+            "code": "gold_rest_of_day_close_momentum",
+            "name": GOLD_REST_OF_DAY_CLOSE_MOMENTUM_STRATEGY_NAME,
+            "slug": GOLD_REST_OF_DAY_CLOSE_MOMENTUM_STRATEGY_SLUG,
+            "description": "One fixed-size XAU/USD closing-half-hour trade each complete New York weekday, directed by the move since the previous 16:00 close.",
+            "entry": "at 15:30 New York, buy when price is above the previous eligible 16:00 close; otherwise sell",
+            "exit": "close at the exact 16:00 New York M1 open",
+        }
     if session_leg == "gld_fifth_half_hour_momentum":
         return {
             "code": "gold_intraday_close_momentum",
@@ -984,7 +995,11 @@ class BacktestService:
                     else (
                         "the 11:30-12:00 predictor is complete three and a half hours before the 15:30 entry"
                         if session_leg == "gld_fifth_half_hour_momentum"
-                        else None
+                        else (
+                            "the previous 16:00 close is known before the current 15:30 entry; missing references skip the day"
+                            if session_leg == "rest_of_day_close_momentum"
+                            else None
+                        )
                     )
                 ),
                 "research_source": (
@@ -993,7 +1008,11 @@ class BacktestService:
                     else (
                         "Xu, Bouri, Saeed and Wen (2020), Resources Policy 69, DOI 10.1016/j.resourpol.2020.101830"
                         if session_leg == "gld_fifth_half_hour_momentum"
-                        else None
+                        else (
+                            "Baltussen, Da, Lammers and Martens (2021), Journal of Financial Economics 142, DOI 10.1016/j.jfineco.2021.04.029"
+                            if session_leg == "rest_of_day_close_momentum"
+                            else None
+                        )
                     )
                 ),
                 "source": "railway/app/backtesting/gold_session_anomaly.py",
@@ -1010,9 +1029,13 @@ class BacktestService:
                         "Published GLD intraday-predictability rule translated once into XAU/USD and frozen before its EVE result was seen. No EA exists unless locked development and untouched tests both pass."
                         if session_leg == "gld_fifth_half_hour_momentum"
                         else (
-                            "Two eastern-session hypotheses frozen together after both COMEX session legs failed, before either eastern result was seen. No EA exists unless locked development and untouched tests both pass."
-                            if session_leg in {"asia_long", "shanghai_day_long"}
-                            else "Pre-declared together with the opposite session leg before either result was seen. No EA exists unless locked development and untouched tests both pass."
+                            "Published futures rest-of-day momentum rule translated once into XAU/USD and frozen before its EVE result was seen. No EA exists unless locked development and untouched tests both pass."
+                            if session_leg == "rest_of_day_close_momentum"
+                            else (
+                                "Two eastern-session hypotheses frozen together after both COMEX session legs failed, before either eastern result was seen. No EA exists unless locked development and untouched tests both pass."
+                                if session_leg in {"asia_long", "shanghai_day_long"}
+                                else "Pre-declared together with the opposite session leg before either result was seen. No EA exists unless locked development and untouched tests both pass."
+                            )
                         )
                     )
                 ),
@@ -3102,15 +3125,19 @@ class BacktestService:
                 "Verified M1 11:30-12:00 New York predictor, 15:30 entry, 16:00 exit and hard-money stop replay"
                 if session_leg == "gld_fifth_half_hour_momentum"
                 else (
-                    "Verified M1 13:30 New York long entry, next eligible 08:20 exit, financing and hard-money stop replay"
-                    if session_leg == "overnight_long"
+                    "Verified M1 prior-16:00 New York reference, 15:30 entry, 16:00 exit and hard-money stop replay"
+                    if session_leg == "rest_of_day_close_momentum"
                     else (
-                        "Verified M1 18:00 New York long entry, 15:30 Shanghai exit and hard-money stop replay"
-                        if session_leg == "asia_long"
+                        "Verified M1 13:30 New York long entry, next eligible 08:20 exit, financing and hard-money stop replay"
+                        if session_leg == "overnight_long"
                         else (
-                            "Verified M1 09:00 Shanghai long entry, 15:30 Shanghai exit and hard-money stop replay"
-                            if session_leg == "shanghai_day_long"
-                            else "Verified M1 08:20 New York short entry, 13:30 exit and hard-money stop replay"
+                            "Verified M1 18:00 New York long entry, 15:30 Shanghai exit and hard-money stop replay"
+                            if session_leg == "asia_long"
+                            else (
+                                "Verified M1 09:00 Shanghai long entry, 15:30 Shanghai exit and hard-money stop replay"
+                                if session_leg == "shanghai_day_long"
+                                else "Verified M1 08:20 New York short entry, 13:30 exit and hard-money stop replay"
+                            )
                         )
                     )
                 )

@@ -220,6 +220,7 @@ class GoldSessionAnomalyBacktestRequest(BaseModel):
         "shanghai_day_long",
         "abnormal_momentum",
         "gld_fifth_half_hour_momentum",
+        "rest_of_day_close_momentum",
     ] = "overnight_long"
     symbol: str = Field(default="XAU/USD", min_length=3, max_length=40)
     interval: Literal["1min"] = "1min"
