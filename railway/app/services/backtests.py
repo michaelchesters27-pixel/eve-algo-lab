@@ -73,8 +73,12 @@ GOLD_INTRADAY_CLOSE_MOMENTUM_STRATEGY_SLUG = "eve-gold-intraday-close-momentum-v
 GOLD_INTRADAY_CLOSE_MOMENTUM_STRATEGY_NAME = "EVE Gold Intraday Close Momentum v1"
 GOLD_REST_OF_DAY_CLOSE_MOMENTUM_STRATEGY_SLUG = "eve-gold-rest-of-day-close-momentum-v1"
 GOLD_REST_OF_DAY_CLOSE_MOMENTUM_STRATEGY_NAME = "EVE Gold Rest-of-Day Close Momentum v1"
+GOLD_ETF_INTRADAY_SHORT_STRATEGY_SLUG = "eve-gold-etf-hours-intraday-short-v1"
+GOLD_ETF_INTRADAY_SHORT_STRATEGY_NAME = "EVE Gold ETF-Hours Intraday Short v1"
+GOLD_ETF_OVERNIGHT_LONG_STRATEGY_SLUG = "eve-gold-etf-hours-overnight-long-v1"
+GOLD_ETF_OVERNIGHT_LONG_STRATEGY_NAME = "EVE Gold ETF-Hours Overnight Long v1"
 GOLD_SESSION_ANOMALY_STRATEGY_VERSION = "1.0"
-GOLD_SESSION_ANOMALY_SOURCE_SHA256 = "d65a8bcde55c262922b9ba1fa04aacbbdbf31405f5fe91a96efba899c11f2984"
+GOLD_SESSION_ANOMALY_SOURCE_SHA256 = "42f5446a9d743d9574e9ff5889237b3e525d3c801566a43fc0e30ea74bf486c0"
 GOLD_H4_STRATEGY_SLUG = "eve-gold-h4-trend-55-20-v1"
 GOLD_H4_STRATEGY_NAME = "EVE Gold H4 Trend 55/20 v1"
 GOLD_H4_STRATEGY_VERSION = "1.0"
@@ -205,6 +209,10 @@ GOLD_SESSION_ANOMALY_LOCKED_SETTING_KEYS = (
     "intraday_entry_minute",
     "intraday_exit_hour",
     "intraday_exit_minute",
+    "etf_market_open_hour",
+    "etf_market_open_minute",
+    "etf_market_close_hour",
+    "etf_market_close_minute",
     "long_overnight_cost_per_001_lot",
     "triple_swap_weekday",
     "spread_price",
@@ -306,6 +314,24 @@ def comex_closing_momentum_settings_match(first: dict[str, Any], second: dict[st
 
 
 def gold_session_anomaly_identity(session_leg: str) -> dict[str, str]:
+    if session_leg == "etf_intraday_short":
+        return {
+            "code": "gold_etf_intraday_short",
+            "name": GOLD_ETF_INTRADAY_SHORT_STRATEGY_NAME,
+            "slug": GOLD_ETF_INTRADAY_SHORT_STRATEGY_SLUG,
+            "description": "One fixed-size XAU/USD short from the New York ETF market open to its close on every complete weekday.",
+            "entry": "sell the exact 09:30 New York M1 open on Monday through Friday",
+            "exit": "close at the exact 16:00 New York M1 open",
+        }
+    if session_leg == "etf_overnight_long":
+        return {
+            "code": "gold_etf_overnight_long",
+            "name": GOLD_ETF_OVERNIGHT_LONG_STRATEGY_NAME,
+            "slug": GOLD_ETF_OVERNIGHT_LONG_STRATEGY_SLUG,
+            "description": "One fixed-size XAU/USD long from the New York ETF market close to the next eligible market open.",
+            "entry": "buy the exact 16:00 New York M1 open on Monday through Friday",
+            "exit": "close at the next eligible weekday's exact 09:30 New York M1 open",
+        }
     if session_leg == "rest_of_day_close_momentum":
         return {
             "code": "gold_rest_of_day_close_momentum",
@@ -977,7 +1003,7 @@ class BacktestService:
                 "spread_commission_slippage": True,
                 "overnight_financing": (
                     "$0.70 per 0.01 lot at 17:00 New York with Wednesday triple"
-                    if session_leg == "overnight_long"
+                    if session_leg in {"overnight_long", "etf_overnight_long"}
                     else (
                         "not applicable because the trade opens after rollover and exits before the next rollover"
                         if session_leg in {"asia_long", "abnormal_momentum"}
@@ -1003,15 +1029,19 @@ class BacktestService:
                     )
                 ),
                 "research_source": (
-                    "Caporale and Plastun (2021), Financial Markets and Portfolio Management, DOI 10.1007/s11408-021-00380-w"
-                    if session_leg == "abnormal_momentum"
+                    "Liu, Zhang and Zhang (2026), Journal of Banking & Finance 185, DOI 10.1016/j.jbankfin.2025.107621"
+                    if session_leg in {"etf_intraday_short", "etf_overnight_long"}
                     else (
-                        "Xu, Bouri, Saeed and Wen (2020), Resources Policy 69, DOI 10.1016/j.resourpol.2020.101830"
-                        if session_leg == "gld_fifth_half_hour_momentum"
+                        "Caporale and Plastun (2021), Financial Markets and Portfolio Management, DOI 10.1007/s11408-021-00380-w"
+                        if session_leg == "abnormal_momentum"
                         else (
-                            "Baltussen, Da, Lammers and Martens (2021), Journal of Financial Economics 142, DOI 10.1016/j.jfineco.2021.04.029"
-                            if session_leg == "rest_of_day_close_momentum"
-                            else None
+                            "Xu, Bouri, Saeed and Wen (2020), Resources Policy 69, DOI 10.1016/j.resourpol.2020.101830"
+                            if session_leg == "gld_fifth_half_hour_momentum"
+                            else (
+                                "Baltussen, Da, Lammers and Martens (2021), Journal of Financial Economics 142, DOI 10.1016/j.jfineco.2021.04.029"
+                                if session_leg == "rest_of_day_close_momentum"
+                                else None
+                            )
                         )
                     )
                 ),
@@ -1023,18 +1053,22 @@ class BacktestService:
                 rules,
                 GOLD_SESSION_ANOMALY_SOURCE_SHA256,
                 (
-                    "Published same-day abnormal-return momentum hypothesis translated into a causal rolling rule and frozen before its EVE result was seen. No EA exists unless locked development and untouched tests both pass."
-                    if session_leg == "abnormal_momentum"
+                    "Published ETF overnight-positive/intraday-negative effect translated once into XAU/USD market-hour legs and frozen together before either EVE result was seen. No EA exists unless locked development and untouched tests both pass."
+                    if session_leg in {"etf_intraday_short", "etf_overnight_long"}
                     else (
-                        "Published GLD intraday-predictability rule translated once into XAU/USD and frozen before its EVE result was seen. No EA exists unless locked development and untouched tests both pass."
-                        if session_leg == "gld_fifth_half_hour_momentum"
+                        "Published same-day abnormal-return momentum hypothesis translated into a causal rolling rule and frozen before its EVE result was seen. No EA exists unless locked development and untouched tests both pass."
+                        if session_leg == "abnormal_momentum"
                         else (
-                            "Published futures rest-of-day momentum rule translated once into XAU/USD and frozen before its EVE result was seen. No EA exists unless locked development and untouched tests both pass."
-                            if session_leg == "rest_of_day_close_momentum"
+                            "Published GLD intraday-predictability rule translated once into XAU/USD and frozen before its EVE result was seen. No EA exists unless locked development and untouched tests both pass."
+                            if session_leg == "gld_fifth_half_hour_momentum"
                             else (
-                                "Two eastern-session hypotheses frozen together after both COMEX session legs failed, before either eastern result was seen. No EA exists unless locked development and untouched tests both pass."
-                                if session_leg in {"asia_long", "shanghai_day_long"}
-                                else "Pre-declared together with the opposite session leg before either result was seen. No EA exists unless locked development and untouched tests both pass."
+                                "Published futures rest-of-day momentum rule translated once into XAU/USD and frozen before its EVE result was seen. No EA exists unless locked development and untouched tests both pass."
+                                if session_leg == "rest_of_day_close_momentum"
+                                else (
+                                    "Two eastern-session hypotheses frozen together after both COMEX session legs failed, before either eastern result was seen. No EA exists unless locked development and untouched tests both pass."
+                                    if session_leg in {"asia_long", "shanghai_day_long"}
+                                    else "Pre-declared together with the opposite session leg before either result was seen. No EA exists unless locked development and untouched tests both pass."
+                                )
                             )
                         )
                     )
@@ -3118,31 +3152,17 @@ class BacktestService:
         session_leg = str(request.get("session_leg", "overnight_long"))
         identity = gold_session_anomaly_identity(session_leg)
         strategy_code = identity["code"]
-        accuracy = (
-            "Verified M1 causal 60-day abnormal-return baseline, sign-specific GMT+3 entry, day-end exit and hard-money stop replay"
-            if session_leg == "abnormal_momentum"
-            else (
-                "Verified M1 11:30-12:00 New York predictor, 15:30 entry, 16:00 exit and hard-money stop replay"
-                if session_leg == "gld_fifth_half_hour_momentum"
-                else (
-                    "Verified M1 prior-16:00 New York reference, 15:30 entry, 16:00 exit and hard-money stop replay"
-                    if session_leg == "rest_of_day_close_momentum"
-                    else (
-                        "Verified M1 13:30 New York long entry, next eligible 08:20 exit, financing and hard-money stop replay"
-                        if session_leg == "overnight_long"
-                        else (
-                            "Verified M1 18:00 New York long entry, 15:30 Shanghai exit and hard-money stop replay"
-                            if session_leg == "asia_long"
-                            else (
-                                "Verified M1 09:00 Shanghai long entry, 15:30 Shanghai exit and hard-money stop replay"
-                                if session_leg == "shanghai_day_long"
-                                else "Verified M1 08:20 New York short entry, 13:30 exit and hard-money stop replay"
-                            )
-                        )
-                    )
-                )
-            )
-        )
+        accuracy = {
+            "abnormal_momentum": "Verified M1 causal 60-day abnormal-return baseline, sign-specific GMT+3 entry, day-end exit and hard-money stop replay",
+            "gld_fifth_half_hour_momentum": "Verified M1 11:30-12:00 New York predictor, 15:30 entry, 16:00 exit and hard-money stop replay",
+            "rest_of_day_close_momentum": "Verified M1 prior-16:00 New York reference, 15:30 entry, 16:00 exit and hard-money stop replay",
+            "etf_intraday_short": "Verified M1 09:30 New York short entry, 16:00 exit and hard-money stop replay",
+            "etf_overnight_long": "Verified M1 16:00 New York long entry, next eligible 09:30 exit, financing and hard-money stop replay",
+            "overnight_long": "Verified M1 13:30 New York long entry, next eligible 08:20 exit, financing and hard-money stop replay",
+            "asia_long": "Verified M1 18:00 New York long entry, 15:30 Shanghai exit and hard-money stop replay",
+            "shanghai_day_long": "Verified M1 09:00 Shanghai long entry, 15:30 Shanghai exit and hard-money stop replay",
+            "day_short": "Verified M1 08:20 New York short entry, 13:30 exit and hard-money stop replay",
+        }.get(session_leg, "Verified M1 session-boundary replay")
         try:
             await self.repo.update_backtest_run(
                 run_id,
@@ -3199,6 +3219,10 @@ class BacktestService:
                 intraday_entry_minute=int(request.get("intraday_entry_minute", 30)),
                 intraday_exit_hour=int(request.get("intraday_exit_hour", 16)),
                 intraday_exit_minute=int(request.get("intraday_exit_minute", 0)),
+                etf_market_open_hour=int(request.get("etf_market_open_hour", 9)),
+                etf_market_open_minute=int(request.get("etf_market_open_minute", 30)),
+                etf_market_close_hour=int(request.get("etf_market_close_hour", 16)),
+                etf_market_close_minute=int(request.get("etf_market_close_minute", 0)),
                 fixed_lot=float(request.get("fixed_lot", 0.01)),
                 maximum_loss_percent=float(request.get("maximum_loss_percent", 0.25)),
                 long_overnight_cost_per_001_lot=float(
@@ -3375,7 +3399,7 @@ class BacktestService:
                 "accuracy": accuracy,
                 "warning": (
                     "M1 cannot prove tick ordering or exact broker fills. The overnight financing input is a frozen conservative proxy and any survivor still needs broker-specific MT5 real-tick verification."
-                    if session_leg == "overnight_long"
+                    if session_leg in {"overnight_long", "etf_overnight_long"}
                     else "M1 cannot prove tick ordering or exact broker fills. Any survivor still needs broker-specific MT5 real-tick verification."
                 ),
                 "input_interval": data_interval,

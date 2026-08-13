@@ -18,6 +18,8 @@ SessionLeg = Literal[
     "abnormal_momentum",
     "gld_fifth_half_hour_momentum",
     "rest_of_day_close_momentum",
+    "etf_intraday_short",
+    "etf_overnight_long",
 ]
 Side = Literal["buy", "sell"]
 
@@ -54,6 +56,10 @@ class GoldSessionAnomalyParameters:
     intraday_entry_minute: int = 30
     intraday_exit_hour: int = 16
     intraday_exit_minute: int = 0
+    etf_market_open_hour: int = 9
+    etf_market_open_minute: int = 30
+    etf_market_close_hour: int = 16
+    etf_market_close_minute: int = 0
     fixed_lot: float = 0.01
     maximum_loss_percent: float = 0.25
     long_overnight_cost_per_001_lot: float = 0.70
@@ -86,6 +92,10 @@ class GoldSessionAnomalyParameters:
             return self.intraday_entry_total_minutes
         if self.session_leg == "rest_of_day_close_momentum":
             return self.intraday_entry_total_minutes
+        if self.session_leg == "etf_intraday_short":
+            return self.etf_market_open_total_minutes
+        if self.session_leg == "etf_overnight_long":
+            return self.etf_market_close_total_minutes
         return self.day_open_total_minutes
 
     @property
@@ -100,6 +110,10 @@ class GoldSessionAnomalyParameters:
             return self.intraday_exit_total_minutes
         if self.session_leg == "rest_of_day_close_momentum":
             return self.intraday_exit_total_minutes
+        if self.session_leg == "etf_intraday_short":
+            return self.etf_market_close_total_minutes
+        if self.session_leg == "etf_overnight_long":
+            return self.etf_market_open_total_minutes
         return self.settlement_total_minutes
 
     @property
@@ -131,8 +145,16 @@ class GoldSessionAnomalyParameters:
         return self.intraday_exit_hour * 60 + self.intraday_exit_minute
 
     @property
+    def etf_market_open_total_minutes(self) -> int:
+        return self.etf_market_open_hour * 60 + self.etf_market_open_minute
+
+    @property
+    def etf_market_close_total_minutes(self) -> int:
+        return self.etf_market_close_hour * 60 + self.etf_market_close_minute
+
+    @property
     def side(self) -> Side:
-        return "sell" if self.session_leg == "day_short" else "buy"
+        return "sell" if self.session_leg in {"day_short", "etf_intraday_short"} else "buy"
 
     @property
     def strategy_code(self) -> str:
@@ -148,6 +170,10 @@ class GoldSessionAnomalyParameters:
             return "gold_intraday_close_momentum"
         if self.session_leg == "rest_of_day_close_momentum":
             return "gold_rest_of_day_close_momentum"
+        if self.session_leg == "etf_intraday_short":
+            return "gold_etf_intraday_short"
+        if self.session_leg == "etf_overnight_long":
+            return "gold_etf_overnight_long"
         return "comex_day_short"
 
     def validate(self) -> None:
@@ -159,6 +185,8 @@ class GoldSessionAnomalyParameters:
             "abnormal_momentum",
             "gld_fifth_half_hour_momentum",
             "rest_of_day_close_momentum",
+            "etf_intraday_short",
+            "etf_overnight_long",
         }:
             raise ValueError("Unsupported gold session-anomaly leg")
         if self.timezone_name != "America/New_York":
@@ -195,6 +223,10 @@ class GoldSessionAnomalyParameters:
             raise ValueError("Gold Intraday Close Momentum v1 must enter at 15:30 New York")
         if (self.intraday_exit_hour, self.intraday_exit_minute) != (16, 0):
             raise ValueError("Gold Intraday Close Momentum v1 must exit at 16:00 New York")
+        if (self.etf_market_open_hour, self.etf_market_open_minute) != (9, 30):
+            raise ValueError("The ETF market-open boundary must remain 09:30 New York")
+        if (self.etf_market_close_hour, self.etf_market_close_minute) != (16, 0):
+            raise ValueError("The ETF market-close boundary must remain 16:00 New York")
         if self.fixed_lot <= 0:
             raise ValueError("Fixed lot must be greater than zero")
         if not 0.01 <= self.maximum_loss_percent <= 5.0:
@@ -283,6 +315,10 @@ class GoldSessionCompletedTrade:
             return "gold_intraday_close_momentum"
         if self.signal.session_leg == "rest_of_day_close_momentum":
             return "gold_rest_of_day_close_momentum"
+        if self.signal.session_leg == "etf_intraday_short":
+            return "gold_etf_intraday_short"
+        if self.signal.session_leg == "etf_overnight_long":
+            return "gold_etf_overnight_long"
         return "comex_day_short"
 
     def to_trade_row(self, run_id: str) -> dict[str, Any]:
@@ -351,7 +387,15 @@ class GoldSessionCompletedTrade:
                                 else (
                                     "follow the move from the previous 16:00 New York close at 15:30 and hold to the 16:00 open"
                                     if self.signal.session_leg == "rest_of_day_close_momentum"
-                                    else "sell the 08:20 America/New_York M1 open and hold to the 13:30 open"
+                                    else (
+                                        "sell the 09:30 America/New_York M1 open and hold to the 16:00 open"
+                                        if self.signal.session_leg == "etf_intraday_short"
+                                        else (
+                                            "buy the 16:00 America/New_York M1 open and hold to the next eligible 09:30 open"
+                                            if self.signal.session_leg == "etf_overnight_long"
+                                            else "sell the 08:20 America/New_York M1 open and hold to the 13:30 open"
+                                        )
+                                    )
                                 )
                             )
                         )
@@ -362,12 +406,17 @@ class GoldSessionCompletedTrade:
                 "0.25% hard money stop or the 23:59 GMT+3 M1 close"
                 if self.signal.session_leg == "abnormal_momentum"
                 else (
-                    "0.25% hard money stop or the 16:00 America/New_York M1 open"
-                    if self.signal.session_leg in {
-                        "gld_fifth_half_hour_momentum",
-                        "rest_of_day_close_momentum",
-                    }
-                    else "0.25% hard money stop or the frozen session boundary"
+                    "0.25% hard money stop or the next eligible 09:30 America/New_York M1 open"
+                    if self.signal.session_leg == "etf_overnight_long"
+                    else (
+                        "0.25% hard money stop or the 16:00 America/New_York M1 open"
+                        if self.signal.session_leg in {
+                            "gld_fifth_half_hour_momentum",
+                            "rest_of_day_close_momentum",
+                            "etf_intraday_short",
+                        }
+                        else "0.25% hard money stop or the frozen session boundary"
+                    )
                 )
             ),
         }
@@ -761,7 +810,15 @@ class GoldSessionAnomalyBacktester:
                         else (
                             "REST-DAY-CLOSE-MOM"
                             if self.params.session_leg == "rest_of_day_close_momentum"
-                            else "DAY-SHORT"
+                            else (
+                                "ETF-INTRADAY-SHORT"
+                                if self.params.session_leg == "etf_intraday_short"
+                                else (
+                                    "ETF-OVERNIGHT-LONG"
+                                    if self.params.session_leg == "etf_overnight_long"
+                                    else "DAY-SHORT"
+                                )
+                            )
                         )
                     )
                 )
@@ -894,7 +951,10 @@ class GoldSessionAnomalyBacktester:
 
     def _apply_due_financing(self, at: datetime, mid: float) -> None:
         position = self.position
-        if position is None or position.signal.session_leg != "overnight_long":
+        if position is None or position.signal.session_leg not in {
+            "overnight_long",
+            "etf_overnight_long",
+        }:
             return
         opened_local = self._local(position.opened_at)
         current_local = self._local(at)
@@ -945,7 +1005,7 @@ class GoldSessionAnomalyBacktester:
             return False
         opened_local = self._local(self.position.opened_at)
         minute = self._minute_of_day(local)
-        if self.params.session_leg == "overnight_long":
+        if self.params.session_leg in {"overnight_long", "etf_overnight_long"}:
             return local.date() > opened_local.date() and minute >= self.params.exit_total_minutes
         return local.date() == opened_local.date() and minute >= self.params.exit_total_minutes
 
@@ -1021,6 +1081,7 @@ class GoldSessionAnomalyBacktester:
                 "day_short",
                 "gld_fifth_half_hour_momentum",
                 "rest_of_day_close_momentum",
+                "etf_intraday_short",
             }:
                 self._close_position(
                     previous_candle_time or candle.candle_time,

@@ -221,6 +221,8 @@ class GoldSessionAnomalyBacktestRequest(BaseModel):
         "abnormal_momentum",
         "gld_fifth_half_hour_momentum",
         "rest_of_day_close_momentum",
+        "etf_intraday_short",
+        "etf_overnight_long",
     ] = "overnight_long"
     symbol: str = Field(default="XAU/USD", min_length=3, max_length=40)
     interval: Literal["1min"] = "1min"
@@ -260,6 +262,10 @@ class GoldSessionAnomalyBacktestRequest(BaseModel):
     intraday_entry_minute: Literal[30] = 30
     intraday_exit_hour: Literal[16] = 16
     intraday_exit_minute: Literal[0] = 0
+    etf_market_open_hour: Literal[9] = 9
+    etf_market_open_minute: Literal[30] = 30
+    etf_market_close_hour: Literal[16] = 16
+    etf_market_close_minute: Literal[0] = 0
     long_overnight_cost_per_001_lot: float = Field(default=0.70, ge=0, le=1000)
     triple_swap_weekday: Literal[2] = 2
     spread_price: float = Field(default=0.05, ge=0, le=100)
