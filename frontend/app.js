@@ -2857,7 +2857,7 @@ function setAppMode(mode, { navigate = false } = {}) {
     button.setAttribute("aria-selected", active ? "true" : "false");
   });
   document.querySelectorAll("[data-mode-nav]").forEach((group) => { group.hidden = group.dataset.modeNav !== currentAppMode; });
-  setText("#topbarEyebrow", currentAppMode === "operator" ? "EVE OPERATOR · v4.2" : "EVE RESEARCH ENGINE · v4.2");
+  setText("#topbarEyebrow", currentAppMode === "operator" ? "EVE OPERATOR · v4.3" : "EVE RESEARCH ENGINE · v4.3");
   setText("#topbarSummary", currentAppMode === "operator" ? "See only what is running, what is waiting and what you need to do." : "Inspect research, controlled mutations, validation and generated MT5 packages.");
   if (navigate) window.location.hash = currentAppMode === "operator" ? "#home" : "#research";
 }
