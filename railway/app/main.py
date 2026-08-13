@@ -53,7 +53,7 @@ from app.services.supabase_repo import SupabaseError, SupabaseRepository
 from app.services.twelve_data import INTERVAL_SECONDS, TwelveDataClient
 from app.settings import Settings, get_settings
 
-APP_VERSION = "4.0"
+APP_VERSION = "4.1"
 
 settings = get_settings()
 logging.basicConfig(

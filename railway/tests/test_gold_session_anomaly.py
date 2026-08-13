@@ -11,6 +11,7 @@ from app.models.schemas import GoldSessionAnomalyBacktestRequest
 from app.services.backtests import (
     BacktestService,
     _abnormal_momentum_verdict,
+    _daily_momentum_verdict,
     gold_session_anomaly_settings_match,
 )
 
@@ -284,6 +285,97 @@ def test_shanghai_day_long_trades_the_exact_official_day_session() -> None:
     assert trades[0].financing_costs == 0.0
 
 
+def new_york_time(day: int, hour: int, minute_: int = 0) -> datetime:
+    # January is UTC-5 in America/New_York.
+    return datetime(2026, 1, day, hour + 5, minute_, tzinfo=timezone.utc)
+
+
+def test_intraday_close_momentum_follows_fifth_half_hour_and_exits_at_1600() -> None:
+    simulator = GoldSessionAnomalyBacktester(
+        10_000.0,
+        parameters("gld_fifth_half_hour_momentum"),
+    )
+    simulator.process_candle(minute(new_york_time(5, 11, 30), 100.0, 101.0, 99.0, 100.5))
+    simulator.process_candle(minute(new_york_time(5, 12, 0), 102.0, 103.0, 101.0, 102.0))
+    simulator.process_candle(minute(new_york_time(5, 15, 30), 105.0, 106.0, 104.0, 105.0))
+
+    assert simulator.position is not None
+    assert simulator.position.side == "buy"
+    assert simulator.position.signal.predictor_start_price == 100.0
+    assert simulator.position.signal.predictor_end_price == 102.0
+
+    simulator.process_candle(minute(new_york_time(5, 16, 0), 107.0, 108.0, 90.0, 90.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 1
+    assert trades[0].net_pnl == pytest.approx(2.0)
+    assert trades[0].closed_at == new_york_time(5, 16, 0)
+    assert trades[0].exit_reason == "FROZEN SESSION EXIT"
+    assert trades[0].strategy_code == "gold_intraday_close_momentum"
+
+
+def test_intraday_close_momentum_sells_nonpositive_predictor_and_trades_once() -> None:
+    simulator = GoldSessionAnomalyBacktester(
+        10_000.0,
+        parameters("gld_fifth_half_hour_momentum"),
+    )
+    simulator.process_candle(minute(new_york_time(5, 11, 30), 100.0, 100.0, 100.0, 100.0))
+    simulator.process_candle(minute(new_york_time(5, 12, 0), 100.0, 100.0, 100.0, 100.0))
+    simulator.process_candle(minute(new_york_time(5, 15, 30), 100.0, 100.0, 100.0, 100.0))
+
+    assert simulator.position is not None
+    assert simulator.position.side == "sell"
+
+    simulator.process_candle(minute(new_york_time(5, 16, 0), 99.0, 99.0, 99.0, 99.0))
+    simulator.process_candle(minute(new_york_time(5, 16, 1), 98.0, 98.0, 98.0, 98.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 1
+    assert simulator.summary().sessions_traded == 1
+
+
+def test_intraday_close_momentum_skips_an_incomplete_predictor_day() -> None:
+    simulator = GoldSessionAnomalyBacktester(
+        10_000.0,
+        parameters("gld_fifth_half_hour_momentum"),
+    )
+    simulator.process_candle(minute(new_york_time(5, 12, 0), 102.0, 103.0, 101.0, 102.0))
+    simulator.process_candle(minute(new_york_time(5, 15, 30), 105.0, 106.0, 104.0, 105.0))
+
+    assert simulator.position is None
+    assert simulator.summary().missing_entry_skips == 1
+    assert simulator.summary().sessions_traded == 0
+
+
+def test_intraday_close_momentum_trades_all_five_complete_weekdays() -> None:
+    simulator = GoldSessionAnomalyBacktester(
+        10_000.0,
+        parameters("gld_fifth_half_hour_momentum"),
+    )
+    for day in range(5, 10):
+        simulator.process_candle(minute(new_york_time(day, 11, 30), 100.0, 100.0, 100.0, 100.0))
+        simulator.process_candle(minute(new_york_time(day, 12, 0), 101.0, 101.0, 101.0, 101.0))
+        simulator.process_candle(minute(new_york_time(day, 15, 30), 102.0, 102.0, 102.0, 102.0))
+        simulator.process_candle(minute(new_york_time(day, 16, 0), 103.0, 103.0, 103.0, 103.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 5
+    assert simulator.summary().sessions_traded == 5
+
+
+def test_intraday_close_momentum_uses_the_predeclared_daily_gate() -> None:
+    verdict = _daily_momentum_verdict(
+        net_profit=100.0,
+        profit_factor=1.20,
+        expectancy=0.10,
+        max_drawdown_percent=15.0,
+        total_trades=500,
+        yearly_net={"2021": 1.0, "2022": 1.0, "2023": 1.0},
+        test_segment="development",
+    )
+    assert verdict["code"] == "promising"
+
+
 def abnormal_time(day: int, hour: int, minute_: int = 0) -> datetime:
     # The published study uses a fixed GMT+3 clock.
     gmt_plus_three = timezone(timedelta(hours=3))
@@ -419,6 +511,10 @@ def test_request_and_untouched_lock_cover_both_predeclared_session_legs() -> Non
     assert (request.abnormal_negative_entry_hour, request.abnormal_negative_entry_minute) == (17, 0)
     assert (request.abnormal_positive_entry_hour, request.abnormal_positive_entry_minute) == (19, 0)
     assert (request.abnormal_exit_hour, request.abnormal_exit_minute) == (23, 59)
+    assert (request.intraday_predictor_start_hour, request.intraday_predictor_start_minute) == (11, 30)
+    assert (request.intraday_predictor_end_hour, request.intraday_predictor_end_minute) == (12, 0)
+    assert (request.intraday_entry_hour, request.intraday_entry_minute) == (15, 30)
+    assert (request.intraday_exit_hour, request.intraday_exit_minute) == (16, 0)
 
     baseline = request.model_dump(mode="json")
     baseline["strategy"] = "gold_overnight_long"
@@ -432,6 +528,7 @@ def test_request_and_untouched_lock_cover_both_predeclared_session_legs() -> Non
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "shanghai_entry_hour": 8})
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "abnormal_lookback_days": 59})
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "abnormal_sigma": 1.5})
+    assert not gold_session_anomaly_settings_match(baseline, {**untouched, "intraday_entry_minute": 29})
 
 
 class FakeGoldSessionRepository:
@@ -511,6 +608,16 @@ class FakeGoldSessionRepository:
                 minute(datetime(2026, 1, 5, 7, 30, tzinfo=timezone.utc), 105.0, 106.0, 104.0, 105.0),
             ],
             "shanghai_day_long",
+        ),
+        (
+            "gld_fifth_half_hour_momentum",
+            [
+                minute(new_york_time(5, 11, 30), 100.0, 100.0, 100.0, 100.0),
+                minute(new_york_time(5, 12, 0), 102.0, 102.0, 102.0, 102.0),
+                minute(new_york_time(5, 15, 30), 105.0, 105.0, 105.0, 105.0),
+                minute(new_york_time(5, 16, 0), 110.0, 110.0, 110.0, 110.0),
+            ],
+            "gold_intraday_close_momentum",
         ),
     ],
 )

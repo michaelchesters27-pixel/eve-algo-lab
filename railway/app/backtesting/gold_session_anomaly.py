@@ -16,6 +16,7 @@ SessionLeg = Literal[
     "asia_long",
     "shanghai_day_long",
     "abnormal_momentum",
+    "gld_fifth_half_hour_momentum",
 ]
 Side = Literal["buy", "sell"]
 
@@ -44,6 +45,14 @@ class GoldSessionAnomalyParameters:
     abnormal_positive_entry_minute: int = 0
     abnormal_exit_hour: int = 23
     abnormal_exit_minute: int = 59
+    intraday_predictor_start_hour: int = 11
+    intraday_predictor_start_minute: int = 30
+    intraday_predictor_end_hour: int = 12
+    intraday_predictor_end_minute: int = 0
+    intraday_entry_hour: int = 15
+    intraday_entry_minute: int = 30
+    intraday_exit_hour: int = 16
+    intraday_exit_minute: int = 0
     fixed_lot: float = 0.01
     maximum_loss_percent: float = 0.25
     long_overnight_cost_per_001_lot: float = 0.70
@@ -72,6 +81,8 @@ class GoldSessionAnomalyParameters:
             return self.shanghai_entry_hour * 60 + self.shanghai_entry_minute
         if self.session_leg == "abnormal_momentum":
             return self.abnormal_negative_entry_total_minutes
+        if self.session_leg == "gld_fifth_half_hour_momentum":
+            return self.intraday_entry_total_minutes
         return self.day_open_total_minutes
 
     @property
@@ -82,6 +93,8 @@ class GoldSessionAnomalyParameters:
             return self.asia_exit_hour * 60 + self.asia_exit_minute
         if self.session_leg == "abnormal_momentum":
             return self.abnormal_exit_total_minutes
+        if self.session_leg == "gld_fifth_half_hour_momentum":
+            return self.intraday_exit_total_minutes
         return self.settlement_total_minutes
 
     @property
@@ -97,6 +110,22 @@ class GoldSessionAnomalyParameters:
         return self.abnormal_exit_hour * 60 + self.abnormal_exit_minute
 
     @property
+    def intraday_predictor_start_total_minutes(self) -> int:
+        return self.intraday_predictor_start_hour * 60 + self.intraday_predictor_start_minute
+
+    @property
+    def intraday_predictor_end_total_minutes(self) -> int:
+        return self.intraday_predictor_end_hour * 60 + self.intraday_predictor_end_minute
+
+    @property
+    def intraday_entry_total_minutes(self) -> int:
+        return self.intraday_entry_hour * 60 + self.intraday_entry_minute
+
+    @property
+    def intraday_exit_total_minutes(self) -> int:
+        return self.intraday_exit_hour * 60 + self.intraday_exit_minute
+
+    @property
     def side(self) -> Side:
         return "sell" if self.session_leg == "day_short" else "buy"
 
@@ -110,6 +139,8 @@ class GoldSessionAnomalyParameters:
             return "shanghai_day_long"
         if self.session_leg == "abnormal_momentum":
             return "gold_abnormal_momentum"
+        if self.session_leg == "gld_fifth_half_hour_momentum":
+            return "gold_intraday_close_momentum"
         return "comex_day_short"
 
     def validate(self) -> None:
@@ -119,6 +150,7 @@ class GoldSessionAnomalyParameters:
             "asia_long",
             "shanghai_day_long",
             "abnormal_momentum",
+            "gld_fifth_half_hour_momentum",
         }:
             raise ValueError("Unsupported gold session-anomaly leg")
         if self.timezone_name != "America/New_York":
@@ -147,6 +179,14 @@ class GoldSessionAnomalyParameters:
             raise ValueError("The positive abnormal-return check must remain 19:00 GMT+3")
         if (self.abnormal_exit_hour, self.abnormal_exit_minute) != (23, 59):
             raise ValueError("Gold Abnormal Momentum v1 must exit at the 23:59 GMT+3 close")
+        if (self.intraday_predictor_start_hour, self.intraday_predictor_start_minute) != (11, 30):
+            raise ValueError("Gold Intraday Close Momentum v1 must start its predictor at 11:30 New York")
+        if (self.intraday_predictor_end_hour, self.intraday_predictor_end_minute) != (12, 0):
+            raise ValueError("Gold Intraday Close Momentum v1 must end its predictor at 12:00 New York")
+        if (self.intraday_entry_hour, self.intraday_entry_minute) != (15, 30):
+            raise ValueError("Gold Intraday Close Momentum v1 must enter at 15:30 New York")
+        if (self.intraday_exit_hour, self.intraday_exit_minute) != (16, 0):
+            raise ValueError("Gold Intraday Close Momentum v1 must exit at 16:00 New York")
         if self.fixed_lot <= 0:
             raise ValueError("Fixed lot must be greater than zero")
         if not 0.01 <= self.maximum_loss_percent <= 5.0:
@@ -177,6 +217,8 @@ class GoldSessionSignal:
     baseline_mean_percent: float | None = None
     baseline_std_percent: float | None = None
     trigger_percent: float | None = None
+    predictor_start_price: float | None = None
+    predictor_end_price: float | None = None
 
 
 @dataclass
@@ -229,6 +271,8 @@ class GoldSessionCompletedTrade:
             return "shanghai_day_long"
         if self.signal.session_leg == "abnormal_momentum":
             return "gold_abnormal_momentum"
+        if self.signal.session_leg == "gld_fifth_half_hour_momentum":
+            return "gold_intraday_close_momentum"
         return "comex_day_short"
 
     def to_trade_row(self, run_id: str) -> dict[str, Any]:
@@ -291,7 +335,11 @@ class GoldSessionCompletedTrade:
                         else (
                             "at 17:00 GMT+3 short a negative two-sigma daily move, or at 19:00 GMT+3 buy a positive two-sigma daily move"
                             if self.signal.session_leg == "abnormal_momentum"
-                            else "sell the 08:20 America/New_York M1 open and hold to the 13:30 open"
+                            else (
+                                "follow the 11:30-12:00 New York return at 15:30 and hold to the 16:00 open"
+                                if self.signal.session_leg == "gld_fifth_half_hour_momentum"
+                                else "sell the 08:20 America/New_York M1 open and hold to the 13:30 open"
+                            )
                         )
                     )
                 )
@@ -299,7 +347,11 @@ class GoldSessionCompletedTrade:
             "exit_protocol": (
                 "0.25% hard money stop or the 23:59 GMT+3 M1 close"
                 if self.signal.session_leg == "abnormal_momentum"
-                else "0.25% hard money stop or the frozen session boundary"
+                else (
+                    "0.25% hard money stop or the 16:00 America/New_York M1 open"
+                    if self.signal.session_leg == "gld_fifth_half_hour_momentum"
+                    else "0.25% hard money stop or the frozen session boundary"
+                )
             ),
         }
         if self.signal.session_leg == "abnormal_momentum":
@@ -310,6 +362,19 @@ class GoldSessionCompletedTrade:
                     "baseline_std_percent": self.signal.baseline_std_percent,
                     "trigger_percent": self.signal.trigger_percent,
                     "baseline_days": 60,
+                }
+            )
+        if self.signal.session_leg == "gld_fifth_half_hour_momentum":
+            metadata.update(
+                {
+                    "predictor_start_price": self.signal.predictor_start_price,
+                    "predictor_end_price": self.signal.predictor_end_price,
+                    "predictor_move": round(
+                        float(self.signal.predictor_end_price or 0.0)
+                        - float(self.signal.predictor_start_price or 0.0),
+                        10,
+                    ),
+                    "research_translation": "GLD fifth half-hour direction applied to XAU/USD",
                 }
             )
         return metadata
@@ -388,6 +453,8 @@ class GoldSessionAnomalyBacktester:
         self._abnormal_daily_returns: list[float] = []
         self._abnormal_negative_checked = False
         self._abnormal_positive_checked = False
+        self._intraday_predictor_start_price: float | None = None
+        self._intraday_predictor_end_price: float | None = None
 
         self.completed_trades: list[GoldSessionCompletedTrade] = []
         self.completed_baskets: list[GoldSessionCompletedTrade] = []
@@ -494,6 +561,8 @@ class GoldSessionAnomalyBacktester:
         self._day_signal_consumed = False
         self._abnormal_negative_checked = False
         self._abnormal_positive_checked = False
+        self._intraday_predictor_start_price = None
+        self._intraday_predictor_end_price = None
         if count_metrics:
             self.sessions_seen += 1
             if self._entry_day_is_eligible(session_date.weekday()):
@@ -597,7 +666,20 @@ class GoldSessionAnomalyBacktester:
         ):
             return False
         self._day_signal_consumed = True
-        side = self.params.side
+        if self.params.session_leg == "gld_fifth_half_hour_momentum":
+            if (
+                self._intraday_predictor_start_price is None
+                or self._intraday_predictor_end_price is None
+            ):
+                self.missing_entry_skips += 1
+                return False
+            side: Side = (
+                "buy"
+                if self._intraday_predictor_end_price > self._intraday_predictor_start_price
+                else "sell"
+            )
+        else:
+            side = self.params.side
         signal = GoldSessionSignal(
             side=side,
             signal_time=at,
@@ -607,6 +689,16 @@ class GoldSessionAnomalyBacktester:
                 else local.date().isoformat()
             ),
             session_leg=self.params.session_leg,
+            predictor_start_price=(
+                self._intraday_predictor_start_price
+                if self.params.session_leg == "gld_fifth_half_hour_momentum"
+                else None
+            ),
+            predictor_end_price=(
+                self._intraday_predictor_end_price
+                if self.params.session_leg == "gld_fifth_half_hour_momentum"
+                else None
+            ),
         )
         self._sequence += 1
         entry_price = self._entry_price(side, mid)
@@ -620,7 +712,11 @@ class GoldSessionAnomalyBacktester:
                 else (
                     "SHANGHAI-LONG"
                     if self.params.session_leg == "shanghai_day_long"
-                    else "DAY-SHORT"
+                    else (
+                        "INTRADAY-CLOSE-MOM"
+                        if self.params.session_leg == "gld_fifth_half_hour_momentum"
+                        else "DAY-SHORT"
+                    )
                 )
             )
         )
@@ -874,7 +970,10 @@ class GoldSessionAnomalyBacktester:
                         "LAST AVAILABLE PRE-CLOSE BAR",
                     )
                 self._finish_abnormal_day()
-            elif self.position is not None and self.params.session_leg == "day_short":
+            elif self.position is not None and self.params.session_leg in {
+                "day_short",
+                "gld_fifth_half_hour_momentum",
+            }:
                 self._close_position(
                     previous_candle_time or candle.candle_time,
                     self._last_mid if self._last_mid is not None else candle.open,
@@ -902,6 +1001,12 @@ class GoldSessionAnomalyBacktester:
             self._apply_due_financing(candle.candle_time, candle.open)
 
         minute = self._minute_of_day(local)
+
+        if self.params.session_leg == "gld_fifth_half_hour_momentum" and local.weekday() < 5:
+            if minute == self.params.intraday_predictor_start_total_minutes:
+                self._intraday_predictor_start_price = candle.open
+            if minute == self.params.intraday_predictor_end_total_minutes:
+                self._intraday_predictor_end_price = candle.open
 
         if self.params.session_leg == "abnormal_momentum":
             opened = False
