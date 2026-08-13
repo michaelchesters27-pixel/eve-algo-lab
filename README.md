@@ -1,6 +1,18 @@
-# EVE Command Centre v4.2
+# EVE Command Centre v4.3
 
 EVE is a private XAU/USD research, strategy-evolution and MT5 bot-development platform using Supabase, Railway, Netlify and Twelve Data.
+
+## What v4.3 changes
+
+- Adds two predeclared, independent translations of the published ETF overnight-positive/intraday-negative return split: **Gold ETF-Hours Intraday Short v1** and **Gold ETF-Hours Overnight Long v1**.
+- Intraday Short sells one fixed 0.01-lot XAU/USD position at 09:30 New York and exits at 16:00 on every complete weekday.
+- Overnight Long buys at 16:00 New York and exits at the next eligible 09:30 open; the replay includes the frozen $0.70 financing proxy per 0.01 lot and Wednesday triple charge.
+- Both rules include spread, commission, optional slippage, daylight saving, gap stops, no re-entry and a 0.25% hard money stop.
+- Uses the locked daily gate: at least 500 trades, positive net profit and expectancy, PF 1.20, no more than 15% drawdown and at least three profitable years.
+- Keeps untouched history sealed unless the identical development settings pass. The overnight companion is tested only if the intraday rule fails.
+- Archives Gold Rest-of-Day Close Momentum v1 after it made $86.41 on 1,002 development trades but missed the frozen PF 1.20 gate with PF 1.136.
+
+No Supabase SQL or new Railway/Netlify variables are required for v4.3.
 
 ## What v4.2 changes
 

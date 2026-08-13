@@ -187,6 +187,62 @@ def test_day_short_opens_at_0820_and_exits_at_1330_same_day() -> None:
     assert trades[0].financing_costs == 0.0
 
 
+def test_etf_intraday_short_trades_exact_new_york_market_hours() -> None:
+    entry = new_york_time(5, 9, 30)
+    exit_ = new_york_time(5, 16, 0)
+    simulator = GoldSessionAnomalyBacktester(10_000.0, parameters("etf_intraday_short"))
+    simulator.process_candle(minute(entry, 100.0, 101.0, 99.0, 100.0))
+
+    assert simulator.position is not None
+    assert simulator.position.side == "sell"
+
+    simulator.process_candle(minute(exit_, 95.0, 96.0, 94.0, 95.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 1
+    assert trades[0].opened_at == entry
+    assert trades[0].closed_at == exit_
+    assert trades[0].net_pnl == pytest.approx(5.0)
+    assert trades[0].strategy_code == "gold_etf_intraday_short"
+    assert trades[0].financing_costs == 0.0
+
+
+def test_etf_intraday_short_trades_all_five_complete_weekdays() -> None:
+    simulator = GoldSessionAnomalyBacktester(10_000.0, parameters("etf_intraday_short"))
+    for day in range(5, 10):
+        simulator.process_candle(minute(new_york_time(day, 9, 30), 100.0, 100.0, 100.0, 100.0))
+        simulator.process_candle(minute(new_york_time(day, 16, 0), 99.0, 99.0, 99.0, 99.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 5
+    assert simulator.summary().sessions_traded == 5
+
+
+def test_etf_overnight_long_exits_next_0930_and_charges_financing() -> None:
+    entry = new_york_time(7, 16, 0)
+    rollover = new_york_time(7, 17, 0)
+    exit_ = new_york_time(8, 9, 30)
+    simulator = GoldSessionAnomalyBacktester(
+        10_000.0,
+        parameters("etf_overnight_long", long_overnight_cost_per_001_lot=0.70),
+    )
+    simulator.process_candle(minute(entry, 100.0, 101.0, 99.0, 100.0))
+    simulator.process_candle(minute(rollover, 100.0, 101.0, 99.0, 100.0))
+
+    assert simulator.position is not None
+    assert simulator.position.side == "buy"
+    assert simulator.position.financing_costs == pytest.approx(2.10)
+
+    simulator.process_candle(minute(exit_, 105.0, 106.0, 104.0, 105.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 1
+    assert trades[0].closed_at == exit_
+    assert trades[0].net_pnl == pytest.approx(2.90)
+    assert trades[0].strategy_code == "gold_etf_overnight_long"
+    assert "next eligible 09:30" in trades[0].to_trade_row("run-1")["metadata"]["exit_protocol"]
+
+
 def test_asia_long_opens_sunday_1800_new_york_and_exits_monday_1530_shanghai() -> None:
     entry = datetime(2026, 1, 4, 23, 0, tzinfo=timezone.utc)
     exit_ = datetime(2026, 1, 5, 7, 30, tzinfo=timezone.utc)
@@ -556,6 +612,8 @@ def test_request_and_untouched_lock_cover_both_predeclared_session_legs() -> Non
     assert (request.intraday_predictor_end_hour, request.intraday_predictor_end_minute) == (12, 0)
     assert (request.intraday_entry_hour, request.intraday_entry_minute) == (15, 30)
     assert (request.intraday_exit_hour, request.intraday_exit_minute) == (16, 0)
+    assert (request.etf_market_open_hour, request.etf_market_open_minute) == (9, 30)
+    assert (request.etf_market_close_hour, request.etf_market_close_minute) == (16, 0)
 
     baseline = request.model_dump(mode="json")
     baseline["strategy"] = "gold_overnight_long"
@@ -570,6 +628,8 @@ def test_request_and_untouched_lock_cover_both_predeclared_session_legs() -> Non
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "abnormal_lookback_days": 59})
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "abnormal_sigma": 1.5})
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "intraday_entry_minute": 29})
+    assert not gold_session_anomaly_settings_match(baseline, {**untouched, "etf_market_open_minute": 29})
+    assert not gold_session_anomaly_settings_match(baseline, {**untouched, "etf_market_close_hour": 15})
 
 
 class FakeGoldSessionRepository:
@@ -668,6 +728,22 @@ class FakeGoldSessionRepository:
                 minute(new_york_time(5, 16, 0), 110.0, 110.0, 110.0, 110.0),
             ],
             "gold_rest_of_day_close_momentum",
+        ),
+        (
+            "etf_intraday_short",
+            [
+                minute(new_york_time(5, 9, 30), 100.0, 100.0, 100.0, 100.0),
+                minute(new_york_time(5, 16, 0), 95.0, 95.0, 95.0, 95.0),
+            ],
+            "gold_etf_intraday_short",
+        ),
+        (
+            "etf_overnight_long",
+            [
+                minute(new_york_time(5, 16, 0), 100.0, 100.0, 100.0, 100.0),
+                minute(new_york_time(6, 9, 30), 105.0, 105.0, 105.0, 105.0),
+            ],
+            "gold_etf_overnight_long",
         ),
     ],
 )

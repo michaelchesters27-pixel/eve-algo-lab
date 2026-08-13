@@ -30,15 +30,40 @@ const trendStrategyName = (strategy) => `Gold ${trendTimeframe(strategy)} Trend 
 const isLondonStrategy = (strategy) => strategy === "london_opening_range";
 const isNewYorkStrategy = (strategy) => strategy === "new_york_morning_momentum";
 const isComexStrategy = (strategy) => strategy === "comex_closing_momentum";
-const GOLD_SESSION_STRATEGIES = new Set(["gold_rest_of_day_close_momentum", "gold_intraday_close_momentum", "gold_abnormal_momentum", "asia_session_long", "shanghai_day_long", "gold_overnight_long", "comex_day_short"]);
+const GOLD_SESSION_STRATEGIES = new Set(["gold_etf_intraday_short", "gold_etf_overnight_long", "gold_rest_of_day_close_momentum", "gold_intraday_close_momentum", "gold_abnormal_momentum", "asia_session_long", "shanghai_day_long", "gold_overnight_long", "comex_day_short"]);
 const isGoldSessionStrategy = (strategy) => GOLD_SESSION_STRATEGIES.has(strategy);
+const isEtfIntradayShortStrategy = (strategy) => strategy === "gold_etf_intraday_short";
+const isEtfOvernightLongStrategy = (strategy) => strategy === "gold_etf_overnight_long";
 const isRestOfDayCloseMomentumStrategy = (strategy) => strategy === "gold_rest_of_day_close_momentum";
 const isIntradayCloseMomentumStrategy = (strategy) => strategy === "gold_intraday_close_momentum";
 const isAbnormalMomentumStrategy = (strategy) => strategy === "gold_abnormal_momentum";
-const isOvernightStrategy = (strategy) => strategy === "gold_overnight_long";
+const isOvernightStrategy = (strategy) => strategy === "gold_overnight_long" || isEtfOvernightLongStrategy(strategy);
 const isAsiaStrategy = (strategy) => strategy === "asia_session_long";
 const isShanghaiStrategy = (strategy) => strategy === "shanghai_day_long";
-const goldSessionStrategyName = (strategy) => isRestOfDayCloseMomentumStrategy(strategy) ? "Gold Rest-of-Day Close Momentum v1" : (isIntradayCloseMomentumStrategy(strategy) ? "Gold Intraday Close Momentum v1" : (isAbnormalMomentumStrategy(strategy) ? "Gold Abnormal Momentum v1" : (isAsiaStrategy(strategy) ? "Asia Session Long v1" : (isShanghaiStrategy(strategy) ? "Shanghai Day Long v1" : (isOvernightStrategy(strategy) ? "Gold Overnight Long v1" : "COMEX Day Short v1")))));
+const GOLD_SESSION_NAMES = {
+  gold_etf_intraday_short: "Gold ETF-Hours Intraday Short v1",
+  gold_etf_overnight_long: "Gold ETF-Hours Overnight Long v1",
+  gold_rest_of_day_close_momentum: "Gold Rest-of-Day Close Momentum v1",
+  gold_intraday_close_momentum: "Gold Intraday Close Momentum v1",
+  gold_abnormal_momentum: "Gold Abnormal Momentum v1",
+  asia_session_long: "Asia Session Long v1",
+  shanghai_day_long: "Shanghai Day Long v1",
+  gold_overnight_long: "Gold Overnight Long v1",
+  comex_day_short: "COMEX Day Short v1",
+};
+const GOLD_SESSION_LEGS = {
+  gold_etf_intraday_short: "etf_intraday_short",
+  gold_etf_overnight_long: "etf_overnight_long",
+  gold_rest_of_day_close_momentum: "rest_of_day_close_momentum",
+  gold_intraday_close_momentum: "gld_fifth_half_hour_momentum",
+  gold_abnormal_momentum: "abnormal_momentum",
+  asia_session_long: "asia_long",
+  shanghai_day_long: "shanghai_day_long",
+  gold_overnight_long: "overnight_long",
+  comex_day_short: "day_short",
+};
+const goldSessionStrategyName = (strategy) => GOLD_SESSION_NAMES[strategy] || "COMEX Day Short v1";
+const goldSessionLeg = (strategy) => GOLD_SESSION_LEGS[strategy] || "day_short";
 const isChronologicalStrategy = (strategy) => isTrendStrategy(strategy) || isLondonStrategy(strategy) || isNewYorkStrategy(strategy) || isComexStrategy(strategy) || isGoldSessionStrategy(strategy) || isLiquidityStrategy(strategy);
 const isSinglePositionStrategy = (strategy) => isTrendStrategy(strategy) || isLondonStrategy(strategy) || isNewYorkStrategy(strategy) || isComexStrategy(strategy) || isGoldSessionStrategy(strategy);
 const liquidityEntryModel = (strategy) => strategy === "liquidity_continuation" ? "breakout_continuation" : "sweep_reversal";
@@ -644,7 +669,7 @@ async function queueBatchJobs(endpoint, button, label) {
 }
 
 function updateBacktestAvailability() {
-  const strategy = $("#testerStrategy")?.value || "gold_rest_of_day_close_momentum";
+  const strategy = $("#testerStrategy")?.value || "gold_etf_intraday_short";
   const resolution = $("#resolutionMode")?.value || "candle";
   const chronological = isChronologicalStrategy(strategy);
   const trend = isTrendStrategy(strategy);
@@ -667,19 +692,18 @@ function updateBacktestAvailability() {
     } else if (trend) {
       $("#resolutionNote").textContent = `M1, ${trendTimeframe(strategy)} and D1 Market Memory are ready. Signals use completed ${trendTimeframe(strategy)}/D1 candles; entries, stops, costs, overnight financing and gaps use M1 replay.`;
     } else if (isGoldSessionStrategy(strategy)) {
-      $("#resolutionNote").textContent = isRestOfDayCloseMomentumStrategy(strategy)
-        ? "M1 Market Memory is ready. EVE follows the move since the previous 16:00 New York close once at 15:30 and exits at 16:00."
-        : (isIntradayCloseMomentumStrategy(strategy)
-        ? "M1 Market Memory is ready. EVE follows the 11:30-12:00 New York move once at 15:30 and exits at 16:00."
-        : (isAbnormalMomentumStrategy(strategy)
-        ? "M1 Market Memory is ready. EVE checks one causal two-sigma gold signal per GMT+3 day and never takes more than one trade."
-        : (isAsiaStrategy(strategy)
-        ? "M1 Market Memory is ready. EVE buys once at 18:00 New York and closes at the associated 15:30 Shanghai gold-session close."
-        : (isShanghaiStrategy(strategy)
-          ? "M1 Market Memory is ready. EVE buys once at the official 09:00 Shanghai day open and closes at 15:30 Shanghai."
-        : (isOvernightStrategy(strategy)
-          ? "M1 Market Memory is ready. EVE buys once at 13:30 New York, includes financing, and closes at the next eligible 08:20 open."
-          : "M1 Market Memory is ready. EVE sells once at 08:20 New York and closes at 13:30 the same day.")))));
+      const sessionNotes = {
+        gold_etf_intraday_short: "M1 Market Memory is ready. EVE sells once at 09:30 New York and closes at 16:00 on every complete weekday.",
+        gold_etf_overnight_long: "M1 Market Memory is ready. EVE buys once at 16:00 New York, includes financing, and closes at the next eligible 09:30 open.",
+        gold_rest_of_day_close_momentum: "M1 Market Memory is ready. EVE follows the move since the previous 16:00 New York close once at 15:30 and exits at 16:00.",
+        gold_intraday_close_momentum: "M1 Market Memory is ready. EVE follows the 11:30-12:00 New York move once at 15:30 and exits at 16:00.",
+        gold_abnormal_momentum: "M1 Market Memory is ready. EVE checks one causal two-sigma gold signal per GMT+3 day and never takes more than one trade.",
+        asia_session_long: "M1 Market Memory is ready. EVE buys once at 18:00 New York and closes at the associated 15:30 Shanghai gold-session close.",
+        shanghai_day_long: "M1 Market Memory is ready. EVE buys once at the official 09:00 Shanghai day open and closes at 15:30 Shanghai.",
+        gold_overnight_long: "M1 Market Memory is ready. EVE buys once at 13:30 New York, includes financing, and closes at the next eligible 08:20 open.",
+        comex_day_short: "M1 Market Memory is ready. EVE sells once at 08:20 New York and closes at 13:30 the same day.",
+      };
+      $("#resolutionNote").textContent = sessionNotes[strategy];
     } else if (isComexStrategy(strategy)) {
       $("#resolutionNote").textContent = "M1 Market Memory is ready. EVE compares 13:00 New York with the prior 13:29 settlement proxy, permits one 0.01-lot trade, and closes it at 13:30.";
     } else if (london) {
@@ -698,7 +722,7 @@ function updateBacktestAvailability() {
 }
 
 function updateTesterForm() {
-  const strategy = $("#testerStrategy")?.value || "gold_rest_of_day_close_momentum";
+  const strategy = $("#testerStrategy")?.value || "gold_etf_intraday_short";
   const liquidity = isLiquidityStrategy(strategy);
   const trend = isTrendStrategy(strategy);
   const london = isLondonStrategy(strategy);
@@ -731,32 +755,30 @@ function updateTesterForm() {
   if (goldSession) {
     setText("#testerFormTitle", goldSessionStrategyName(strategy));
     setText("#testerSourceName", `EVE ${goldSessionStrategyName(strategy)} · M1 replay`);
-    setText("#testerSourceDetail", restOfDayClose
-      ? "Previous 16:00 New York close → direction at 15:30 → one trade → close 16:00"
-      : (intradayClose
-      ? "11:30-12:00 New York direction → one 15:30 trade → close 16:00"
-      : (abnormal
-      ? "Previous 60 GMT+3 daily returns → two-sigma move → one late-day momentum trade → close 23:59"
-      : (asia
-      ? "Buy 18:00 New York → eastern-session hold → close 15:30 Shanghai → no rollover charge"
-      : (shanghai
-        ? "Buy 09:00 Shanghai → official SGE day session → close 15:30 Shanghai → no rollover charge"
-      : (overnight
-        ? "Buy 13:30 New York → hold overnight → close next eligible 08:20 → financing and hard stop included"
-        : "Sell 08:20 New York → hold COMEX day session → close 13:30 → hard stop and costs included"))))));
-    setHtml("#testerRuleStrip", restOfDayClose
-      ? "<span>PRIOR 16:00 REFERENCE</span><span>15:30 FOLLOW DIRECTION</span><span>ONE TRADE EVERY COMPLETE WEEKDAY</span><span>FIXED 0.01 LOT</span><span>0.25% HARD STOP</span><span>16:00 EXIT</span>"
-      : (intradayClose
-      ? "<span>11:30-12:00 DIRECTION</span><span>15:30 ENTRY</span><span>ONE TRADE EVERY COMPLETE WEEKDAY</span><span>FIXED 0.01 LOT</span><span>0.25% HARD STOP</span><span>16:00 EXIT</span>"
-      : (abnormal
-      ? "<span>60 PRIOR DAYS</span><span>2-SIGMA TRIGGER</span><span>17:00 SHORT / 19:00 BUY</span><span>MAX 1 TRADE/DAY</span><span>0.25% HARD STOP</span><span>23:59 GMT+3 EXIT</span>"
-      : (asia
-      ? "<span>BUY 18:00 NEW YORK</span><span>EASTERN SESSION</span><span>MAX 1 TRADE/DAY</span><span>FIXED 0.01 LOT</span><span>0.25% HARD STOP</span><span>15:30 SHANGHAI EXIT</span>"
-      : (shanghai
-        ? "<span>BUY 09:00 SHANGHAI</span><span>SGE DAY SESSION</span><span>MAX 1 TRADE/DAY</span><span>FIXED 0.01 LOT</span><span>0.25% HARD STOP</span><span>15:30 SHANGHAI EXIT</span>"
-      : (overnight
-        ? "<span>BUY 13:30 NEW YORK</span><span>OVERNIGHT HOLD</span><span>MAX 1 TRADE/DAY</span><span>FIXED 0.01 LOT</span><span>0.25% HARD STOP</span><span>NEXT 08:20 EXIT</span>"
-        : "<span>SELL 08:20 NEW YORK</span><span>DAY SESSION</span><span>MAX 1 TRADE/DAY</span><span>FIXED 0.01 LOT</span><span>0.25% HARD STOP</span><span>13:30 EXIT</span>"))))));
+    const sessionDetails = {
+      gold_etf_intraday_short: "Sell 09:30 New York → hold during ETF market hours → close 16:00 → one trade every complete weekday",
+      gold_etf_overnight_long: "Buy 16:00 New York → hold outside ETF market hours → close next eligible 09:30 → financing included",
+      gold_rest_of_day_close_momentum: "Previous 16:00 New York close → direction at 15:30 → one trade → close 16:00",
+      gold_intraday_close_momentum: "11:30-12:00 New York direction → one 15:30 trade → close 16:00",
+      gold_abnormal_momentum: "Previous 60 GMT+3 daily returns → two-sigma move → one late-day momentum trade → close 23:59",
+      asia_session_long: "Buy 18:00 New York → eastern-session hold → close 15:30 Shanghai → no rollover charge",
+      shanghai_day_long: "Buy 09:00 Shanghai → official SGE day session → close 15:30 Shanghai → no rollover charge",
+      gold_overnight_long: "Buy 13:30 New York → hold overnight → close next eligible 08:20 → financing and hard stop included",
+      comex_day_short: "Sell 08:20 New York → hold COMEX day session → close 13:30 → hard stop and costs included",
+    };
+    const sessionRuleStrips = {
+      gold_etf_intraday_short: "<span>SELL 09:30 NEW YORK</span><span>ETF MARKET HOURS</span><span>ONE TRADE EVERY COMPLETE WEEKDAY</span><span>FIXED 0.01 LOT</span><span>0.25% HARD STOP</span><span>16:00 EXIT</span>",
+      gold_etf_overnight_long: "<span>BUY 16:00 NEW YORK</span><span>OVERNIGHT HOLD</span><span>ONE TRADE EVERY COMPLETE WEEKDAY</span><span>FIXED 0.01 LOT</span><span>0.25% HARD STOP</span><span>NEXT 09:30 EXIT</span>",
+      gold_rest_of_day_close_momentum: "<span>PRIOR 16:00 REFERENCE</span><span>15:30 FOLLOW DIRECTION</span><span>ONE TRADE EVERY COMPLETE WEEKDAY</span><span>FIXED 0.01 LOT</span><span>0.25% HARD STOP</span><span>16:00 EXIT</span>",
+      gold_intraday_close_momentum: "<span>11:30-12:00 DIRECTION</span><span>15:30 ENTRY</span><span>ONE TRADE EVERY COMPLETE WEEKDAY</span><span>FIXED 0.01 LOT</span><span>0.25% HARD STOP</span><span>16:00 EXIT</span>",
+      gold_abnormal_momentum: "<span>60 PRIOR DAYS</span><span>2-SIGMA TRIGGER</span><span>17:00 SHORT / 19:00 BUY</span><span>MAX 1 TRADE/DAY</span><span>0.25% HARD STOP</span><span>23:59 GMT+3 EXIT</span>",
+      asia_session_long: "<span>BUY 18:00 NEW YORK</span><span>EASTERN SESSION</span><span>MAX 1 TRADE/DAY</span><span>FIXED 0.01 LOT</span><span>0.25% HARD STOP</span><span>15:30 SHANGHAI EXIT</span>",
+      shanghai_day_long: "<span>BUY 09:00 SHANGHAI</span><span>SGE DAY SESSION</span><span>MAX 1 TRADE/DAY</span><span>FIXED 0.01 LOT</span><span>0.25% HARD STOP</span><span>15:30 SHANGHAI EXIT</span>",
+      gold_overnight_long: "<span>BUY 13:30 NEW YORK</span><span>OVERNIGHT HOLD</span><span>MAX 1 TRADE/DAY</span><span>FIXED 0.01 LOT</span><span>0.25% HARD STOP</span><span>NEXT 08:20 EXIT</span>",
+      comex_day_short: "<span>SELL 08:20 NEW YORK</span><span>DAY SESSION</span><span>MAX 1 TRADE/DAY</span><span>FIXED 0.01 LOT</span><span>0.25% HARD STOP</span><span>13:30 EXIT</span>",
+    };
+    setText("#testerSourceDetail", sessionDetails[strategy]);
+    setHtml("#testerRuleStrip", sessionRuleStrips[strategy]);
   } else if (trend) {
     setText("#testerFormTitle", trendStrategyName(strategy));
     setText("#testerSourceName", `EVE ${trendStrategyName(strategy)} · ${trendFrame}/D1 signal / M1 replay`);
@@ -1198,7 +1220,7 @@ async function cancelLearning(button) {
 }
 
 function backtestPayload() {
-  const strategy = $("#testerStrategy")?.value || "gold_rest_of_day_close_momentum";
+  const strategy = $("#testerStrategy")?.value || "gold_etf_intraday_short";
   if (isTrendStrategy(strategy)) {
     const testSegment = $("#testPeriod")?.value || "development";
     const startDate = $("#testDateFrom")?.value || "";
@@ -1240,7 +1262,7 @@ function backtestPayload() {
     return {
       strategy,
       name: goldSessionStrategyName(strategy),
-      session_leg: isRestOfDayCloseMomentumStrategy(strategy) ? "rest_of_day_close_momentum" : (isIntradayCloseMomentumStrategy(strategy) ? "gld_fifth_half_hour_momentum" : (isAbnormalMomentumStrategy(strategy) ? "abnormal_momentum" : (isAsiaStrategy(strategy) ? "asia_long" : (isShanghaiStrategy(strategy) ? "shanghai_day_long" : (isOvernightStrategy(strategy) ? "overnight_long" : "day_short"))))),
+      session_leg: goldSessionLeg(strategy),
       symbol: "XAU/USD",
       interval: "1min",
       resolution: "m1_replay",
@@ -1279,6 +1301,10 @@ function backtestPayload() {
       intraday_entry_minute: 30,
       intraday_exit_hour: 16,
       intraday_exit_minute: 0,
+      etf_market_open_hour: 9,
+      etf_market_open_minute: 30,
+      etf_market_close_hour: 16,
+      etf_market_close_minute: 0,
       long_overnight_cost_per_001_lot: Number($("#goldSessionOvernightCost").value),
       triple_swap_weekday: 2,
       spread_price: Number($("#spreadPrice").value),
@@ -1729,8 +1755,8 @@ function renderBaskets(baskets = [], { archived = false, hidden = false, run = n
 }
 
 function renderComparison(runs = []) {
-  const selected = $("#testerStrategy")?.value || "gold_rest_of_day_close_momentum";
-  const strategy = isChronologicalStrategy(selected) ? selected : "gold_rest_of_day_close_momentum";
+  const selected = $("#testerStrategy")?.value || "gold_etf_intraday_short";
+  const strategy = isChronologicalStrategy(selected) ? selected : "gold_etf_intraday_short";
   const strategyRuns = runs.filter((run) => run.status === "complete" && (run.reliability?.strategy || run.settings?.strategy) === strategy);
   const m5 = strategyRuns.find((run) => (run.reliability?.test_segment || run.settings?.test_segment) === "development");
   const m1 = strategyRuns.find((run) => (run.reliability?.test_segment || run.settings?.test_segment) === "untouched");
@@ -1768,6 +1794,7 @@ function renderComparison(runs = []) {
         "intraday_predictor_start_hour", "intraday_predictor_start_minute", "intraday_predictor_end_hour",
         "intraday_predictor_end_minute", "intraday_entry_hour", "intraday_entry_minute",
         "intraday_exit_hour", "intraday_exit_minute",
+        "etf_market_open_hour", "etf_market_open_minute", "etf_market_close_hour", "etf_market_close_minute",
         "triple_swap_weekday", "spread_price", "commission_per_001_lot", "slippage_price", "money_per_price_per_001_lot", "path_mode",
       ];
     } else if (isComexStrategy(strategy)) {
@@ -2830,7 +2857,7 @@ function setAppMode(mode, { navigate = false } = {}) {
     button.setAttribute("aria-selected", active ? "true" : "false");
   });
   document.querySelectorAll("[data-mode-nav]").forEach((group) => { group.hidden = group.dataset.modeNav !== currentAppMode; });
-  setText("#topbarEyebrow", currentAppMode === "operator" ? "EVE OPERATOR · v4.2" : "EVE RESEARCH ENGINE · v4.2");
+  setText("#topbarEyebrow", currentAppMode === "operator" ? "EVE OPERATOR · v4.3" : "EVE RESEARCH ENGINE · v4.3");
   setText("#topbarSummary", currentAppMode === "operator" ? "See only what is running, what is waiting and what you need to do." : "Inspect research, controlled mutations, validation and generated MT5 packages.");
   if (navigate) window.location.hash = currentAppMode === "operator" ? "#home" : "#research";
 }

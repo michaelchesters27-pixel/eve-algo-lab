@@ -51,7 +51,7 @@
     <main>
       <header class="topbar command-topbar">
         <div>
-          <p class="eyebrow" id="topbarEyebrow">EVE OPERATOR · v4.2</p>
+          <p class="eyebrow" id="topbarEyebrow">EVE OPERATOR · v4.3</p>
           <h1 id="briefingGreeting">Good afternoon.</h1>
           <p class="topbar-summary" id="topbarSummary">See only what is running, what is waiting and what you need to do.</p>
         </div>
@@ -875,11 +875,11 @@
           <div class="legacy-scope-copy">
             <p class="label">WHAT THIS TOOL DOES</p>
             <h2>Proves exact rules before we waste time building an EA</h2>
-            <p>The current experiment is <strong>Gold Rest-of-Day Close Momentum v1</strong>: use the move from the previous 16:00 New York close, take one trade at 15:30 in that direction, and close at 16:00. Costs and a hard loss cap are included.</p>
+            <p>The current experiment is <strong>Gold ETF-Hours Intraday Short v1</strong>: sell once at 09:30 New York on every complete weekday and close at 16:00. Costs and a hard loss cap are included. Its predeclared backup buys the opposite 16:00–09:30 leg with financing included.</p>
           </div>
           <div class="legacy-scope-actions">
-            <div><small>CURRENT EXPERIMENT</small><strong>Gold Rest-of-Day Close Momentum v1 · one trade every complete weekday</strong></div>
-            <div><small>ARCHIVED EVIDENCE</small><strong>Overnight + COMEX day/closing + New York morning + H1 + London + liquidity rejected · H4 inconclusive</strong></div>
+            <div><small>CURRENT EXPERIMENT</small><strong>Gold ETF-Hours Intraday Short v1 · one trade every complete weekday</strong></div>
+            <div><small>ARCHIVED EVIDENCE</small><strong>Three close-momentum tests + session tests + H1 + London + liquidity rejected · H4 inconclusive</strong></div>
           </div>
           <details class="mt5-test-guide">
             <summary>Why an uploaded MQ5 file still needs MT5</summary>
@@ -907,15 +907,15 @@
         <div class="backtest-layout">
           <article class="panel backtest-form-panel">
             <div class="panel-head">
-              <div><p class="label">RUN A NEW TEST</p><h2 id="testerFormTitle">Gold Rest-of-Day Close Momentum v1</h2></div>
+              <div><p class="label">RUN A NEW TEST</p><h2 id="testerFormTitle">Gold ETF-Hours Intraday Short v1</h2></div>
               <span class="status-pill complete">RULES LOCKED PER RUN</span>
             </div>
             <div class="strategy-source">
-              <strong id="testerSourceName">EVE Gold Rest-of-Day Close Momentum v1 · M1 replay</strong>
-              <small id="testerSourceDetail">Previous 60 GMT+3 daily returns → two-sigma move → one late-day momentum trade → close 23:59</small>
+              <strong id="testerSourceName">EVE Gold ETF-Hours Intraday Short v1 · M1 replay</strong>
+              <small id="testerSourceDetail">Sell 09:30 New York → hold during ETF market hours → close 16:00 → one trade every complete weekday</small>
             </div>
             <form id="backtestForm" class="form-grid">
-              <label class="form-grid-wide"><span>Strategy</span><select id="testerStrategy"><option value="gold_rest_of_day_close_momentum">Gold Rest-of-Day Close Momentum v1 — current everyday experiment</option><option value="gold_intraday_close_momentum">Gold Intraday Close Momentum v1 — failed development</option><option value="gold_abnormal_momentum">Gold Abnormal Momentum v1 — profitable but too infrequent</option><option value="asia_session_long">Asia Session Long v1 — failed development</option><option value="shanghai_day_long">Shanghai Day Long v1 — failed development</option><option value="gold_overnight_long">Gold Overnight Long v1 — failed development</option><option value="comex_day_short">COMEX Day Short v1 — failed development</option><option value="comex_closing_momentum">COMEX Closing Momentum v1 — failed development</option><option value="new_york_morning_momentum">New York Morning Momentum v1 — failed development</option><option value="gold_h1_trend">Gold H1 Trend 55/20 v1 — failed development</option><option value="gold_h4_trend">Gold H4 Trend 55/20 v1 — inconclusive (62 trades)</option><option value="london_opening_range">London Opening Range v1 — failed development</option><option value="liquidity_continuation">Liquidity Continuation v1 — failed development</option><option value="liquidity_basket">Liquidity Basket v1 — failed development</option><option value="fixed_ladder">Fixed Ladder v2.61 — legacy diagnostic</option></select></label>
+              <label class="form-grid-wide"><span>Strategy</span><select id="testerStrategy"><option value="gold_etf_intraday_short">Gold ETF-Hours Intraday Short v1 — current everyday experiment</option><option value="gold_etf_overnight_long">Gold ETF-Hours Overnight Long v1 — predeclared backup</option><option value="gold_rest_of_day_close_momentum">Gold Rest-of-Day Close Momentum v1 — failed PF gate</option><option value="gold_intraday_close_momentum">Gold Intraday Close Momentum v1 — failed development</option><option value="gold_abnormal_momentum">Gold Abnormal Momentum v1 — profitable but too infrequent</option><option value="asia_session_long">Asia Session Long v1 — failed development</option><option value="shanghai_day_long">Shanghai Day Long v1 — failed development</option><option value="gold_overnight_long">Gold Overnight Long v1 — failed development</option><option value="comex_day_short">COMEX Day Short v1 — failed development</option><option value="comex_closing_momentum">COMEX Closing Momentum v1 — failed development</option><option value="new_york_morning_momentum">New York Morning Momentum v1 — failed development</option><option value="gold_h1_trend">Gold H1 Trend 55/20 v1 — failed development</option><option value="gold_h4_trend">Gold H4 Trend 55/20 v1 — inconclusive (62 trades)</option><option value="london_opening_range">London Opening Range v1 — failed development</option><option value="liquidity_continuation">Liquidity Continuation v1 — failed development</option><option value="liquidity_basket">Liquidity Basket v1 — failed development</option><option value="fixed_ladder">Fixed Ladder v2.61 — legacy diagnostic</option></select></label>
               <label data-chronological-field><span>Test period</span><select id="testPeriod"><option value="development">1. Development — first two-thirds</option><option value="untouched">2. Untouched — final third</option><option value="full">Full history — exploratory only</option><option value="custom">Custom dates — exploratory only</option></select></label>
               <label data-custom-date hidden><span>Start date</span><input id="testDateFrom" type="date"></label>
               <label data-custom-date hidden><span>End date</span><input id="testDateTo" type="date"></label>
@@ -957,7 +957,7 @@
             </form>
             <div class="resolution-note" id="resolutionNote">Checking M5 and M1 replay readiness.</div>
             <div class="rule-strip" id="testerRuleStrip">
-              <span>60 PRIOR DAYS</span><span>2-SIGMA TRIGGER</span><span>17:00 SHORT / 19:00 BUY</span><span>MAX 1 TRADE/DAY</span><span>0.25% HARD STOP</span><span>23:59 GMT+3 EXIT</span>
+              <span>SELL 09:30 NEW YORK</span><span>ETF MARKET HOURS</span><span>ONE TRADE EVERY COMPLETE WEEKDAY</span><span>FIXED 0.01 LOT</span><span>0.25% HARD STOP</span><span>16:00 EXIT</span>
             </div>
             <div class="actions">
               <button class="button button-primary" id="runBacktest">Run development test</button>
@@ -1066,7 +1066,7 @@
         <div class="activity-list" id="activityList"><div class="empty-state">Waiting for Supabase activity…</div></div>
       </section>
 
-      <footer><span>EVE COMMAND CENTRE · v4.2</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
+      <footer><span>EVE COMMAND CENTRE · v4.3</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
     </main>
   </div>
 
