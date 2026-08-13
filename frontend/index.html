@@ -51,7 +51,7 @@
     <main>
       <header class="topbar command-topbar">
         <div>
-          <p class="eyebrow" id="topbarEyebrow">EVE OPERATOR · v3.6</p>
+          <p class="eyebrow" id="topbarEyebrow">EVE OPERATOR · v3.7</p>
           <h1 id="briefingGreeting">Good afternoon.</h1>
           <p class="topbar-summary" id="topbarSummary">See only what is running, what is waiting and what you need to do.</p>
         </div>
@@ -875,11 +875,11 @@
           <div class="legacy-scope-copy">
             <p class="label">WHAT THIS TOOL DOES</p>
             <h2>Proves exact rules before we waste time building an EA</h2>
-            <p>The current experiment is <strong>New York Morning Momentum v1</strong>: at most one gold trade per New York weekday. It follows the completed 08:30–09:00 move at 09:00, risks 0.25%, and closes by 15:55.</p>
+            <p>The current experiment is <strong>COMEX Closing Momentum v1</strong>: at most one 0.01-lot gold trade per New York weekday. It follows the move from the prior settlement into 13:00 and closes at 13:30.</p>
           </div>
           <div class="legacy-scope-actions">
-            <div><small>CURRENT EXPERIMENT</small><strong>New York Morning Momentum v1 · max one trade/day</strong></div>
-            <div><small>ARCHIVED EVIDENCE</small><strong>H1 + London + liquidity rejected · H4 inconclusive</strong></div>
+            <div><small>CURRENT EXPERIMENT</small><strong>COMEX Closing Momentum v1 · max one trade/day</strong></div>
+            <div><small>ARCHIVED EVIDENCE</small><strong>New York morning + H1 + London + liquidity rejected · H4 inconclusive</strong></div>
           </div>
           <details class="mt5-test-guide">
             <summary>Why an uploaded MQ5 file still needs MT5</summary>
@@ -907,15 +907,15 @@
         <div class="backtest-layout">
           <article class="panel backtest-form-panel">
             <div class="panel-head">
-              <div><p class="label">RUN A NEW TEST</p><h2 id="testerFormTitle">New York Morning Momentum v1</h2></div>
+              <div><p class="label">RUN A NEW TEST</p><h2 id="testerFormTitle">COMEX Closing Momentum v1</h2></div>
               <span class="status-pill complete">RULES LOCKED PER RUN</span>
             </div>
             <div class="strategy-source">
-              <strong id="testerSourceName">EVE New York Morning Momentum v1 · M1 replay</strong>
-              <small id="testerSourceDetail">08:30–09:00 New York direction → 09:00 entry → opposite-edge stop → 15:55 exit</small>
+              <strong id="testerSourceName">EVE COMEX Closing Momentum v1 · M1 replay</strong>
+              <small id="testerSourceDetail">Prior 13:29 settlement proxy → follow direction at 13:00 → 0.25% hard stop → 13:30 exit</small>
             </div>
             <form id="backtestForm" class="form-grid">
-              <label class="form-grid-wide"><span>Strategy</span><select id="testerStrategy"><option value="new_york_morning_momentum">New York Morning Momentum v1 — current once-a-day experiment</option><option value="gold_h1_trend">Gold H1 Trend 55/20 v1 — failed development</option><option value="gold_h4_trend">Gold H4 Trend 55/20 v1 — inconclusive (62 trades)</option><option value="london_opening_range">London Opening Range v1 — failed development</option><option value="liquidity_continuation">Liquidity Continuation v1 — failed development</option><option value="liquidity_basket">Liquidity Basket v1 — failed development</option><option value="fixed_ladder">Fixed Ladder v2.61 — legacy diagnostic</option></select></label>
+              <label class="form-grid-wide"><span>Strategy</span><select id="testerStrategy"><option value="comex_closing_momentum">COMEX Closing Momentum v1 — current once-a-day experiment</option><option value="new_york_morning_momentum">New York Morning Momentum v1 — failed development</option><option value="gold_h1_trend">Gold H1 Trend 55/20 v1 — failed development</option><option value="gold_h4_trend">Gold H4 Trend 55/20 v1 — inconclusive (62 trades)</option><option value="london_opening_range">London Opening Range v1 — failed development</option><option value="liquidity_continuation">Liquidity Continuation v1 — failed development</option><option value="liquidity_basket">Liquidity Basket v1 — failed development</option><option value="fixed_ladder">Fixed Ladder v2.61 — legacy diagnostic</option></select></label>
               <label data-chronological-field><span>Test period</span><select id="testPeriod"><option value="development">1. Development — first two-thirds</option><option value="untouched">2. Untouched — final third</option><option value="full">Full history — exploratory only</option><option value="custom">Custom dates — exploratory only</option></select></label>
               <label data-custom-date hidden><span>Start date</span><input id="testDateFrom" type="date"></label>
               <label data-custom-date hidden><span>End date</span><input id="testDateTo" type="date"></label>
@@ -929,6 +929,8 @@
               <label data-session-risk-field><span>Minimum lot</span><input id="londonMinimumLot" type="number" value="0.01" min="0.01" max="100" step="0.01"></label>
               <label data-session-risk-field><span>Lot step</span><input id="londonLotStep" type="number" value="0.01" min="0.01" max="100" step="0.01"></label>
               <label data-session-risk-field><span>Maximum lot</span><input id="londonMaximumLot" type="number" value="1.00" min="0.01" max="100" step="0.01"></label>
+              <label data-comex-field><span>Fixed lot (locked)</span><input id="comexFixedLot" type="number" value="0.01" disabled></label>
+              <label data-comex-field><span>Hard loss cap (locked)</span><input id="comexMaximumLoss" type="text" value="0.25% of balance" disabled></label>
               <label data-trend-field><span>Risk per trade (%)</span><input id="trendRiskPercent" type="number" value="0.25" min="0.01" max="5" step="0.01"></label>
               <label data-trend-field><span>Minimum lot</span><input id="trendMinimumLot" type="number" value="0.01" min="0.01" max="100" step="0.01"></label>
               <label data-trend-field><span>Lot step</span><input id="trendLotStep" type="number" value="0.01" min="0.01" max="100" step="0.01"></label>
@@ -952,7 +954,7 @@
             </form>
             <div class="resolution-note" id="resolutionNote">Checking M5 and M1 replay readiness.</div>
             <div class="rule-strip" id="testerRuleStrip">
-              <span>08:30–09:00 NEW YORK</span><span>09:00 ENTRY</span><span>MAX 1 TRADE/DAY</span><span>0.25% RISK</span><span>RANGE-EDGE STOP</span><span>15:55 EXIT</span>
+              <span>PRIOR 13:29 REFERENCE</span><span>13:00 ENTRY</span><span>MAX 1 TRADE/DAY</span><span>FIXED 0.01 LOT</span><span>0.25% HARD STOP</span><span>13:30 EXIT</span>
             </div>
             <div class="actions">
               <button class="button button-primary" id="runBacktest">Run development test</button>
@@ -1061,7 +1063,7 @@
         <div class="activity-list" id="activityList"><div class="empty-state">Waiting for Supabase activity…</div></div>
       </section>
 
-      <footer><span>EVE COMMAND CENTRE · v3.6</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
+      <footer><span>EVE COMMAND CENTRE · v3.7</span><span>SUPABASE / RAILWAY / NETLIFY / TWELVE DATA</span></footer>
     </main>
   </div>
 
