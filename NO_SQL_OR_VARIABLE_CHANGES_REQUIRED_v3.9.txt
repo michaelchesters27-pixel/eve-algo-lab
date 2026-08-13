@@ -1,0 +1,2 @@
+EVE Algo Lab v3.9 requires no Supabase SQL changes.
+It also requires no new Railway or Netlify environment variables.

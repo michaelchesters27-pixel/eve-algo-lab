@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 from app.backtesting.fixed_ladder_v261 import Candle, PathMode
 
 
-SessionLeg = Literal["overnight_long", "day_short"]
+SessionLeg = Literal["overnight_long", "day_short", "asia_long", "shanghai_day_long"]
 Side = Literal["buy", "sell"]
 
 
@@ -21,6 +21,13 @@ class GoldSessionAnomalyParameters:
     day_open_minute: int = 20
     settlement_hour: int = 13
     settlement_minute: int = 30
+    asia_entry_hour: int = 18
+    asia_entry_minute: int = 0
+    asia_exit_timezone_name: str = "Asia/Shanghai"
+    shanghai_entry_hour: int = 9
+    shanghai_entry_minute: int = 0
+    asia_exit_hour: int = 15
+    asia_exit_minute: int = 30
     fixed_lot: float = 0.01
     maximum_loss_percent: float = 0.25
     long_overnight_cost_per_001_lot: float = 0.70
@@ -41,22 +48,38 @@ class GoldSessionAnomalyParameters:
 
     @property
     def entry_total_minutes(self) -> int:
-        return self.settlement_total_minutes if self.session_leg == "overnight_long" else self.day_open_total_minutes
+        if self.session_leg == "overnight_long":
+            return self.settlement_total_minutes
+        if self.session_leg == "asia_long":
+            return self.asia_entry_hour * 60 + self.asia_entry_minute
+        if self.session_leg == "shanghai_day_long":
+            return self.shanghai_entry_hour * 60 + self.shanghai_entry_minute
+        return self.day_open_total_minutes
 
     @property
     def exit_total_minutes(self) -> int:
-        return self.day_open_total_minutes if self.session_leg == "overnight_long" else self.settlement_total_minutes
+        if self.session_leg == "overnight_long":
+            return self.day_open_total_minutes
+        if self.session_leg in {"asia_long", "shanghai_day_long"}:
+            return self.asia_exit_hour * 60 + self.asia_exit_minute
+        return self.settlement_total_minutes
 
     @property
     def side(self) -> Side:
-        return "buy" if self.session_leg == "overnight_long" else "sell"
+        return "sell" if self.session_leg == "day_short" else "buy"
 
     @property
     def strategy_code(self) -> str:
-        return "gold_overnight_long" if self.session_leg == "overnight_long" else "comex_day_short"
+        if self.session_leg == "overnight_long":
+            return "gold_overnight_long"
+        if self.session_leg == "asia_long":
+            return "asia_session_long"
+        if self.session_leg == "shanghai_day_long":
+            return "shanghai_day_long"
+        return "comex_day_short"
 
     def validate(self) -> None:
-        if self.session_leg not in {"overnight_long", "day_short"}:
+        if self.session_leg not in {"overnight_long", "day_short", "asia_long", "shanghai_day_long"}:
             raise ValueError("Unsupported gold session-anomaly leg")
         if self.timezone_name != "America/New_York":
             raise ValueError("Gold Session Anomaly v1 requires America/New_York time")
@@ -64,6 +87,14 @@ class GoldSessionAnomalyParameters:
             raise ValueError("The documented COMEX day open must remain 08:20 New York")
         if (self.settlement_hour, self.settlement_minute) != (13, 30):
             raise ValueError("The COMEX settlement boundary must remain 13:30 New York")
+        if (self.asia_entry_hour, self.asia_entry_minute) != (18, 0):
+            raise ValueError("Asia Session Long v1 must enter at 18:00 New York")
+        if self.asia_exit_timezone_name != "Asia/Shanghai":
+            raise ValueError("Asia Session Long v1 must use Asia/Shanghai for its exit")
+        if (self.shanghai_entry_hour, self.shanghai_entry_minute) != (9, 0):
+            raise ValueError("Shanghai Day Long v1 must enter at 09:00 Shanghai")
+        if (self.asia_exit_hour, self.asia_exit_minute) != (15, 30):
+            raise ValueError("Asia Session Long v1 must exit at 15:30 Shanghai")
         if self.fixed_lot <= 0:
             raise ValueError("Fixed lot must be greater than zero")
         if not 0.01 <= self.maximum_loss_percent <= 5.0:
@@ -134,7 +165,13 @@ class GoldSessionCompletedTrade:
 
     @property
     def strategy_code(self) -> str:
-        return "gold_overnight_long" if self.signal.session_leg == "overnight_long" else "comex_day_short"
+        if self.signal.session_leg == "overnight_long":
+            return "gold_overnight_long"
+        if self.signal.session_leg == "asia_long":
+            return "asia_session_long"
+        if self.signal.session_leg == "shanghai_day_long":
+            return "shanghai_day_long"
+        return "comex_day_short"
 
     def to_trade_row(self, run_id: str) -> dict[str, Any]:
         return {
@@ -187,7 +224,15 @@ class GoldSessionCompletedTrade:
             "entry_protocol": (
                 "buy the 13:30 America/New_York M1 open and hold to the next eligible 08:20 open"
                 if self.signal.session_leg == "overnight_long"
-                else "sell the 08:20 America/New_York M1 open and hold to the 13:30 open"
+                else (
+                    "buy the 18:00 America/New_York M1 open and hold to the 15:30 Asia/Shanghai open"
+                    if self.signal.session_leg == "asia_long"
+                    else (
+                        "buy the 09:00 Asia/Shanghai M1 open and hold to the 15:30 Asia/Shanghai open"
+                        if self.signal.session_leg == "shanghai_day_long"
+                        else "sell the 08:20 America/New_York M1 open and hold to the 13:30 open"
+                    )
+                )
             ),
             "exit_protocol": "0.25% hard money stop or the frozen session boundary",
         }
@@ -240,6 +285,7 @@ class GoldSessionAnomalyBacktester:
         parameters.validate()
         self.params = parameters
         self.timezone = ZoneInfo(parameters.timezone_name)
+        self.asia_exit_timezone = ZoneInfo(parameters.asia_exit_timezone_name)
         self.starting_balance = float(starting_balance)
         self.balance = float(starting_balance)
         self._equity_peak = float(starting_balance)
@@ -282,6 +328,11 @@ class GoldSessionAnomalyBacktester:
 
     def _local(self, at: datetime) -> datetime:
         return at.astimezone(self.timezone)
+
+    def _entry_local(self, at: datetime) -> datetime:
+        if self.params.session_leg == "shanghai_day_long":
+            return at.astimezone(self.asia_exit_timezone)
+        return self._local(at)
 
     @staticmethod
     def _minute_of_day(at: datetime) -> int:
@@ -345,24 +396,46 @@ class GoldSessionAnomalyBacktester:
         self._session_date = session_date
         self._day_signal_consumed = False
         self.sessions_seen += 1
-        if session_date.weekday() < 5:
+        if self._entry_day_is_eligible(session_date.weekday()):
             self.eligible_sessions += 1
 
+    def _entry_day_is_eligible(self, weekday: int) -> bool:
+        if self.params.session_leg == "asia_long":
+            return weekday in {6, 0, 1, 2, 3}
+        return weekday < 5
+
     def _open_daily_trade(self, at: datetime, mid: float, local: datetime) -> bool:
-        if self._day_signal_consumed or local.weekday() >= 5 or self.account_ruined or self.position is not None:
+        if (
+            self._day_signal_consumed
+            or not self._entry_day_is_eligible(local.weekday())
+            or self.account_ruined
+            or self.position is not None
+        ):
             return False
         self._day_signal_consumed = True
         side = self.params.side
         signal = GoldSessionSignal(
             side=side,
             signal_time=at,
-            trade_date=local.date().isoformat(),
+            trade_date=(
+                at.astimezone(self.asia_exit_timezone).date().isoformat()
+                if self.params.session_leg in {"asia_long", "shanghai_day_long"}
+                else local.date().isoformat()
+            ),
             session_leg=self.params.session_leg,
         )
         self._sequence += 1
         entry_price = self._entry_price(side, mid)
         planned_risk = self.balance * self.params.maximum_loss_percent / 100.0
-        prefix = "OVERNIGHT" if self.params.session_leg == "overnight_long" else "DAY-SHORT"
+        prefix = (
+            "OVERNIGHT"
+            if self.params.session_leg == "overnight_long"
+            else (
+                "ASIA-LONG"
+                if self.params.session_leg == "asia_long"
+                else ("SHANGHAI-LONG" if self.params.session_leg == "shanghai_day_long" else "DAY-SHORT")
+            )
+        )
         self.position = GoldSessionPosition(
             position_id=f"{prefix}-POS-{self._sequence:08d}",
             basket_id=f"{prefix}-TRADE-{self._sequence:08d}",
@@ -521,7 +594,17 @@ class GoldSessionAnomalyBacktester:
             self._close_position(at, mid, "HARD MONEY STOP")
 
     def _should_exit(self, local: datetime) -> bool:
-        if self.position is None or local.weekday() >= 5:
+        if self.position is None:
+            return False
+        if self.params.session_leg in {"asia_long", "shanghai_day_long"}:
+            exit_local = local.astimezone(self.asia_exit_timezone)
+            target = datetime.combine(
+                date.fromisoformat(self.position.signal.trade_date),
+                time(self.params.asia_exit_hour, self.params.asia_exit_minute),
+                tzinfo=self.asia_exit_timezone,
+            )
+            return exit_local >= target
+        if local.weekday() >= 5:
             return False
         opened_local = self._local(self.position.opened_at)
         minute = self._minute_of_day(local)
@@ -537,7 +620,7 @@ class GoldSessionAnomalyBacktester:
             self.first_candle = candle.candle_time
         self.last_candle = candle.candle_time
         self.candles_processed += 1
-        local = self._local(candle.candle_time)
+        local = self._entry_local(candle.candle_time)
         session_date = local.date()
 
         if self._session_date != session_date:
@@ -561,7 +644,15 @@ class GoldSessionAnomalyBacktester:
 
         minute = self._minute_of_day(local)
         if self.position is not None and self._should_exit(local):
-            if minute == self.params.exit_total_minutes:
+            if self.params.session_leg in {"asia_long", "shanghai_day_long"}:
+                exit_local = candle.candle_time.astimezone(self.asia_exit_timezone)
+                exact_exit = (
+                    exit_local.date() == date.fromisoformat(self.position.signal.trade_date)
+                    and self._minute_of_day(exit_local) == self.params.exit_total_minutes
+                )
+            else:
+                exact_exit = minute == self.params.exit_total_minutes
+            if exact_exit:
                 self._close_position(candle.candle_time, candle.open, "FROZEN SESSION EXIT")
             else:
                 self.missing_exit_fallbacks += 1
@@ -577,7 +668,7 @@ class GoldSessionAnomalyBacktester:
             if opened:
                 current = path[0]
         elif (
-            local.weekday() < 5
+            self._entry_day_is_eligible(local.weekday())
             and minute > self.params.entry_total_minutes
             and not self._day_signal_consumed
         ):

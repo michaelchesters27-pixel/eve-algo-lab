@@ -182,6 +182,104 @@ def test_day_short_opens_at_0820_and_exits_at_1330_same_day() -> None:
     assert trades[0].financing_costs == 0.0
 
 
+def test_asia_long_opens_sunday_1800_new_york_and_exits_monday_1530_shanghai() -> None:
+    entry = datetime(2026, 1, 4, 23, 0, tzinfo=timezone.utc)
+    exit_ = datetime(2026, 1, 5, 7, 30, tzinfo=timezone.utc)
+    simulator = GoldSessionAnomalyBacktester(
+        10_000.0,
+        parameters("asia_long", long_overnight_cost_per_001_lot=0.70),
+    )
+    simulator.process_candle(minute(entry, 100.0, 101.0, 99.0, 100.0))
+
+    assert simulator.position is not None
+    assert simulator.position.side == "buy"
+    assert simulator.position.signal.trade_date == "2026-01-05"
+
+    simulator.process_candle(minute(exit_, 105.0, 110.0, 70.0, 80.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 1
+    assert trades[0].closed_at == exit_
+    assert trades[0].net_pnl == pytest.approx(5.0)
+    assert trades[0].financing_costs == 0.0
+
+
+def test_asia_long_uses_new_york_dst_for_entry_and_fixed_shanghai_exit() -> None:
+    entry = datetime(2026, 6, 7, 22, 0, tzinfo=timezone.utc)
+    exit_ = datetime(2026, 6, 8, 7, 30, tzinfo=timezone.utc)
+    simulator = GoldSessionAnomalyBacktester(10_000.0, parameters("asia_long"))
+    simulator.process_candle(minute(entry, 100.0, 101.0, 99.0, 100.0))
+    simulator.process_candle(minute(exit_, 102.0, 103.0, 101.0, 102.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 1
+    assert trades[0].opened_at == entry
+    assert trades[0].closed_at == exit_
+
+
+def test_asia_long_never_enters_on_friday_evening() -> None:
+    friday_1800_new_york = datetime(2026, 1, 9, 23, 0, tzinfo=timezone.utc)
+    simulator = GoldSessionAnomalyBacktester(10_000.0, parameters("asia_long"))
+    simulator.process_candle(minute(friday_1800_new_york, 100.0, 101.0, 99.0, 100.0))
+
+    assert simulator.position is None
+    assert simulator.summary().sessions_traded == 0
+
+
+def test_asia_long_produces_at_most_five_complete_trades_in_a_week() -> None:
+    simulator = GoldSessionAnomalyBacktester(10_000.0, parameters("asia_long"))
+    first_entry = datetime(2026, 1, 4, 23, 0, tzinfo=timezone.utc)
+    for offset in range(5):
+        entry = first_entry + timedelta(days=offset)
+        exit_ = datetime(2026, 1, 5 + offset, 7, 30, tzinfo=timezone.utc)
+        simulator.process_candle(minute(entry, 100.0, 101.0, 99.0, 100.0))
+        simulator.process_candle(minute(exit_, 101.0, 102.0, 100.0, 101.0))
+    simulator.process_candle(
+        minute(datetime(2026, 1, 9, 23, 0, tzinfo=timezone.utc), 100.0, 101.0, 99.0, 100.0)
+    )
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 5
+    assert simulator.summary().sessions_traded == 5
+
+
+def test_asia_exit_missing_exact_bar_uses_last_available_pre_exit_price() -> None:
+    entry = datetime(2026, 1, 4, 23, 0, tzinfo=timezone.utc)
+    last_before_exit = datetime(2026, 1, 5, 7, 29, tzinfo=timezone.utc)
+    first_after_exit = datetime(2026, 1, 5, 7, 31, tzinfo=timezone.utc)
+    simulator = GoldSessionAnomalyBacktester(10_000.0, parameters("asia_long"))
+    simulator.process_candle(minute(entry, 100.0, 101.0, 99.0, 100.0))
+    simulator.process_candle(minute(last_before_exit, 102.0, 103.0, 101.0, 102.5))
+    simulator.process_candle(minute(first_after_exit, 110.0, 111.0, 109.0, 110.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 1
+    assert trades[0].closed_at == last_before_exit
+    assert trades[0].exit_price == pytest.approx(102.5)
+    assert trades[0].exit_reason == "LAST AVAILABLE PRE-EXIT BAR"
+    assert simulator.summary().missing_exit_fallbacks == 1
+
+
+def test_shanghai_day_long_trades_the_exact_official_day_session() -> None:
+    entry = datetime(2026, 1, 5, 1, 0, tzinfo=timezone.utc)
+    exit_ = datetime(2026, 1, 5, 7, 30, tzinfo=timezone.utc)
+    simulator = GoldSessionAnomalyBacktester(10_000.0, parameters("shanghai_day_long"))
+    simulator.process_candle(minute(entry, 100.0, 101.0, 99.0, 100.0))
+
+    assert simulator.position is not None
+    assert simulator.position.side == "buy"
+    assert simulator.position.signal.trade_date == "2026-01-05"
+
+    simulator.process_candle(minute(exit_, 104.0, 110.0, 70.0, 80.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 1
+    assert trades[0].opened_at == entry
+    assert trades[0].closed_at == exit_
+    assert trades[0].net_pnl == pytest.approx(4.0)
+    assert trades[0].financing_costs == 0.0
+
+
 def test_request_and_untouched_lock_cover_both_predeclared_session_legs() -> None:
     request = GoldSessionAnomalyBacktestRequest()
 
@@ -191,6 +289,10 @@ def test_request_and_untouched_lock_cover_both_predeclared_session_legs() -> Non
     assert (request.day_open_hour, request.day_open_minute) == (8, 20)
     assert (request.settlement_hour, request.settlement_minute) == (13, 30)
     assert request.long_overnight_cost_per_001_lot == 0.70
+    assert (request.asia_entry_hour, request.asia_entry_minute) == (18, 0)
+    assert request.asia_exit_timezone_name == "Asia/Shanghai"
+    assert (request.shanghai_entry_hour, request.shanghai_entry_minute) == (9, 0)
+    assert (request.asia_exit_hour, request.asia_exit_minute) == (15, 30)
 
     baseline = request.model_dump(mode="json")
     baseline["strategy"] = "gold_overnight_long"
@@ -199,6 +301,9 @@ def test_request_and_untouched_lock_cover_both_predeclared_session_legs() -> Non
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "session_leg": "day_short"})
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "long_overnight_cost_per_001_lot": 0.0})
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "settlement_minute": 29})
+    assert not gold_session_anomaly_settings_match(baseline, {**untouched, "asia_entry_hour": 17})
+    assert not gold_session_anomaly_settings_match(baseline, {**untouched, "asia_exit_minute": 0})
+    assert not gold_session_anomaly_settings_match(baseline, {**untouched, "shanghai_entry_hour": 8})
 
 
 class FakeGoldSessionRepository:
@@ -251,6 +356,22 @@ class FakeGoldSessionRepository:
                 minute(datetime(2026, 1, 5, 18, 30, tzinfo=timezone.utc), 95.0, 96.0, 94.0, 95.0),
             ],
             "comex_day_short",
+        ),
+        (
+            "asia_long",
+            [
+                minute(datetime(2026, 1, 4, 23, 0, tzinfo=timezone.utc), 100.0, 101.0, 99.0, 100.0),
+                minute(datetime(2026, 1, 5, 7, 30, tzinfo=timezone.utc), 105.0, 106.0, 104.0, 105.0),
+            ],
+            "asia_session_long",
+        ),
+        (
+            "shanghai_day_long",
+            [
+                minute(datetime(2026, 1, 5, 1, 0, tzinfo=timezone.utc), 100.0, 101.0, 99.0, 100.0),
+                minute(datetime(2026, 1, 5, 7, 30, tzinfo=timezone.utc), 105.0, 106.0, 104.0, 105.0),
+            ],
+            "shanghai_day_long",
         ),
     ],
 )

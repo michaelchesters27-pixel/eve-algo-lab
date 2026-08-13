@@ -63,8 +63,12 @@ GOLD_OVERNIGHT_STRATEGY_SLUG = "eve-gold-overnight-long-v1"
 GOLD_OVERNIGHT_STRATEGY_NAME = "EVE Gold Overnight Long v1"
 COMEX_DAY_SHORT_STRATEGY_SLUG = "eve-comex-day-short-v1"
 COMEX_DAY_SHORT_STRATEGY_NAME = "EVE COMEX Day Short v1"
+ASIA_SESSION_LONG_STRATEGY_SLUG = "eve-asia-session-long-v1"
+ASIA_SESSION_LONG_STRATEGY_NAME = "EVE Asia Session Long v1"
+SHANGHAI_DAY_LONG_STRATEGY_SLUG = "eve-shanghai-day-long-v1"
+SHANGHAI_DAY_LONG_STRATEGY_NAME = "EVE Shanghai Day Long v1"
 GOLD_SESSION_ANOMALY_STRATEGY_VERSION = "1.0"
-GOLD_SESSION_ANOMALY_SOURCE_SHA256 = "81ba4e74ff719610bc30ece800f279354238892b096e0aeb0e8057acf9fa027a"
+GOLD_SESSION_ANOMALY_SOURCE_SHA256 = "46abaf6118c4759b39b2e7d2f43ba1af24096dad07e74cc5e10a6c72af6c30aa"
 GOLD_H4_STRATEGY_SLUG = "eve-gold-h4-trend-55-20-v1"
 GOLD_H4_STRATEGY_NAME = "EVE Gold H4 Trend 55/20 v1"
 GOLD_H4_STRATEGY_VERSION = "1.0"
@@ -171,6 +175,13 @@ GOLD_SESSION_ANOMALY_LOCKED_SETTING_KEYS = (
     "day_open_minute",
     "settlement_hour",
     "settlement_minute",
+    "asia_entry_hour",
+    "asia_entry_minute",
+    "asia_exit_timezone_name",
+    "shanghai_entry_hour",
+    "shanghai_entry_minute",
+    "asia_exit_hour",
+    "asia_exit_minute",
     "long_overnight_cost_per_001_lot",
     "triple_swap_weekday",
     "spread_price",
@@ -272,6 +283,24 @@ def comex_closing_momentum_settings_match(first: dict[str, Any], second: dict[st
 
 
 def gold_session_anomaly_identity(session_leg: str) -> dict[str, str]:
+    if session_leg == "shanghai_day_long":
+        return {
+            "code": "shanghai_day_long",
+            "name": SHANGHAI_DAY_LONG_STRATEGY_NAME,
+            "slug": SHANGHAI_DAY_LONG_STRATEGY_SLUG,
+            "description": "One fixed-size XAU/USD long during the official Shanghai Gold Exchange day session.",
+            "entry": "buy the exact 09:00 Asia/Shanghai M1 open on Monday through Friday",
+            "exit": "close at the exact 15:30 Asia/Shanghai M1 open",
+        }
+    if session_leg == "asia_long":
+        return {
+            "code": "asia_session_long",
+            "name": ASIA_SESSION_LONG_STRATEGY_NAME,
+            "slug": ASIA_SESSION_LONG_STRATEGY_SLUG,
+            "description": "One fixed-size XAU/USD long from the New York post-rollover reopen through the Shanghai gold close.",
+            "entry": "buy the exact 18:00 New York M1 open on Sunday through Thursday",
+            "exit": "close at the exact 15:30 Asia/Shanghai M1 open for the associated Monday-through-Friday session",
+        }
     if session_leg == "day_short":
         return {
             "code": "comex_day_short",
@@ -795,7 +824,15 @@ class BacktestService:
                 "overnight_financing": (
                     "$0.70 per 0.01 lot at 17:00 New York with Wednesday triple"
                     if session_leg == "overnight_long"
-                    else "not applicable to the same-day short"
+                    else (
+                        "not applicable because the trade opens after rollover and exits before the next rollover"
+                        if session_leg == "asia_long"
+                        else (
+                            "not applicable to the same-day Shanghai long"
+                            if session_leg == "shanghai_day_long"
+                            else "not applicable to the same-day short"
+                        )
+                    )
                 ),
                 "missing_entry": "skip the day; never enter late",
                 "source": "railway/app/backtesting/gold_session_anomaly.py",
@@ -805,7 +842,11 @@ class BacktestService:
                 GOLD_SESSION_ANOMALY_STRATEGY_VERSION,
                 rules,
                 GOLD_SESSION_ANOMALY_SOURCE_SHA256,
-                "Pre-declared together with the opposite session leg before either result was seen. No EA exists unless locked development and untouched tests both pass.",
+                (
+                    "Two eastern-session hypotheses frozen together after both COMEX session legs failed, before either eastern result was seen. No EA exists unless locked development and untouched tests both pass."
+                    if session_leg in {"asia_long", "shanghai_day_long"}
+                    else "Pre-declared together with the opposite session leg before either result was seen. No EA exists unless locked development and untouched tests both pass."
+                ),
             )
         return str(version["id"])
 
@@ -2888,7 +2929,15 @@ class BacktestService:
         accuracy = (
             "Verified M1 13:30 New York long entry, next eligible 08:20 exit, financing and hard-money stop replay"
             if session_leg == "overnight_long"
-            else "Verified M1 08:20 New York short entry, 13:30 exit and hard-money stop replay"
+            else (
+                "Verified M1 18:00 New York long entry, 15:30 Shanghai exit and hard-money stop replay"
+                if session_leg == "asia_long"
+                else (
+                    "Verified M1 09:00 Shanghai long entry, 15:30 Shanghai exit and hard-money stop replay"
+                    if session_leg == "shanghai_day_long"
+                    else "Verified M1 08:20 New York short entry, 13:30 exit and hard-money stop replay"
+                )
+            )
         )
         try:
             await self.repo.update_backtest_run(
@@ -2922,6 +2971,13 @@ class BacktestService:
                 day_open_minute=int(request.get("day_open_minute", 20)),
                 settlement_hour=int(request.get("settlement_hour", 13)),
                 settlement_minute=int(request.get("settlement_minute", 30)),
+                asia_entry_hour=int(request.get("asia_entry_hour", 18)),
+                asia_entry_minute=int(request.get("asia_entry_minute", 0)),
+                asia_exit_timezone_name=str(request.get("asia_exit_timezone_name", "Asia/Shanghai")),
+                shanghai_entry_hour=int(request.get("shanghai_entry_hour", 9)),
+                shanghai_entry_minute=int(request.get("shanghai_entry_minute", 0)),
+                asia_exit_hour=int(request.get("asia_exit_hour", 15)),
+                asia_exit_minute=int(request.get("asia_exit_minute", 30)),
                 fixed_lot=float(request.get("fixed_lot", 0.01)),
                 maximum_loss_percent=float(request.get("maximum_loss_percent", 0.25)),
                 long_overnight_cost_per_001_lot=float(
@@ -3065,7 +3121,11 @@ class BacktestService:
                     else f"{identity['name']} backtest complete"
                 ),
                 "accuracy": accuracy,
-                "warning": "M1 cannot prove tick ordering or exact broker fills. The overnight financing input is a frozen conservative proxy and any survivor still needs broker-specific MT5 real-tick verification.",
+                "warning": (
+                    "M1 cannot prove tick ordering or exact broker fills. The overnight financing input is a frozen conservative proxy and any survivor still needs broker-specific MT5 real-tick verification."
+                    if session_leg == "overnight_long"
+                    else "M1 cannot prove tick ordering or exact broker fills. Any survivor still needs broker-specific MT5 real-tick verification."
+                ),
                 "input_interval": data_interval,
                 "signal_interval": "1min",
                 "strategy": strategy_code,
