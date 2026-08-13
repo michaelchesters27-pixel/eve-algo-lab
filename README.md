@@ -1,6 +1,19 @@
-# EVE Command Centre v3.7
+# EVE Command Centre v3.8
 
 EVE is a private XAU/USD research, strategy-evolution and MT5 bot-development platform using Supabase, Railway, Netlify and Twelve Data.
+
+## What v3.8 changes
+
+- Adds two independently identified, pre-declared gold session hypotheses before either result is seen: **Gold Overnight Long v1** and **COMEX Day Short v1**.
+- Gold Overnight Long buys one fixed 0.01-lot position at the exact 13:30 New York M1 open and exits at the next eligible weekday's exact 08:20 open.
+- COMEX Day Short sells one fixed 0.01-lot position at 08:20 New York and exits at 13:30 the same day.
+- Both strategies allow at most one entry per weekday, never enter late, never average, never use martingale and cap total trade loss at 0.25% of current balance.
+- The overnight replay includes a frozen $0.70 financing cost per 0.01 lot at 17:00 New York and a Wednesday triple charge; both replays include spread, commission, optional slippage, daylight saving and gap stops.
+- Uses the same pre-declared proof gate: at least 500 trades, positive net profit and expectancy, PF 1.20, no more than 15% drawdown, and at least three profitable years.
+- Keeps the untouched final third sealed unless the exact matching development run passes the gate. A merely completed or failed development run cannot unlock it.
+- Archives COMEX Closing Momentum v1 as failed development evidence and makes Gold Overnight Long v1 the next current experiment.
+
+No Supabase SQL or new Railway/Netlify variables are required for v3.8.
 
 ## What v3.7 changes
 

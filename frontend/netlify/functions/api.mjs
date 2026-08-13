@@ -33,6 +33,7 @@ const ALLOWED = [
   /^backtests\/[0-9a-f-]+\/cancel$/i,
   /^backtests\/gold-h4-trend$/,
   /^backtests\/gold-h1-trend$/,
+  /^backtests\/gold-session-anomaly$/,
   /^backtests\/comex-closing-momentum$/,
   /^backtests\/new-york-morning-momentum$/,
   /^backtests\/london-opening-range$/,

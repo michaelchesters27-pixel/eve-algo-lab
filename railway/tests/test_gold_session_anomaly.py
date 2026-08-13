@@ -1,0 +1,296 @@
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from app.backtesting.fixed_ladder_v261 import Candle
+from app.backtesting.gold_session_anomaly import (
+    GoldSessionAnomalyBacktester,
+    GoldSessionAnomalyParameters,
+)
+from app.models.schemas import GoldSessionAnomalyBacktestRequest
+from app.services.backtests import BacktestService, gold_session_anomaly_settings_match
+
+
+WINTER_SETTLEMENT = datetime(2026, 1, 5, 18, 30, tzinfo=timezone.utc)
+WINTER_NEXT_OPEN = datetime(2026, 1, 6, 13, 20, tzinfo=timezone.utc)
+
+
+def parameters(session_leg: str = "overnight_long", **overrides) -> GoldSessionAnomalyParameters:
+    values = {
+        "session_leg": session_leg,
+        "fixed_lot": 0.01,
+        "maximum_loss_percent": 0.25,
+        "long_overnight_cost_per_001_lot": 0.0,
+        "spread_price": 0.0,
+        "commission_per_001_lot": 0.0,
+        "slippage_price": 0.0,
+        "money_per_price_per_001_lot": 1.0,
+        "path_mode": "candle_direction",
+    }
+    values.update(overrides)
+    return GoldSessionAnomalyParameters(**values)
+
+
+def minute(at: datetime, open_: float, high: float, low: float, close: float) -> Candle:
+    return Candle(candle_time=at, open=open_, high=high, low=low, close=close)
+
+
+def test_overnight_long_opens_at_1330_and_exits_next_0820_new_york() -> None:
+    simulator = GoldSessionAnomalyBacktester(10_000.0, parameters())
+    simulator.process_candle(minute(WINTER_SETTLEMENT, 100.0, 101.0, 99.0, 100.0))
+
+    assert simulator.position is not None
+    assert simulator.position.side == "buy"
+    assert simulator.position.opened_at == WINTER_SETTLEMENT
+    assert simulator.position.lot_size == 0.01
+    assert simulator.position.planned_risk_money == pytest.approx(25.0)
+
+    simulator.process_candle(minute(WINTER_NEXT_OPEN, 105.0, 110.0, 70.0, 80.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 1
+    assert trades[0].closed_at == WINTER_NEXT_OPEN
+    assert trades[0].exit_reason == "FROZEN SESSION EXIT"
+    assert trades[0].net_pnl == pytest.approx(5.0)
+
+
+def test_summer_dst_moves_both_boundaries_one_hour_earlier_utc() -> None:
+    entry = datetime(2026, 6, 8, 17, 30, tzinfo=timezone.utc)
+    exit_ = datetime(2026, 6, 9, 12, 20, tzinfo=timezone.utc)
+    simulator = GoldSessionAnomalyBacktester(10_000.0, parameters())
+    simulator.process_candle(minute(entry, 100.0, 101.0, 99.0, 100.0))
+    assert simulator.position is not None
+
+    simulator.process_candle(minute(exit_, 101.0, 102.0, 100.0, 101.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 1
+    assert trades[0].opened_at == entry
+    assert trades[0].closed_at == exit_
+
+
+def test_friday_overnight_trade_waits_until_monday_open() -> None:
+    friday_entry = datetime(2026, 1, 9, 18, 30, tzinfo=timezone.utc)
+    sunday_bar = datetime(2026, 1, 11, 23, 0, tzinfo=timezone.utc)
+    monday_exit = datetime(2026, 1, 12, 13, 20, tzinfo=timezone.utc)
+    simulator = GoldSessionAnomalyBacktester(10_000.0, parameters())
+    simulator.process_candle(minute(friday_entry, 100.0, 101.0, 99.0, 100.0))
+    simulator.process_candle(minute(sunday_bar, 102.0, 103.0, 101.0, 102.0))
+
+    assert simulator.position is not None
+
+    simulator.process_candle(minute(monday_exit, 103.0, 104.0, 102.0, 103.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 1
+    assert trades[0].closed_at == monday_exit
+    assert trades[0].net_pnl == pytest.approx(3.0)
+
+
+def test_overnight_financing_is_charged_at_1700_and_wednesday_is_triple() -> None:
+    wednesday_entry = datetime(2026, 1, 7, 18, 30, tzinfo=timezone.utc)
+    wednesday_rollover = datetime(2026, 1, 7, 22, 0, tzinfo=timezone.utc)
+    thursday_exit = datetime(2026, 1, 8, 13, 20, tzinfo=timezone.utc)
+    simulator = GoldSessionAnomalyBacktester(
+        10_000.0,
+        parameters(long_overnight_cost_per_001_lot=0.70),
+    )
+    simulator.process_candle(minute(wednesday_entry, 100.0, 101.0, 99.0, 100.0))
+    simulator.process_candle(minute(wednesday_rollover, 100.0, 101.0, 99.0, 100.0))
+
+    assert simulator.position is not None
+    assert simulator.position.financing_costs == pytest.approx(2.10)
+    assert simulator.summary().financing_events == 1
+
+    simulator.process_candle(minute(thursday_exit, 105.0, 106.0, 104.0, 105.0))
+    trades, _ = simulator.finalise()
+
+    assert trades[0].financing_costs == pytest.approx(2.10)
+    assert trades[0].net_pnl == pytest.approx(2.90)
+
+
+def test_hard_stop_caps_total_loss_after_spread_commission_and_financing() -> None:
+    rollover = datetime(2026, 1, 5, 22, 0, tzinfo=timezone.utc)
+    simulator = GoldSessionAnomalyBacktester(
+        10_000.0,
+        parameters(
+            long_overnight_cost_per_001_lot=0.70,
+            spread_price=0.05,
+            commission_per_001_lot=0.08,
+        ),
+    )
+    simulator.process_candle(minute(WINTER_SETTLEMENT, 100.0, 101.0, 99.0, 100.0))
+    simulator.process_candle(minute(rollover, 100.0, 101.0, 99.0, 100.0))
+    assert simulator.position is not None
+    stop = simulator.position.stop_mid
+    simulator.process_candle(minute(rollover + timedelta(minutes=1), 100.0, 100.0, stop - 1.0, stop - 1.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 1
+    assert trades[0].exit_reason == "HARD MONEY STOP"
+    assert trades[0].net_pnl == pytest.approx(-25.0)
+
+
+def test_strategy_cannot_reenter_after_same_day_stop() -> None:
+    simulator = GoldSessionAnomalyBacktester(10_000.0, parameters())
+    simulator.process_candle(minute(WINTER_SETTLEMENT, 100.0, 101.0, 99.0, 100.0))
+    simulator.process_candle(minute(WINTER_SETTLEMENT + timedelta(minutes=1), 100.0, 101.0, 70.0, 70.0))
+    assert simulator.position is None
+
+    simulator.process_candle(minute(WINTER_SETTLEMENT + timedelta(minutes=2), 100.0, 110.0, 90.0, 100.0))
+
+    assert simulator.position is None
+    assert simulator.summary().sessions_traded == 1
+    assert simulator.summary().total_baskets == 1
+
+
+def test_missing_exact_entry_minute_skips_instead_of_entering_late() -> None:
+    simulator = GoldSessionAnomalyBacktester(10_000.0, parameters())
+    simulator.process_candle(minute(WINTER_SETTLEMENT + timedelta(minutes=1), 100.0, 101.0, 99.0, 100.0))
+
+    assert simulator.position is None
+    assert simulator.summary().missing_entry_skips == 1
+    assert simulator.summary().sessions_traded == 0
+
+
+def test_test_boundary_discards_an_incomplete_session_instead_of_inventing_an_exit() -> None:
+    simulator = GoldSessionAnomalyBacktester(10_000.0, parameters())
+    simulator.process_candle(minute(WINTER_SETTLEMENT, 100.0, 101.0, 99.0, 100.0))
+    trades, baskets = simulator.finalise()
+
+    assert trades == []
+    assert baskets == []
+    assert simulator.summary().total_baskets == 0
+    assert simulator.summary().incomplete_end_discards == 1
+
+
+def test_day_short_opens_at_0820_and_exits_at_1330_same_day() -> None:
+    entry = datetime(2026, 1, 5, 13, 20, tzinfo=timezone.utc)
+    exit_ = datetime(2026, 1, 5, 18, 30, tzinfo=timezone.utc)
+    simulator = GoldSessionAnomalyBacktester(10_000.0, parameters("day_short"))
+    simulator.process_candle(minute(entry, 100.0, 101.0, 99.0, 100.0))
+
+    assert simulator.position is not None
+    assert simulator.position.side == "sell"
+
+    simulator.process_candle(minute(exit_, 95.0, 110.0, 90.0, 105.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 1
+    assert trades[0].exit_reason == "FROZEN SESSION EXIT"
+    assert trades[0].net_pnl == pytest.approx(5.0)
+    assert trades[0].financing_costs == 0.0
+
+
+def test_request_and_untouched_lock_cover_both_predeclared_session_legs() -> None:
+    request = GoldSessionAnomalyBacktestRequest()
+
+    assert request.session_leg == "overnight_long"
+    assert request.fixed_lot == 0.01
+    assert request.maximum_loss_percent == 0.25
+    assert (request.day_open_hour, request.day_open_minute) == (8, 20)
+    assert (request.settlement_hour, request.settlement_minute) == (13, 30)
+    assert request.long_overnight_cost_per_001_lot == 0.70
+
+    baseline = request.model_dump(mode="json")
+    baseline["strategy"] = "gold_overnight_long"
+    untouched = {**baseline, "test_segment": "untouched"}
+    assert gold_session_anomaly_settings_match(baseline, untouched)
+    assert not gold_session_anomaly_settings_match(baseline, {**untouched, "session_leg": "day_short"})
+    assert not gold_session_anomaly_settings_match(baseline, {**untouched, "long_overnight_cost_per_001_lot": 0.0})
+    assert not gold_session_anomaly_settings_match(baseline, {**untouched, "settlement_minute": 29})
+
+
+class FakeGoldSessionRepository:
+    def __init__(self, rows: list[dict]) -> None:
+        self.rows = rows
+        self.run = {"id": "run-1", "status": "queued"}
+        self.trades: list[dict] = []
+        self.baskets: list[dict] = []
+        self.events: list[tuple] = []
+
+    async def update_backtest_run(self, run_id: str, **changes) -> None:
+        assert run_id == "run-1"
+        self.run.update(changes)
+
+    async def log_event(self, *args) -> None:
+        self.events.append(args)
+
+    async def count_market_candles(self, *args, **kwargs) -> int:
+        return len(self.rows)
+
+    async def get_backtest_run(self, run_id: str) -> dict:
+        return self.run
+
+    async def fetch_candles_page(self, *args, **kwargs) -> list[dict]:
+        return self.rows
+
+    async def bulk_insert_backtest_trades(self, rows: list[dict]) -> None:
+        self.trades.extend(rows)
+
+    async def bulk_insert_backtest_baskets(self, rows: list[dict]) -> None:
+        self.baskets.extend(rows)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("session_leg", "source", "expected_code"),
+    [
+        (
+            "overnight_long",
+            [
+                minute(WINTER_SETTLEMENT, 100.0, 101.0, 99.0, 100.0),
+                minute(WINTER_NEXT_OPEN, 105.0, 106.0, 104.0, 105.0),
+            ],
+            "gold_overnight_long",
+        ),
+        (
+            "day_short",
+            [
+                minute(datetime(2026, 1, 5, 13, 20, tzinfo=timezone.utc), 100.0, 101.0, 99.0, 100.0),
+                minute(datetime(2026, 1, 5, 18, 30, tzinfo=timezone.utc), 95.0, 96.0, 94.0, 95.0),
+            ],
+            "comex_day_short",
+        ),
+    ],
+)
+async def test_service_persists_each_daily_session_hypothesis(
+    session_leg: str,
+    source: list[Candle],
+    expected_code: str,
+) -> None:
+    rows = [
+        {
+            "candle_time": item.candle_time.isoformat(),
+            "open": item.open,
+            "high": item.high,
+            "low": item.low,
+            "close": item.close,
+            "volume": 1,
+        }
+        for item in source
+    ]
+    repo = FakeGoldSessionRepository(rows)
+    service = BacktestService(repo)  # type: ignore[arg-type]
+    request = {
+        **GoldSessionAnomalyBacktestRequest(
+            session_leg=session_leg,
+            test_segment="development",
+        ).model_dump(mode="json"),
+        "strategy": expected_code,
+        "spread_price": 0.0,
+        "commission_per_001_lot": 0.0,
+        "long_overnight_cost_per_001_lot": 0.0,
+    }
+
+    await service._run_gold_session_anomaly("run-1", request)
+
+    assert repo.run["status"] == "complete"
+    assert repo.run["net_profit"] == pytest.approx(5.0)
+    assert repo.run["total_positions"] == 1
+    assert repo.run["total_baskets"] == 1
+    assert repo.run["reliability"]["strategy"] == expected_code
+    assert repo.run["reliability"]["maximum_trades_per_day"] == 1
+    assert len(repo.trades) == 1
+    assert repo.trades[0]["metadata"]["strategy"] == expected_code
+    assert len(repo.baskets) == 1
