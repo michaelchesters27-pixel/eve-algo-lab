@@ -1,6 +1,19 @@
-# EVE Command Centre v3.9
+# EVE Command Centre v4.0
 
 EVE is a private XAU/USD research, strategy-evolution and MT5 bot-development platform using Supabase, Railway, Netlify and Twelve Data.
+
+## What v4.0 changes
+
+- Adds **Gold Abnormal Momentum v1**, a published-effect translation that allows at most one XAU/USD trade per fixed GMT+3 weekday.
+- Builds a causal baseline from only the previous 60 completed GMT+3 daily returns; the test split day is skipped and future candles never enter the signal.
+- At 17:00 GMT+3 it shorts only a move below the rolling mean by two sample standard deviations; if no short occurred, at 19:00 it buys only a move above the mean by two standard deviations.
+- Exits at the 23:59 GMT+3 M1 close, uses a fixed 0.01 lot, includes spread/commission/slippage and caps total loss at 0.25% of current balance.
+- Freezes a small-sample-aware development gate before results: 30 trades, three profitable years, PF 1.35, positive expectancy and no more than 5% drawdown.
+- Requires the unchanged untouched final third to produce 15 trades, two profitable years, PF 1.20, positive expectancy and no more than 5% drawdown.
+- Keeps the published paper as a hypothesis source rather than proof: EVE still rejects the strategy unless both chronological gates pass after costs.
+- Archives Asia Session Long v1 and Shanghai Day Long v1 as failed development evidence.
+
+No Supabase SQL or new Railway/Netlify variables are required for v4.0.
 
 ## What v3.9 changes
 

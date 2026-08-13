@@ -8,7 +8,11 @@ from app.backtesting.gold_session_anomaly import (
     GoldSessionAnomalyParameters,
 )
 from app.models.schemas import GoldSessionAnomalyBacktestRequest
-from app.services.backtests import BacktestService, gold_session_anomaly_settings_match
+from app.services.backtests import (
+    BacktestService,
+    _abnormal_momentum_verdict,
+    gold_session_anomaly_settings_match,
+)
 
 
 WINTER_SETTLEMENT = datetime(2026, 1, 5, 18, 30, tzinfo=timezone.utc)
@@ -280,6 +284,122 @@ def test_shanghai_day_long_trades_the_exact_official_day_session() -> None:
     assert trades[0].financing_costs == 0.0
 
 
+def abnormal_time(day: int, hour: int, minute_: int = 0) -> datetime:
+    # The published study uses a fixed GMT+3 clock.
+    gmt_plus_three = timezone(timedelta(hours=3))
+    return datetime(2026, 1, day, hour, minute_, tzinfo=gmt_plus_three).astimezone(timezone.utc)
+
+
+def seeded_abnormal_simulator() -> GoldSessionAnomalyBacktester:
+    simulator = GoldSessionAnomalyBacktester(10_000.0, parameters("abnormal_momentum"))
+    simulator._abnormal_daily_returns = [0.10 if index % 2 else -0.10 for index in range(60)]
+    return simulator
+
+
+def test_abnormal_momentum_shorts_two_sigma_negative_move_and_exits_at_day_end() -> None:
+    simulator = seeded_abnormal_simulator()
+    simulator.process_candle(minute(abnormal_time(5, 0), 100.0, 100.0, 100.0, 100.0))
+    simulator.process_candle(minute(abnormal_time(5, 17), 97.0, 97.0, 97.0, 97.0))
+
+    assert simulator.position is not None
+    assert simulator.position.side == "sell"
+    assert simulator.position.signal.observed_return_percent == pytest.approx(-3.0)
+    assert simulator.position.signal.baseline_std_percent is not None
+
+    simulator.process_candle(minute(abnormal_time(5, 23, 59), 96.0, 96.0, 96.0, 96.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 1
+    assert trades[0].net_pnl == pytest.approx(1.0)
+    assert trades[0].exit_reason == "FROZEN GMT+3 DAY-END EXIT"
+    assert trades[0].strategy_code == "gold_abnormal_momentum"
+
+
+def test_abnormal_momentum_waits_until_1900_for_positive_two_sigma_move() -> None:
+    simulator = seeded_abnormal_simulator()
+    simulator.process_candle(minute(abnormal_time(5, 0), 100.0, 100.0, 100.0, 100.0))
+    simulator.process_candle(minute(abnormal_time(5, 17), 100.0, 100.0, 100.0, 100.0))
+    assert simulator.position is None
+
+    simulator.process_candle(minute(abnormal_time(5, 19), 103.0, 103.0, 103.0, 103.0))
+    assert simulator.position is not None
+    assert simulator.position.side == "buy"
+
+    simulator.process_candle(minute(abnormal_time(5, 23, 59), 104.0, 104.0, 104.0, 104.0))
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 1
+    assert trades[0].net_pnl == pytest.approx(1.0)
+    assert simulator.summary().abnormal_positive_signals == 1
+    assert simulator.summary().abnormal_negative_signals == 0
+
+
+def test_abnormal_momentum_requires_sixty_prior_days_and_skips_missing_day_open() -> None:
+    warmup = GoldSessionAnomalyBacktester(10_000.0, parameters("abnormal_momentum"))
+    warmup._abnormal_daily_returns = [0.0] * 59
+    warmup.process_candle(minute(abnormal_time(5, 0), 100.0, 100.0, 100.0, 100.0))
+    warmup.process_candle(minute(abnormal_time(5, 17), 90.0, 90.0, 90.0, 90.0))
+    assert warmup.position is None
+    assert warmup.summary().abnormal_warmup_skips == 1
+
+    missing_open = seeded_abnormal_simulator()
+    missing_open.process_candle(minute(abnormal_time(5, 3), 100.0, 100.0, 100.0, 100.0))
+    missing_open.process_candle(minute(abnormal_time(5, 17), 90.0, 90.0, 90.0, 90.0))
+    assert missing_open.position is None
+    assert missing_open.summary().abnormal_missing_open_skips == 1
+
+
+def test_abnormal_warmup_reset_preserves_baseline_but_skips_split_day() -> None:
+    simulator = seeded_abnormal_simulator()
+    simulator.process_candle(
+        minute(abnormal_time(5, 0), 100.0, 100.0, 100.0, 100.0),
+        allow_entry=False,
+        count_metrics=False,
+    )
+    simulator.begin_evaluation()
+    simulator.process_candle(minute(abnormal_time(5, 19), 110.0, 110.0, 110.0, 110.0))
+
+    assert simulator.position is None
+    assert simulator.summary().candles_processed == 1
+    assert len(simulator._abnormal_daily_returns) == 60
+
+
+def test_abnormal_momentum_uses_the_predeclared_development_and_untouched_gates() -> None:
+    development = _abnormal_momentum_verdict(
+        net_profit=100.0,
+        profit_factor=1.35,
+        expectancy=1.0,
+        max_drawdown_percent=5.0,
+        total_trades=30,
+        yearly_net={"2021": 1.0, "2022": 1.0, "2023": 1.0},
+        test_segment="development",
+    )
+    assert development["code"] == "promising"
+
+    insufficient = _abnormal_momentum_verdict(
+        net_profit=100.0,
+        profit_factor=2.0,
+        expectancy=1.0,
+        max_drawdown_percent=1.0,
+        total_trades=29,
+        yearly_net={"2021": 1.0, "2022": 1.0, "2023": 1.0},
+        test_segment="development",
+    )
+    assert insufficient["code"] == "failed"
+
+    untouched = _abnormal_momentum_verdict(
+        net_profit=50.0,
+        profit_factor=1.20,
+        expectancy=0.5,
+        max_drawdown_percent=5.0,
+        total_trades=15,
+        yearly_net={"2024": 1.0, "2025": 1.0},
+        test_segment="untouched",
+        locked_development_run_id="development-run",
+    )
+    assert untouched["code"] == "untouched_pass"
+
+
 def test_request_and_untouched_lock_cover_both_predeclared_session_legs() -> None:
     request = GoldSessionAnomalyBacktestRequest()
 
@@ -293,6 +413,12 @@ def test_request_and_untouched_lock_cover_both_predeclared_session_legs() -> Non
     assert request.asia_exit_timezone_name == "Asia/Shanghai"
     assert (request.shanghai_entry_hour, request.shanghai_entry_minute) == (9, 0)
     assert (request.asia_exit_hour, request.asia_exit_minute) == (15, 30)
+    assert request.abnormal_timezone_name == "Etc/GMT-3"
+    assert request.abnormal_lookback_days == 60
+    assert request.abnormal_sigma == 2.0
+    assert (request.abnormal_negative_entry_hour, request.abnormal_negative_entry_minute) == (17, 0)
+    assert (request.abnormal_positive_entry_hour, request.abnormal_positive_entry_minute) == (19, 0)
+    assert (request.abnormal_exit_hour, request.abnormal_exit_minute) == (23, 59)
 
     baseline = request.model_dump(mode="json")
     baseline["strategy"] = "gold_overnight_long"
@@ -304,6 +430,8 @@ def test_request_and_untouched_lock_cover_both_predeclared_session_legs() -> Non
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "asia_entry_hour": 17})
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "asia_exit_minute": 0})
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "shanghai_entry_hour": 8})
+    assert not gold_session_anomaly_settings_match(baseline, {**untouched, "abnormal_lookback_days": 59})
+    assert not gold_session_anomaly_settings_match(baseline, {**untouched, "abnormal_sigma": 1.5})
 
 
 class FakeGoldSessionRepository:
@@ -328,7 +456,18 @@ class FakeGoldSessionRepository:
         return self.run
 
     async def fetch_candles_page(self, *args, **kwargs) -> list[dict]:
-        return self.rows
+        after = kwargs.get("after")
+        date_from = kwargs.get("date_from")
+        date_to = kwargs.get("date_to")
+        limit = int(kwargs.get("limit", 1000))
+        selected = self.rows
+        if after:
+            selected = [row for row in selected if row["candle_time"] > after]
+        if date_from:
+            selected = [row for row in selected if row["candle_time"] >= date_from]
+        if date_to:
+            selected = [row for row in selected if row["candle_time"] <= date_to]
+        return selected[:limit]
 
     async def bulk_insert_backtest_trades(self, rows: list[dict]) -> None:
         self.trades.extend(rows)
@@ -415,3 +554,67 @@ async def test_service_persists_each_daily_session_hypothesis(
     assert len(repo.trades) == 1
     assert repo.trades[0]["metadata"]["strategy"] == expected_code
     assert len(repo.baskets) == 1
+
+
+@pytest.mark.asyncio
+async def test_service_runs_abnormal_momentum_with_a_causal_daily_baseline() -> None:
+    source: list[Candle] = []
+    local_day = datetime(2025, 1, 1, tzinfo=timezone(timedelta(hours=3)))
+    completed = 0
+    while completed < 61:
+        if local_day.weekday() < 5:
+            base = 100.0
+            final = base + (0.10 if completed % 2 else -0.10)
+            source.extend(
+                [
+                    minute(local_day.astimezone(timezone.utc), base, base, base, base),
+                    minute((local_day + timedelta(hours=17)).astimezone(timezone.utc), base, base, base, base),
+                    minute((local_day + timedelta(hours=19)).astimezone(timezone.utc), base, base, base, base),
+                    minute((local_day + timedelta(hours=23, minutes=59)).astimezone(timezone.utc), final, final, final, final),
+                ]
+            )
+            completed += 1
+        local_day += timedelta(days=1)
+
+    trade_day = local_day
+    while trade_day.weekday() >= 5:
+        trade_day += timedelta(days=1)
+    source.extend(
+        [
+            minute(trade_day.astimezone(timezone.utc), 100.0, 100.0, 100.0, 100.0),
+            minute((trade_day + timedelta(hours=17)).astimezone(timezone.utc), 97.0, 97.0, 97.0, 97.0),
+            minute((trade_day + timedelta(hours=23, minutes=59)).astimezone(timezone.utc), 96.0, 96.0, 96.0, 96.0),
+        ]
+    )
+    rows = [
+        {
+            "candle_time": item.candle_time.isoformat(),
+            "open": item.open,
+            "high": item.high,
+            "low": item.low,
+            "close": item.close,
+            "volume": 1,
+        }
+        for item in source
+    ]
+    repo = FakeGoldSessionRepository(rows)
+    service = BacktestService(repo)  # type: ignore[arg-type]
+    request = {
+        **GoldSessionAnomalyBacktestRequest(
+            session_leg="abnormal_momentum",
+            test_segment="development",
+        ).model_dump(mode="json"),
+        "strategy": "gold_abnormal_momentum",
+        "spread_price": 0.0,
+        "commission_per_001_lot": 0.0,
+        "long_overnight_cost_per_001_lot": 0.0,
+    }
+
+    await service._run_gold_session_anomaly("run-1", request)
+
+    assert repo.run["status"] == "complete"
+    assert repo.run["net_profit"] == pytest.approx(1.0)
+    assert repo.run["total_baskets"] == 1
+    assert repo.run["reliability"]["strategy"] == "gold_abnormal_momentum"
+    assert repo.run["reliability"]["abnormal_negative_signals"] == 1
+    assert repo.trades[0]["metadata"]["baseline_days"] == 60

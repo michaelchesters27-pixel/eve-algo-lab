@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.backtesting.comex_closing_momentum import (
@@ -67,8 +67,10 @@ ASIA_SESSION_LONG_STRATEGY_SLUG = "eve-asia-session-long-v1"
 ASIA_SESSION_LONG_STRATEGY_NAME = "EVE Asia Session Long v1"
 SHANGHAI_DAY_LONG_STRATEGY_SLUG = "eve-shanghai-day-long-v1"
 SHANGHAI_DAY_LONG_STRATEGY_NAME = "EVE Shanghai Day Long v1"
+GOLD_ABNORMAL_MOMENTUM_STRATEGY_SLUG = "eve-gold-abnormal-momentum-v1"
+GOLD_ABNORMAL_MOMENTUM_STRATEGY_NAME = "EVE Gold Abnormal Momentum v1"
 GOLD_SESSION_ANOMALY_STRATEGY_VERSION = "1.0"
-GOLD_SESSION_ANOMALY_SOURCE_SHA256 = "46abaf6118c4759b39b2e7d2f43ba1af24096dad07e74cc5e10a6c72af6c30aa"
+GOLD_SESSION_ANOMALY_SOURCE_SHA256 = "970964796b82737aece522cc7fec79770a5cd4eb9e0b19e791241c12fdc4f6a8"
 GOLD_H4_STRATEGY_SLUG = "eve-gold-h4-trend-55-20-v1"
 GOLD_H4_STRATEGY_NAME = "EVE Gold H4 Trend 55/20 v1"
 GOLD_H4_STRATEGY_VERSION = "1.0"
@@ -182,6 +184,15 @@ GOLD_SESSION_ANOMALY_LOCKED_SETTING_KEYS = (
     "shanghai_entry_minute",
     "asia_exit_hour",
     "asia_exit_minute",
+    "abnormal_timezone_name",
+    "abnormal_lookback_days",
+    "abnormal_sigma",
+    "abnormal_negative_entry_hour",
+    "abnormal_negative_entry_minute",
+    "abnormal_positive_entry_hour",
+    "abnormal_positive_entry_minute",
+    "abnormal_exit_hour",
+    "abnormal_exit_minute",
     "long_overnight_cost_per_001_lot",
     "triple_swap_weekday",
     "spread_price",
@@ -283,6 +294,15 @@ def comex_closing_momentum_settings_match(first: dict[str, Any], second: dict[st
 
 
 def gold_session_anomaly_identity(session_leg: str) -> dict[str, str]:
+    if session_leg == "abnormal_momentum":
+        return {
+            "code": "gold_abnormal_momentum",
+            "name": GOLD_ABNORMAL_MOMENTUM_STRATEGY_NAME,
+            "slug": GOLD_ABNORMAL_MOMENTUM_STRATEGY_SLUG,
+            "description": "At most one fixed-size XAU/USD trade when the current GMT+3 day exceeds a causal two-sigma return threshold.",
+            "entry": "short a negative abnormal return at 17:00 GMT+3, otherwise buy a positive abnormal return at 19:00 GMT+3",
+            "exit": "close at the 23:59 GMT+3 M1 close",
+        }
     if session_leg == "shanghai_day_long":
         return {
             "code": "shanghai_day_long",
@@ -519,6 +539,96 @@ def _daily_momentum_verdict(
         "tone": "failed",
         "summary": "The locked daily strategy failed: " + "; ".join(failed_gates) + ".",
         "next_action": "Reject v1. Do not tune it on the same development result.",
+    }
+
+
+def _abnormal_momentum_verdict(
+    *,
+    net_profit: float,
+    profit_factor: float | None,
+    expectancy: float,
+    max_drawdown_percent: float,
+    total_trades: int,
+    yearly_net: dict[str, float],
+    test_segment: str,
+    locked_development_run_id: str | None = None,
+    account_ruined: bool = False,
+) -> dict[str, Any]:
+    """Frozen evidence gate for the published abnormal-return hypothesis."""
+
+    pf = float(profit_factor or 0.0)
+    profitable_years = sum(float(value) > 0 for value in yearly_net.values())
+    untouched = test_segment == "untouched"
+    required_trades = 15 if untouched else 30
+    required_years = 2 if untouched else 3
+    required_pf = 1.20 if untouched else 1.35
+    passed = (
+        not account_ruined
+        and total_trades >= required_trades
+        and profitable_years >= required_years
+        and net_profit > 0
+        and expectancy > 0
+        and pf >= required_pf
+        and max_drawdown_percent <= 5.0
+    )
+    if account_ruined:
+        return {
+            "code": "account_ruined",
+            "label": "ACCOUNT BLOWN — FAILED",
+            "tone": "failed",
+            "summary": "The abnormal-return strategy exhausted the test account.",
+            "next_action": "Reject it. Do not open untouched data or build an EA.",
+        }
+    if untouched and not locked_development_run_id:
+        return {
+            "code": "unlocked_untouched",
+            "label": "INVALID UNTOUCHED TEST — NO PASS",
+            "tone": "failed",
+            "summary": "No passing development run with identical frozen rules was linked.",
+            "next_action": "Run Development first, then reuse every setting unchanged.",
+        }
+    if passed and untouched:
+        return {
+            "code": "untouched_pass",
+            "label": "UNTOUCHED PASS — VERIFY IN MT5",
+            "tone": "promising",
+            "summary": "The same abnormal-return rules remained profitable on unseen history after costs.",
+            "next_action": "Verify the frozen implementation with broker-specific MT5 real ticks and a demo forward test.",
+        }
+    if passed and test_segment == "development":
+        return {
+            "code": "promising",
+            "label": "PROMISING — RUN UNTOUCHED TEST",
+            "tone": "promising",
+            "summary": "Development cleared the predeclared trade-count, repeatability, profit-factor and drawdown gates.",
+            "next_action": "Freeze every setting and run the untouched final third.",
+        }
+    if passed:
+        return {
+            "code": "exploratory_pass",
+            "label": "EXPLORATORY PASS — NOT PROOF",
+            "tone": "warning",
+            "summary": "This period cleared the numbers outside the locked development-to-untouched sequence.",
+            "next_action": "Run Development first, then the untouched final third unchanged.",
+        }
+
+    failed_gates: list[str] = []
+    if total_trades < required_trades:
+        failed_gates.append(f"only {total_trades} of {required_trades} required trades")
+    if profitable_years < required_years:
+        failed_gates.append(f"only {profitable_years} of {required_years} required profitable years")
+    if pf < required_pf:
+        failed_gates.append(f"profit factor {pf:.3f} below {required_pf:.2f}")
+    if net_profit <= 0 or expectancy <= 0:
+        failed_gates.append("profit or expectancy not positive")
+    if max_drawdown_percent > 5.0:
+        failed_gates.append(f"drawdown {max_drawdown_percent:.2f}% above 5%")
+    return {
+        "code": "failed",
+        "label": "FAILED — DO NOT BUILD EA",
+        "tone": "failed",
+        "summary": "The locked abnormal-return strategy failed: " + "; ".join(failed_gates) + ".",
+        "next_action": "Reject v1. Do not tune these thresholds on the same result.",
     }
 
 
@@ -810,10 +920,24 @@ class BacktestService:
             rules = {
                 "signal_timeframe": "verified M1 candles",
                 "execution_timeframe": "M1 replay",
-                "timezone": "America/New_York with DST",
+                "timezone": (
+                    "fixed GMT+3"
+                    if session_leg == "abnormal_momentum"
+                    else "America/New_York with DST"
+                ),
                 "session_leg": session_leg,
                 "entry": identity["entry"],
                 "exit": identity["exit"],
+                "abnormal_return_baseline": (
+                    "mean plus/minus two sample standard deviations of only the previous 60 completed GMT+3 daily returns"
+                    if session_leg == "abnormal_momentum"
+                    else None
+                ),
+                "abnormal_daily_bar": (
+                    "first tradable M1 quote from 00:00 through 02:00 GMT+3 to the last quote before the next GMT+3 date"
+                    if session_leg == "abnormal_momentum"
+                    else None
+                ),
                 "stop": "hard money stop at 0.25% of current balance, including costs already charged",
                 "maximum_trades_per_day": 1,
                 "fixed_lot": 0.01,
@@ -826,7 +950,7 @@ class BacktestService:
                     if session_leg == "overnight_long"
                     else (
                         "not applicable because the trade opens after rollover and exits before the next rollover"
-                        if session_leg == "asia_long"
+                        if session_leg in {"asia_long", "abnormal_momentum"}
                         else (
                             "not applicable to the same-day Shanghai long"
                             if session_leg == "shanghai_day_long"
@@ -835,6 +959,16 @@ class BacktestService:
                     )
                 ),
                 "missing_entry": "skip the day; never enter late",
+                "causality": (
+                    "rolling baseline uses completed prior days only; chronological split day is skipped"
+                    if session_leg == "abnormal_momentum"
+                    else None
+                ),
+                "research_source": (
+                    "Caporale and Plastun (2021), Financial Markets and Portfolio Management, DOI 10.1007/s11408-021-00380-w"
+                    if session_leg == "abnormal_momentum"
+                    else None
+                ),
                 "source": "railway/app/backtesting/gold_session_anomaly.py",
             }
             version = await self.repo.create_strategy_version(
@@ -843,9 +977,13 @@ class BacktestService:
                 rules,
                 GOLD_SESSION_ANOMALY_SOURCE_SHA256,
                 (
+                    "Published same-day abnormal-return momentum hypothesis translated into a causal rolling rule and frozen before its EVE result was seen. No EA exists unless locked development and untouched tests both pass."
+                    if session_leg == "abnormal_momentum"
+                    else (
                     "Two eastern-session hypotheses frozen together after both COMEX session legs failed, before either eastern result was seen. No EA exists unless locked development and untouched tests both pass."
                     if session_leg in {"asia_long", "shanghai_day_long"}
                     else "Pre-declared together with the opposite session leg before either result was seen. No EA exists unless locked development and untouched tests both pass."
+                    )
                 ),
             )
         return str(version["id"])
@@ -2927,15 +3065,19 @@ class BacktestService:
         identity = gold_session_anomaly_identity(session_leg)
         strategy_code = identity["code"]
         accuracy = (
-            "Verified M1 13:30 New York long entry, next eligible 08:20 exit, financing and hard-money stop replay"
-            if session_leg == "overnight_long"
+            "Verified M1 causal 60-day abnormal-return baseline, sign-specific GMT+3 entry, day-end exit and hard-money stop replay"
+            if session_leg == "abnormal_momentum"
             else (
-                "Verified M1 18:00 New York long entry, 15:30 Shanghai exit and hard-money stop replay"
-                if session_leg == "asia_long"
+                "Verified M1 13:30 New York long entry, next eligible 08:20 exit, financing and hard-money stop replay"
+                if session_leg == "overnight_long"
                 else (
-                    "Verified M1 09:00 Shanghai long entry, 15:30 Shanghai exit and hard-money stop replay"
-                    if session_leg == "shanghai_day_long"
-                    else "Verified M1 08:20 New York short entry, 13:30 exit and hard-money stop replay"
+                    "Verified M1 18:00 New York long entry, 15:30 Shanghai exit and hard-money stop replay"
+                    if session_leg == "asia_long"
+                    else (
+                        "Verified M1 09:00 Shanghai long entry, 15:30 Shanghai exit and hard-money stop replay"
+                        if session_leg == "shanghai_day_long"
+                        else "Verified M1 08:20 New York short entry, 13:30 exit and hard-money stop replay"
+                    )
                 )
             )
         )
@@ -2978,6 +3120,15 @@ class BacktestService:
                 shanghai_entry_minute=int(request.get("shanghai_entry_minute", 0)),
                 asia_exit_hour=int(request.get("asia_exit_hour", 15)),
                 asia_exit_minute=int(request.get("asia_exit_minute", 30)),
+                abnormal_timezone_name=str(request.get("abnormal_timezone_name", "Etc/GMT-3")),
+                abnormal_lookback_days=int(request.get("abnormal_lookback_days", 60)),
+                abnormal_sigma=float(request.get("abnormal_sigma", 2.0)),
+                abnormal_negative_entry_hour=int(request.get("abnormal_negative_entry_hour", 17)),
+                abnormal_negative_entry_minute=int(request.get("abnormal_negative_entry_minute", 0)),
+                abnormal_positive_entry_hour=int(request.get("abnormal_positive_entry_hour", 19)),
+                abnormal_positive_entry_minute=int(request.get("abnormal_positive_entry_minute", 0)),
+                abnormal_exit_hour=int(request.get("abnormal_exit_hour", 23)),
+                abnormal_exit_minute=int(request.get("abnormal_exit_minute", 59)),
                 fixed_lot=float(request.get("fixed_lot", 0.01)),
                 maximum_loss_percent=float(request.get("maximum_loss_percent", 0.25)),
                 long_overnight_cost_per_001_lot=float(
@@ -2998,6 +3149,32 @@ class BacktestService:
             symbol = str(request.get("symbol", "XAU/USD"))
             date_from = request.get("date_from")
             date_to = request.get("date_to")
+            if session_leg == "abnormal_momentum" and date_from:
+                evaluation_start = datetime.fromisoformat(str(date_from).replace("Z", "+00:00"))
+                warmup_from = (evaluation_start - timedelta(days=120)).isoformat()
+                warmup_to = (evaluation_start - timedelta(microseconds=1)).isoformat()
+                warmup_cursor: str | None = None
+                while True:
+                    warmup_page = await self.repo.fetch_candles_page(
+                        symbol=symbol,
+                        interval=data_interval,
+                        after=warmup_cursor,
+                        date_from=warmup_from,
+                        date_to=warmup_to,
+                        limit=1000,
+                    )
+                    if not warmup_page:
+                        break
+                    for row in warmup_page:
+                        simulator.process_candle(
+                            Candle.from_row(row),
+                            allow_entry=False,
+                            count_metrics=False,
+                        )
+                    warmup_cursor = str(warmup_page[-1]["candle_time"])
+                    if len(warmup_page) < 1000:
+                        break
+                simulator.begin_evaluation()
             expected_rows = await self.repo.count_market_candles(symbol, data_interval, date_from, date_to)
             if expected_rows <= 0:
                 raise RuntimeError("No M1 candles exist for the selected date range")
@@ -3102,7 +3279,12 @@ class BacktestService:
             last = datetime.fromisoformat(summary.last_candle) if summary.last_candle else None
             weeks = max(1.0 / 7.0, ((last - first).total_seconds() / 604800.0) if first and last else 0.0)
             drawdown_percent = max(trade_metrics.max_drawdown_percent, summary.max_equity_drawdown_percent)
-            verdict = _daily_momentum_verdict(
+            verdict_builder = (
+                _abnormal_momentum_verdict
+                if session_leg == "abnormal_momentum"
+                else _daily_momentum_verdict
+            )
+            verdict = verdict_builder(
                 net_profit=trade_metrics.net_profit,
                 profit_factor=trade_metrics.profit_factor,
                 expectancy=trade_metrics.expectancy,
@@ -3145,6 +3327,12 @@ class BacktestService:
                 "missing_entry_skips": summary.missing_entry_skips,
                 "missing_exit_fallbacks": summary.missing_exit_fallbacks,
                 "incomplete_end_discards": summary.incomplete_end_discards,
+                "abnormal_completed_days": summary.abnormal_completed_days,
+                "abnormal_warmup_skips": summary.abnormal_warmup_skips,
+                "abnormal_negative_signals": summary.abnormal_negative_signals,
+                "abnormal_positive_signals": summary.abnormal_positive_signals,
+                "abnormal_missing_open_skips": summary.abnormal_missing_open_skips,
+                "abnormal_missing_signal_skips": summary.abnormal_missing_signal_skips,
                 "financing_events": summary.financing_events,
                 "financing_costs": summary.financing_costs,
                 "gap_stop_fills": summary.gap_stop_fills,

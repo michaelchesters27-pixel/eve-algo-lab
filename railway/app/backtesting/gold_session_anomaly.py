@@ -3,13 +3,20 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, time, timedelta
+from statistics import fmean, stdev
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from app.backtesting.fixed_ladder_v261 import Candle, PathMode
 
 
-SessionLeg = Literal["overnight_long", "day_short", "asia_long", "shanghai_day_long"]
+SessionLeg = Literal[
+    "overnight_long",
+    "day_short",
+    "asia_long",
+    "shanghai_day_long",
+    "abnormal_momentum",
+]
 Side = Literal["buy", "sell"]
 
 
@@ -28,6 +35,15 @@ class GoldSessionAnomalyParameters:
     shanghai_entry_minute: int = 0
     asia_exit_hour: int = 15
     asia_exit_minute: int = 30
+    abnormal_timezone_name: str = "Etc/GMT-3"
+    abnormal_lookback_days: int = 60
+    abnormal_sigma: float = 2.0
+    abnormal_negative_entry_hour: int = 17
+    abnormal_negative_entry_minute: int = 0
+    abnormal_positive_entry_hour: int = 19
+    abnormal_positive_entry_minute: int = 0
+    abnormal_exit_hour: int = 23
+    abnormal_exit_minute: int = 59
     fixed_lot: float = 0.01
     maximum_loss_percent: float = 0.25
     long_overnight_cost_per_001_lot: float = 0.70
@@ -54,6 +70,8 @@ class GoldSessionAnomalyParameters:
             return self.asia_entry_hour * 60 + self.asia_entry_minute
         if self.session_leg == "shanghai_day_long":
             return self.shanghai_entry_hour * 60 + self.shanghai_entry_minute
+        if self.session_leg == "abnormal_momentum":
+            return self.abnormal_negative_entry_total_minutes
         return self.day_open_total_minutes
 
     @property
@@ -62,7 +80,21 @@ class GoldSessionAnomalyParameters:
             return self.day_open_total_minutes
         if self.session_leg in {"asia_long", "shanghai_day_long"}:
             return self.asia_exit_hour * 60 + self.asia_exit_minute
+        if self.session_leg == "abnormal_momentum":
+            return self.abnormal_exit_total_minutes
         return self.settlement_total_minutes
+
+    @property
+    def abnormal_negative_entry_total_minutes(self) -> int:
+        return self.abnormal_negative_entry_hour * 60 + self.abnormal_negative_entry_minute
+
+    @property
+    def abnormal_positive_entry_total_minutes(self) -> int:
+        return self.abnormal_positive_entry_hour * 60 + self.abnormal_positive_entry_minute
+
+    @property
+    def abnormal_exit_total_minutes(self) -> int:
+        return self.abnormal_exit_hour * 60 + self.abnormal_exit_minute
 
     @property
     def side(self) -> Side:
@@ -76,10 +108,18 @@ class GoldSessionAnomalyParameters:
             return "asia_session_long"
         if self.session_leg == "shanghai_day_long":
             return "shanghai_day_long"
+        if self.session_leg == "abnormal_momentum":
+            return "gold_abnormal_momentum"
         return "comex_day_short"
 
     def validate(self) -> None:
-        if self.session_leg not in {"overnight_long", "day_short", "asia_long", "shanghai_day_long"}:
+        if self.session_leg not in {
+            "overnight_long",
+            "day_short",
+            "asia_long",
+            "shanghai_day_long",
+            "abnormal_momentum",
+        }:
             raise ValueError("Unsupported gold session-anomaly leg")
         if self.timezone_name != "America/New_York":
             raise ValueError("Gold Session Anomaly v1 requires America/New_York time")
@@ -95,6 +135,18 @@ class GoldSessionAnomalyParameters:
             raise ValueError("Shanghai Day Long v1 must enter at 09:00 Shanghai")
         if (self.asia_exit_hour, self.asia_exit_minute) != (15, 30):
             raise ValueError("Asia Session Long v1 must exit at 15:30 Shanghai")
+        if self.abnormal_timezone_name != "Etc/GMT-3":
+            raise ValueError("Gold Abnormal Momentum v1 requires fixed GMT+3 time")
+        if self.abnormal_lookback_days != 60:
+            raise ValueError("Gold Abnormal Momentum v1 requires 60 completed daily returns")
+        if self.abnormal_sigma != 2.0:
+            raise ValueError("Gold Abnormal Momentum v1 requires a two-standard-deviation trigger")
+        if (self.abnormal_negative_entry_hour, self.abnormal_negative_entry_minute) != (17, 0):
+            raise ValueError("The negative abnormal-return check must remain 17:00 GMT+3")
+        if (self.abnormal_positive_entry_hour, self.abnormal_positive_entry_minute) != (19, 0):
+            raise ValueError("The positive abnormal-return check must remain 19:00 GMT+3")
+        if (self.abnormal_exit_hour, self.abnormal_exit_minute) != (23, 59):
+            raise ValueError("Gold Abnormal Momentum v1 must exit at the 23:59 GMT+3 close")
         if self.fixed_lot <= 0:
             raise ValueError("Fixed lot must be greater than zero")
         if not 0.01 <= self.maximum_loss_percent <= 5.0:
@@ -121,6 +173,10 @@ class GoldSessionSignal:
     signal_time: datetime
     trade_date: str
     session_leg: SessionLeg
+    observed_return_percent: float | None = None
+    baseline_mean_percent: float | None = None
+    baseline_std_percent: float | None = None
+    trigger_percent: float | None = None
 
 
 @dataclass
@@ -171,6 +227,8 @@ class GoldSessionCompletedTrade:
             return "asia_session_long"
         if self.signal.session_leg == "shanghai_day_long":
             return "shanghai_day_long"
+        if self.signal.session_leg == "abnormal_momentum":
+            return "gold_abnormal_momentum"
         return "comex_day_short"
 
     def to_trade_row(self, run_id: str) -> dict[str, Any]:
@@ -212,7 +270,7 @@ class GoldSessionCompletedTrade:
         }
 
     def _metadata(self) -> dict[str, Any]:
-        return {
+        metadata = {
             "strategy": self.strategy_code,
             "strategy_version": "1.0",
             "session_leg": self.signal.session_leg,
@@ -230,12 +288,31 @@ class GoldSessionCompletedTrade:
                     else (
                         "buy the 09:00 Asia/Shanghai M1 open and hold to the 15:30 Asia/Shanghai open"
                         if self.signal.session_leg == "shanghai_day_long"
-                        else "sell the 08:20 America/New_York M1 open and hold to the 13:30 open"
+                        else (
+                            "at 17:00 GMT+3 short a negative two-sigma daily move, or at 19:00 GMT+3 buy a positive two-sigma daily move"
+                            if self.signal.session_leg == "abnormal_momentum"
+                            else "sell the 08:20 America/New_York M1 open and hold to the 13:30 open"
+                        )
                     )
                 )
             ),
-            "exit_protocol": "0.25% hard money stop or the frozen session boundary",
+            "exit_protocol": (
+                "0.25% hard money stop or the 23:59 GMT+3 M1 close"
+                if self.signal.session_leg == "abnormal_momentum"
+                else "0.25% hard money stop or the frozen session boundary"
+            ),
         }
+        if self.signal.session_leg == "abnormal_momentum":
+            metadata.update(
+                {
+                    "observed_return_percent": self.signal.observed_return_percent,
+                    "baseline_mean_percent": self.signal.baseline_mean_percent,
+                    "baseline_std_percent": self.signal.baseline_std_percent,
+                    "trigger_percent": self.signal.trigger_percent,
+                    "baseline_days": 60,
+                }
+            )
+        return metadata
 
 
 @dataclass
@@ -258,6 +335,12 @@ class GoldSessionSimulationSummary:
     missing_entry_skips: int
     missing_exit_fallbacks: int
     incomplete_end_discards: int
+    abnormal_completed_days: int
+    abnormal_warmup_skips: int
+    abnormal_negative_signals: int
+    abnormal_positive_signals: int
+    abnormal_missing_open_skips: int
+    abnormal_missing_signal_skips: int
     financing_events: int
     financing_costs: float
     gap_stop_fills: int
@@ -275,7 +358,7 @@ class GoldSessionSimulationSummary:
 
 
 class GoldSessionAnomalyBacktester:
-    """One frozen gold overnight-long or COMEX-day-short trade per weekday."""
+    """One frozen gold session or abnormal-return momentum trade per weekday."""
 
     EPS = 1e-9
 
@@ -286,6 +369,7 @@ class GoldSessionAnomalyBacktester:
         self.params = parameters
         self.timezone = ZoneInfo(parameters.timezone_name)
         self.asia_exit_timezone = ZoneInfo(parameters.asia_exit_timezone_name)
+        self.abnormal_timezone = ZoneInfo(parameters.abnormal_timezone_name)
         self.starting_balance = float(starting_balance)
         self.balance = float(starting_balance)
         self._equity_peak = float(starting_balance)
@@ -299,6 +383,11 @@ class GoldSessionAnomalyBacktester:
         self._sequence = 0
         self._trade_peak_floating = 0.0
         self._trade_worst_floating = 0.0
+        self._abnormal_day_open: float | None = None
+        self._abnormal_day_has_open = False
+        self._abnormal_daily_returns: list[float] = []
+        self._abnormal_negative_checked = False
+        self._abnormal_positive_checked = False
 
         self.completed_trades: list[GoldSessionCompletedTrade] = []
         self.completed_baskets: list[GoldSessionCompletedTrade] = []
@@ -313,6 +402,12 @@ class GoldSessionAnomalyBacktester:
         self.missing_entry_skips = 0
         self.missing_exit_fallbacks = 0
         self.incomplete_end_discards = 0
+        self.abnormal_completed_days = 0
+        self.abnormal_warmup_skips = 0
+        self.abnormal_negative_signals = 0
+        self.abnormal_positive_signals = 0
+        self.abnormal_missing_open_skips = 0
+        self.abnormal_missing_signal_skips = 0
         self.financing_events = 0
         self.financing_costs = 0.0
         self.gap_stop_fills = 0
@@ -330,6 +425,8 @@ class GoldSessionAnomalyBacktester:
         return at.astimezone(self.timezone)
 
     def _entry_local(self, at: datetime) -> datetime:
+        if self.params.session_leg == "abnormal_momentum":
+            return at.astimezone(self.abnormal_timezone)
         if self.params.session_leg == "shanghai_day_long":
             return at.astimezone(self.asia_exit_timezone)
         return self._local(at)
@@ -392,17 +489,104 @@ class GoldSessionAnomalyBacktester:
             self._trade_peak_floating = max(self._trade_peak_floating, floating)
             self._trade_worst_floating = min(self._trade_worst_floating, floating)
 
-    def _reset_session(self, session_date: date) -> None:
+    def _reset_session(self, session_date: date, *, count_metrics: bool = True) -> None:
         self._session_date = session_date
         self._day_signal_consumed = False
-        self.sessions_seen += 1
-        if self._entry_day_is_eligible(session_date.weekday()):
-            self.eligible_sessions += 1
+        self._abnormal_negative_checked = False
+        self._abnormal_positive_checked = False
+        if count_metrics:
+            self.sessions_seen += 1
+            if self._entry_day_is_eligible(session_date.weekday()):
+                self.eligible_sessions += 1
 
     def _entry_day_is_eligible(self, weekday: int) -> bool:
         if self.params.session_leg == "asia_long":
             return weekday in {6, 0, 1, 2, 3}
         return weekday < 5
+
+    def _finish_abnormal_day(self) -> None:
+        if (
+            self.params.session_leg != "abnormal_momentum"
+            or self._session_date is None
+            or self._session_date.weekday() >= 5
+            or not self._abnormal_day_has_open
+            or self._abnormal_day_open is None
+            or self._last_mid is None
+            or self._abnormal_day_open <= 0
+        ):
+            return
+        daily_return = (self._last_mid / self._abnormal_day_open - 1.0) * 100.0
+        self._abnormal_daily_returns.append(daily_return)
+        self.abnormal_completed_days += 1
+
+    def _abnormal_baseline(self) -> tuple[float, float] | None:
+        lookback = self.params.abnormal_lookback_days
+        if len(self._abnormal_daily_returns) < lookback:
+            return None
+        sample = self._abnormal_daily_returns[-lookback:]
+        return fmean(sample), stdev(sample)
+
+    def _open_abnormal_trade(self, at: datetime, mid: float, local: datetime, side: Side) -> bool:
+        if (
+            self._day_signal_consumed
+            or local.weekday() >= 5
+            or self.account_ruined
+            or self.position is not None
+            or not self._abnormal_day_has_open
+            or self._abnormal_day_open is None
+        ):
+            return False
+        baseline = self._abnormal_baseline()
+        if baseline is None:
+            self.abnormal_warmup_skips += 1
+            return False
+        mean_return, std_return = baseline
+        observed_return = (mid / self._abnormal_day_open - 1.0) * 100.0
+        if side == "sell":
+            trigger = mean_return - self.params.abnormal_sigma * std_return
+            qualifies = observed_return < trigger
+        else:
+            trigger = mean_return + self.params.abnormal_sigma * std_return
+            qualifies = observed_return > trigger
+        if not qualifies:
+            return False
+
+        self._day_signal_consumed = True
+        signal = GoldSessionSignal(
+            side=side,
+            signal_time=at,
+            trade_date=local.date().isoformat(),
+            session_leg=self.params.session_leg,
+            observed_return_percent=round(observed_return, 10),
+            baseline_mean_percent=round(mean_return, 10),
+            baseline_std_percent=round(std_return, 10),
+            trigger_percent=round(trigger, 10),
+        )
+        self._sequence += 1
+        entry_price = self._entry_price(side, mid)
+        planned_risk = self.balance * self.params.maximum_loss_percent / 100.0
+        self.position = GoldSessionPosition(
+            position_id=f"ABNORMAL-MOM-POS-{self._sequence:08d}",
+            basket_id=f"ABNORMAL-MOM-TRADE-{self._sequence:08d}",
+            side=side,
+            opened_at=at,
+            entry_price=entry_price,
+            lot_size=self.params.fixed_lot,
+            stop_mid=mid,
+            planned_risk_money=planned_risk,
+            signal=signal,
+        )
+        self.position.stop_mid = self._threshold_mid(-planned_risk)
+        opening_floating = self.position_net(mid)
+        self._trade_peak_floating = opening_floating
+        self._trade_worst_floating = opening_floating
+        self.sessions_traded += 1
+        if side == "sell":
+            self.abnormal_negative_signals += 1
+        else:
+            self.abnormal_positive_signals += 1
+        self._update_extremes(mid)
+        return True
 
     def _open_daily_trade(self, at: datetime, mid: float, local: datetime) -> bool:
         if (
@@ -433,7 +617,11 @@ class GoldSessionAnomalyBacktester:
             else (
                 "ASIA-LONG"
                 if self.params.session_leg == "asia_long"
-                else ("SHANGHAI-LONG" if self.params.session_leg == "shanghai_day_long" else "DAY-SHORT")
+                else (
+                    "SHANGHAI-LONG"
+                    if self.params.session_leg == "shanghai_day_long"
+                    else "DAY-SHORT"
+                )
             )
         )
         self.position = GoldSessionPosition(
@@ -503,7 +691,7 @@ class GoldSessionAnomalyBacktester:
         self.position_pnls.append(net)
         self.basket_pnls.append(net)
         self.exit_reasons[reason] += 1
-        local = self._local(at)
+        local = self._entry_local(at)
         self.monthly_net[local.strftime("%Y-%m")] += net
         self.yearly_net[local.strftime("%Y")] += net
         self.position = None
@@ -604,6 +792,12 @@ class GoldSessionAnomalyBacktester:
                 tzinfo=self.asia_exit_timezone,
             )
             return exit_local >= target
+        if self.params.session_leg == "abnormal_momentum":
+            opened_local = self.position.opened_at.astimezone(self.abnormal_timezone)
+            return (
+                local.date() == opened_local.date()
+                and self._minute_of_day(local) >= self.params.abnormal_exit_total_minutes
+            )
         if local.weekday() >= 5:
             return False
         opened_local = self._local(self.position.opened_at)
@@ -612,25 +806,90 @@ class GoldSessionAnomalyBacktester:
             return local.date() > opened_local.date() and minute >= self.params.exit_total_minutes
         return local.date() == opened_local.date() and minute >= self.params.exit_total_minutes
 
-    def process_candle(self, candle: Candle) -> None:
+    def begin_evaluation(self) -> None:
+        """Reset reporting after a no-trade causal warm-up while retaining past returns."""
+
+        if self.position is not None:
+            raise RuntimeError("Cannot begin evaluation with an open warm-up trade")
+        self.balance = self.starting_balance
+        self._equity_peak = self.starting_balance
+        self.max_equity_drawdown = 0.0
+        self.max_equity_drawdown_percent = 0.0
+        self.completed_trades = []
+        self.completed_baskets = []
+        self.position_pnls = []
+        self.basket_pnls = []
+        self.exit_reasons = Counter()
+        self.monthly_net = defaultdict(float)
+        self.yearly_net = defaultdict(float)
+        self.sessions_seen = 0
+        self.eligible_sessions = 0
+        self.sessions_traded = 0
+        self.missing_entry_skips = 0
+        self.missing_exit_fallbacks = 0
+        self.incomplete_end_discards = 0
+        self.financing_events = 0
+        self.financing_costs = 0.0
+        self.gap_stop_fills = 0
+        self.abnormal_warmup_skips = 0
+        self.abnormal_negative_signals = 0
+        self.abnormal_positive_signals = 0
+        self.abnormal_missing_open_skips = 0
+        self.abnormal_missing_signal_skips = 0
+        self.candles_processed = 0
+        self.first_candle = None
+        self.last_candle = None
+        if self.params.session_leg == "abnormal_momentum" and self._session_date is not None:
+            # The chronological split may land inside a GMT+3 day. Skip the
+            # remainder rather than let pre-split movement create a test trade.
+            self._day_signal_consumed = True
+            self._abnormal_negative_checked = True
+            self._abnormal_positive_checked = True
+
+    def process_candle(
+        self,
+        candle: Candle,
+        *,
+        allow_entry: bool = True,
+        count_metrics: bool = True,
+    ) -> None:
         if self.account_ruined:
             return
         previous_candle_time = self.last_candle
-        if self.first_candle is None:
+        if count_metrics and self.first_candle is None:
             self.first_candle = candle.candle_time
-        self.last_candle = candle.candle_time
-        self.candles_processed += 1
+        if count_metrics:
+            self.last_candle = candle.candle_time
+            self.candles_processed += 1
         local = self._entry_local(candle.candle_time)
         session_date = local.date()
 
         if self._session_date != session_date:
-            if self.position is not None and self.params.session_leg == "day_short":
+            if self.params.session_leg == "abnormal_momentum":
+                if self.position is not None:
+                    self.missing_exit_fallbacks += 1
+                    self._close_position(
+                        previous_candle_time or candle.candle_time,
+                        self._last_mid if self._last_mid is not None else candle.open,
+                        "LAST AVAILABLE PRE-CLOSE BAR",
+                    )
+                self._finish_abnormal_day()
+            elif self.position is not None and self.params.session_leg == "day_short":
                 self._close_position(
                     previous_candle_time or candle.candle_time,
                     self._last_mid if self._last_mid is not None else candle.open,
                     "LAST AVAILABLE SESSION BAR",
                 )
-            self._reset_session(session_date)
+            self._reset_session(session_date, count_metrics=count_metrics)
+            if self.params.session_leg == "abnormal_momentum":
+                # A MetaTrader daily bar opens on the first tradable quote of
+                # its broker day. Gold can have a short rollover closure at
+                # midnight, so accept that first quote through 02:00 GMT+3.
+                valid_open = self._minute_of_day(local) <= 120
+                self._abnormal_day_has_open = valid_open
+                self._abnormal_day_open = candle.open if valid_open else None
+                if count_metrics and local.weekday() < 5 and not valid_open:
+                    self.abnormal_missing_open_skips += 1
 
         path = self._path(candle)
         current = self._last_mid if self._last_mid is not None else path[0]
@@ -643,6 +902,45 @@ class GoldSessionAnomalyBacktester:
             self._apply_due_financing(candle.candle_time, candle.open)
 
         minute = self._minute_of_day(local)
+
+        if self.params.session_leg == "abnormal_momentum":
+            opened = False
+            negative_minute = self.params.abnormal_negative_entry_total_minutes
+            positive_minute = self.params.abnormal_positive_entry_total_minutes
+            if not self._abnormal_negative_checked and minute >= negative_minute:
+                self._abnormal_negative_checked = True
+                if minute == negative_minute:
+                    if allow_entry:
+                        opened = self._open_abnormal_trade(candle.candle_time, candle.open, local, "sell")
+                elif count_metrics and local.weekday() < 5:
+                    self.abnormal_missing_signal_skips += 1
+            if (
+                not opened
+                and not self._day_signal_consumed
+                and not self._abnormal_positive_checked
+                and minute >= positive_minute
+            ):
+                self._abnormal_positive_checked = True
+                if minute == positive_minute:
+                    if allow_entry:
+                        opened = self._open_abnormal_trade(candle.candle_time, candle.open, local, "buy")
+                elif count_metrics and local.weekday() < 5:
+                    self.abnormal_missing_signal_skips += 1
+                if not opened:
+                    self._day_signal_consumed = True
+
+            path = self._path(candle)
+            current = path[0] if opened or self._last_mid is None else self._last_mid
+            if not opened and self.position is not None and abs(path[0] - current) > self.EPS:
+                current = self._process_segment(current, path[0], candle.candle_time, gap=True)
+            for target in path[1:]:
+                current = self._process_segment(current, target, candle.candle_time)
+            if self.position is not None and minute == self.params.abnormal_exit_total_minutes:
+                self._close_position(candle.candle_time, candle.close, "FROZEN GMT+3 DAY-END EXIT")
+            self._last_mid = candle.close
+            self._update_extremes(candle.close)
+            return
+
         if self.position is not None and self._should_exit(local):
             if self.params.session_leg in {"asia_long", "shanghai_day_long"}:
                 exit_local = candle.candle_time.astimezone(self.asia_exit_timezone)
@@ -663,7 +961,7 @@ class GoldSessionAnomalyBacktester:
                 )
 
         opened = False
-        if minute == self.params.entry_total_minutes:
+        if allow_entry and minute == self.params.entry_total_minutes:
             opened = self._open_daily_trade(candle.candle_time, candle.open, local)
             if opened:
                 current = path[0]
@@ -724,6 +1022,12 @@ class GoldSessionAnomalyBacktester:
             missing_entry_skips=self.missing_entry_skips,
             missing_exit_fallbacks=self.missing_exit_fallbacks,
             incomplete_end_discards=self.incomplete_end_discards,
+            abnormal_completed_days=self.abnormal_completed_days,
+            abnormal_warmup_skips=self.abnormal_warmup_skips,
+            abnormal_negative_signals=self.abnormal_negative_signals,
+            abnormal_positive_signals=self.abnormal_positive_signals,
+            abnormal_missing_open_skips=self.abnormal_missing_open_skips,
+            abnormal_missing_signal_skips=self.abnormal_missing_signal_skips,
             financing_events=self.financing_events,
             financing_costs=round(self.financing_costs, 6),
             gap_stop_fills=self.gap_stop_fills,
