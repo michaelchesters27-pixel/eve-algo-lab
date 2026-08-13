@@ -69,8 +69,10 @@ SHANGHAI_DAY_LONG_STRATEGY_SLUG = "eve-shanghai-day-long-v1"
 SHANGHAI_DAY_LONG_STRATEGY_NAME = "EVE Shanghai Day Long v1"
 GOLD_ABNORMAL_MOMENTUM_STRATEGY_SLUG = "eve-gold-abnormal-momentum-v1"
 GOLD_ABNORMAL_MOMENTUM_STRATEGY_NAME = "EVE Gold Abnormal Momentum v1"
+GOLD_INTRADAY_CLOSE_MOMENTUM_STRATEGY_SLUG = "eve-gold-intraday-close-momentum-v1"
+GOLD_INTRADAY_CLOSE_MOMENTUM_STRATEGY_NAME = "EVE Gold Intraday Close Momentum v1"
 GOLD_SESSION_ANOMALY_STRATEGY_VERSION = "1.0"
-GOLD_SESSION_ANOMALY_SOURCE_SHA256 = "970964796b82737aece522cc7fec79770a5cd4eb9e0b19e791241c12fdc4f6a8"
+GOLD_SESSION_ANOMALY_SOURCE_SHA256 = "709e9a0f93d2415e6421c9c83f8f45b5a728b270b6b80e3d1fa663fd839d3b69"
 GOLD_H4_STRATEGY_SLUG = "eve-gold-h4-trend-55-20-v1"
 GOLD_H4_STRATEGY_NAME = "EVE Gold H4 Trend 55/20 v1"
 GOLD_H4_STRATEGY_VERSION = "1.0"
@@ -193,6 +195,14 @@ GOLD_SESSION_ANOMALY_LOCKED_SETTING_KEYS = (
     "abnormal_positive_entry_minute",
     "abnormal_exit_hour",
     "abnormal_exit_minute",
+    "intraday_predictor_start_hour",
+    "intraday_predictor_start_minute",
+    "intraday_predictor_end_hour",
+    "intraday_predictor_end_minute",
+    "intraday_entry_hour",
+    "intraday_entry_minute",
+    "intraday_exit_hour",
+    "intraday_exit_minute",
     "long_overnight_cost_per_001_lot",
     "triple_swap_weekday",
     "spread_price",
@@ -294,6 +304,15 @@ def comex_closing_momentum_settings_match(first: dict[str, Any], second: dict[st
 
 
 def gold_session_anomaly_identity(session_leg: str) -> dict[str, str]:
+    if session_leg == "gld_fifth_half_hour_momentum":
+        return {
+            "code": "gold_intraday_close_momentum",
+            "name": GOLD_INTRADAY_CLOSE_MOMENTUM_STRATEGY_NAME,
+            "slug": GOLD_INTRADAY_CLOSE_MOMENTUM_STRATEGY_SLUG,
+            "description": "One fixed-size XAU/USD closing-half-hour trade each complete New York weekday, directed by the 11:30-12:00 return.",
+            "entry": "at 15:30 New York, buy after a positive 11:30-12:00 return; otherwise sell",
+            "exit": "close at the exact 16:00 New York M1 open",
+        }
     if session_leg == "abnormal_momentum":
         return {
             "code": "gold_abnormal_momentum",
@@ -962,12 +981,20 @@ class BacktestService:
                 "causality": (
                     "rolling baseline uses completed prior days only; chronological split day is skipped"
                     if session_leg == "abnormal_momentum"
-                    else None
+                    else (
+                        "the 11:30-12:00 predictor is complete three and a half hours before the 15:30 entry"
+                        if session_leg == "gld_fifth_half_hour_momentum"
+                        else None
+                    )
                 ),
                 "research_source": (
                     "Caporale and Plastun (2021), Financial Markets and Portfolio Management, DOI 10.1007/s11408-021-00380-w"
                     if session_leg == "abnormal_momentum"
-                    else None
+                    else (
+                        "Xu, Bouri, Saeed and Wen (2020), Resources Policy 69, DOI 10.1016/j.resourpol.2020.101830"
+                        if session_leg == "gld_fifth_half_hour_momentum"
+                        else None
+                    )
                 ),
                 "source": "railway/app/backtesting/gold_session_anomaly.py",
             }
@@ -980,9 +1007,13 @@ class BacktestService:
                     "Published same-day abnormal-return momentum hypothesis translated into a causal rolling rule and frozen before its EVE result was seen. No EA exists unless locked development and untouched tests both pass."
                     if session_leg == "abnormal_momentum"
                     else (
-                    "Two eastern-session hypotheses frozen together after both COMEX session legs failed, before either eastern result was seen. No EA exists unless locked development and untouched tests both pass."
-                    if session_leg in {"asia_long", "shanghai_day_long"}
-                    else "Pre-declared together with the opposite session leg before either result was seen. No EA exists unless locked development and untouched tests both pass."
+                        "Published GLD intraday-predictability rule translated once into XAU/USD and frozen before its EVE result was seen. No EA exists unless locked development and untouched tests both pass."
+                        if session_leg == "gld_fifth_half_hour_momentum"
+                        else (
+                            "Two eastern-session hypotheses frozen together after both COMEX session legs failed, before either eastern result was seen. No EA exists unless locked development and untouched tests both pass."
+                            if session_leg in {"asia_long", "shanghai_day_long"}
+                            else "Pre-declared together with the opposite session leg before either result was seen. No EA exists unless locked development and untouched tests both pass."
+                        )
                     )
                 ),
             )
@@ -3068,15 +3099,19 @@ class BacktestService:
             "Verified M1 causal 60-day abnormal-return baseline, sign-specific GMT+3 entry, day-end exit and hard-money stop replay"
             if session_leg == "abnormal_momentum"
             else (
-                "Verified M1 13:30 New York long entry, next eligible 08:20 exit, financing and hard-money stop replay"
-                if session_leg == "overnight_long"
+                "Verified M1 11:30-12:00 New York predictor, 15:30 entry, 16:00 exit and hard-money stop replay"
+                if session_leg == "gld_fifth_half_hour_momentum"
                 else (
-                    "Verified M1 18:00 New York long entry, 15:30 Shanghai exit and hard-money stop replay"
-                    if session_leg == "asia_long"
+                    "Verified M1 13:30 New York long entry, next eligible 08:20 exit, financing and hard-money stop replay"
+                    if session_leg == "overnight_long"
                     else (
-                        "Verified M1 09:00 Shanghai long entry, 15:30 Shanghai exit and hard-money stop replay"
-                        if session_leg == "shanghai_day_long"
-                        else "Verified M1 08:20 New York short entry, 13:30 exit and hard-money stop replay"
+                        "Verified M1 18:00 New York long entry, 15:30 Shanghai exit and hard-money stop replay"
+                        if session_leg == "asia_long"
+                        else (
+                            "Verified M1 09:00 Shanghai long entry, 15:30 Shanghai exit and hard-money stop replay"
+                            if session_leg == "shanghai_day_long"
+                            else "Verified M1 08:20 New York short entry, 13:30 exit and hard-money stop replay"
+                        )
                     )
                 )
             )
@@ -3129,6 +3164,14 @@ class BacktestService:
                 abnormal_positive_entry_minute=int(request.get("abnormal_positive_entry_minute", 0)),
                 abnormal_exit_hour=int(request.get("abnormal_exit_hour", 23)),
                 abnormal_exit_minute=int(request.get("abnormal_exit_minute", 59)),
+                intraday_predictor_start_hour=int(request.get("intraday_predictor_start_hour", 11)),
+                intraday_predictor_start_minute=int(request.get("intraday_predictor_start_minute", 30)),
+                intraday_predictor_end_hour=int(request.get("intraday_predictor_end_hour", 12)),
+                intraday_predictor_end_minute=int(request.get("intraday_predictor_end_minute", 0)),
+                intraday_entry_hour=int(request.get("intraday_entry_hour", 15)),
+                intraday_entry_minute=int(request.get("intraday_entry_minute", 30)),
+                intraday_exit_hour=int(request.get("intraday_exit_hour", 16)),
+                intraday_exit_minute=int(request.get("intraday_exit_minute", 0)),
                 fixed_lot=float(request.get("fixed_lot", 0.01)),
                 maximum_loss_percent=float(request.get("maximum_loss_percent", 0.25)),
                 long_overnight_cost_per_001_lot=float(

@@ -1,6 +1,15 @@
-# EVE Command Centre v4.0
+# EVE Command Centre v4.1
 
 EVE is a private XAU/USD research, strategy-evolution and MT5 bot-development platform using Supabase, Railway, Netlify and Twelve Data.
+
+## What v4.1 changes
+
+- Adds **Gold Intraday Close Momentum v1**, a peer-reviewed GLD timing rule translated once into XAU/USD: follow the 11:30–12:00 New York return from 15:30 to 16:00.
+- It makes exactly one fixed 0.01-lot trade on each complete New York weekday, with costs, a 0.25% hard stop, and no re-entry.
+- Development must clear 500 trades, three profitable calendar years, PF 1.20, positive expectancy and 15% drawdown before EVE unlocks untouched history.
+- Gold Abnormal Momentum v1 remains archived as profitable development evidence that was too infrequent for the everyday brief.
+
+No Supabase SQL or new Railway/Netlify variables are required for v4.1.
 
 ## What v4.0 changes
 
