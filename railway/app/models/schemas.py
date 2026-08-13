@@ -211,6 +211,40 @@ class ComexClosingMomentumBacktestRequest(BaseModel):
         return value
 
 
+class GoldSessionAnomalyBacktestRequest(BaseModel):
+    name: str = Field(default="Gold Overnight Long v1 — M1 Replay", min_length=3, max_length=120)
+    session_leg: Literal["overnight_long", "day_short"] = "overnight_long"
+    symbol: str = Field(default="XAU/USD", min_length=3, max_length=40)
+    interval: Literal["1min"] = "1min"
+    resolution: Literal["m1_replay"] = "m1_replay"
+    test_segment: BacktestTestSegment = "full"
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    starting_balance: float = Field(default=10_000.0, gt=0, le=100_000_000)
+    fixed_lot: Literal[0.01] = 0.01
+    maximum_loss_percent: Literal[0.25] = 0.25
+    timezone_name: Literal["America/New_York"] = "America/New_York"
+    day_open_hour: Literal[8] = 8
+    day_open_minute: Literal[20] = 20
+    settlement_hour: Literal[13] = 13
+    settlement_minute: Literal[30] = 30
+    long_overnight_cost_per_001_lot: float = Field(default=0.70, ge=0, le=1000)
+    triple_swap_weekday: Literal[2] = 2
+    spread_price: float = Field(default=0.05, ge=0, le=100)
+    commission_per_001_lot: float = Field(default=0.08, ge=0, le=1000)
+    slippage_price: float = Field(default=0.0, ge=0, le=100)
+    money_per_price_per_001_lot: float = Field(default=1.0, gt=0, le=10_000)
+    path_mode: PathMode = "candle_direction"
+
+    @field_validator("date_to")
+    @classmethod
+    def validate_date_range(cls, value: datetime | None, info):
+        start = info.data.get("date_from")
+        if value is not None and start is not None and value <= start:
+            raise ValueError("date_to must be later than date_from")
+        return value
+
+
 class GoldH4TrendBacktestRequest(BaseModel):
     name: str = Field(default="Gold H4 Trend 55/20 v1 — M1 Replay", min_length=3, max_length=120)
     symbol: str = Field(default="XAU/USD", min_length=3, max_length=40)

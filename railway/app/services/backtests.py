@@ -21,6 +21,10 @@ from app.backtesting.gold_h1_trend import (
     GoldH1TrendParameters,
     build_trend_events as build_h1_trend_events,
 )
+from app.backtesting.gold_session_anomaly import (
+    GoldSessionAnomalyBacktester,
+    GoldSessionAnomalyParameters,
+)
 from app.backtesting.liquidity_basket import LiquidityBasketBacktester, LiquidityBasketParameters
 from app.backtesting.london_opening_range import LondonOpeningRangeBacktester, LondonOpeningRangeParameters
 from app.backtesting.metrics import calculate_metrics
@@ -55,6 +59,12 @@ COMEX_CLOSING_MOMENTUM_STRATEGY_SLUG = "eve-comex-closing-momentum-v1"
 COMEX_CLOSING_MOMENTUM_STRATEGY_NAME = "EVE COMEX Closing Momentum v1"
 COMEX_CLOSING_MOMENTUM_STRATEGY_VERSION = "1.0"
 COMEX_CLOSING_MOMENTUM_SOURCE_SHA256 = "f2af0dd7564547996831b2db8525175290d881a03f4b8882b66cfac0be239281"
+GOLD_OVERNIGHT_STRATEGY_SLUG = "eve-gold-overnight-long-v1"
+GOLD_OVERNIGHT_STRATEGY_NAME = "EVE Gold Overnight Long v1"
+COMEX_DAY_SHORT_STRATEGY_SLUG = "eve-comex-day-short-v1"
+COMEX_DAY_SHORT_STRATEGY_NAME = "EVE COMEX Day Short v1"
+GOLD_SESSION_ANOMALY_STRATEGY_VERSION = "1.0"
+GOLD_SESSION_ANOMALY_SOURCE_SHA256 = "81ba4e74ff719610bc30ece800f279354238892b096e0aeb0e8057acf9fa027a"
 GOLD_H4_STRATEGY_SLUG = "eve-gold-h4-trend-55-20-v1"
 GOLD_H4_STRATEGY_NAME = "EVE Gold H4 Trend 55/20 v1"
 GOLD_H4_STRATEGY_VERSION = "1.0"
@@ -143,6 +153,26 @@ COMEX_CLOSING_MOMENTUM_LOCKED_SETTING_KEYS = (
     "entry_minute",
     "exit_hour",
     "exit_minute",
+    "spread_price",
+    "commission_per_001_lot",
+    "slippage_price",
+    "money_per_price_per_001_lot",
+    "path_mode",
+)
+GOLD_SESSION_ANOMALY_LOCKED_SETTING_KEYS = (
+    "strategy",
+    "session_leg",
+    "symbol",
+    "starting_balance",
+    "fixed_lot",
+    "maximum_loss_percent",
+    "timezone_name",
+    "day_open_hour",
+    "day_open_minute",
+    "settlement_hour",
+    "settlement_minute",
+    "long_overnight_cost_per_001_lot",
+    "triple_swap_weekday",
     "spread_price",
     "commission_per_001_lot",
     "slippage_price",
@@ -239,6 +269,32 @@ def comex_closing_momentum_settings_match(first: dict[str, Any], second: dict[st
     """Require the untouched COMEX run to reuse every frozen rule and cost."""
 
     return all(first.get(key) == second.get(key) for key in COMEX_CLOSING_MOMENTUM_LOCKED_SETTING_KEYS)
+
+
+def gold_session_anomaly_identity(session_leg: str) -> dict[str, str]:
+    if session_leg == "day_short":
+        return {
+            "code": "comex_day_short",
+            "name": COMEX_DAY_SHORT_STRATEGY_NAME,
+            "slug": COMEX_DAY_SHORT_STRATEGY_SLUG,
+            "description": "One fixed-size XAU/USD short at the COMEX day-session open, closed at settlement.",
+            "entry": "sell the exact 08:20 New York M1 open",
+            "exit": "close at the exact 13:30 New York M1 open",
+        }
+    return {
+        "code": "gold_overnight_long",
+        "name": GOLD_OVERNIGHT_STRATEGY_NAME,
+        "slug": GOLD_OVERNIGHT_STRATEGY_SLUG,
+        "description": "One fixed-size XAU/USD long from COMEX settlement to the next eligible day-session open.",
+        "entry": "buy the exact 13:30 New York M1 open",
+        "exit": "close at the next eligible weekday's exact 08:20 New York M1 open",
+    }
+
+
+def gold_session_anomaly_settings_match(first: dict[str, Any], second: dict[str, Any]) -> bool:
+    """Require untouched replay to reuse every frozen session rule, cost and risk input."""
+
+    return all(first.get(key) == second.get(key) for key in GOLD_SESSION_ANOMALY_LOCKED_SETTING_KEYS)
 
 
 def gold_h4_settings_match(first: dict[str, Any], second: dict[str, Any]) -> bool:
@@ -708,6 +764,51 @@ class BacktestService:
             )
         return str(version["id"])
 
+    async def ensure_gold_session_anomaly_strategy_version(self, session_leg: str) -> str:
+        identity = gold_session_anomaly_identity(session_leg)
+        strategy = await self.repo.get_strategy_by_slug(identity["slug"])
+        if strategy is None:
+            strategy = await self.repo.create_strategy(
+                identity["name"],
+                identity["slug"],
+                identity["description"],
+            )
+        version = await self.repo.get_strategy_version(
+            str(strategy["id"]),
+            GOLD_SESSION_ANOMALY_STRATEGY_VERSION,
+        )
+        if version is None:
+            rules = {
+                "signal_timeframe": "verified M1 candles",
+                "execution_timeframe": "M1 replay",
+                "timezone": "America/New_York with DST",
+                "session_leg": session_leg,
+                "entry": identity["entry"],
+                "exit": identity["exit"],
+                "stop": "hard money stop at 0.25% of current balance, including costs already charged",
+                "maximum_trades_per_day": 1,
+                "fixed_lot": 0.01,
+                "martingale": False,
+                "averaging": False,
+                "reentry": False,
+                "spread_commission_slippage": True,
+                "overnight_financing": (
+                    "$0.70 per 0.01 lot at 17:00 New York with Wednesday triple"
+                    if session_leg == "overnight_long"
+                    else "not applicable to the same-day short"
+                ),
+                "missing_entry": "skip the day; never enter late",
+                "source": "railway/app/backtesting/gold_session_anomaly.py",
+            }
+            version = await self.repo.create_strategy_version(
+                str(strategy["id"]),
+                GOLD_SESSION_ANOMALY_STRATEGY_VERSION,
+                rules,
+                GOLD_SESSION_ANOMALY_SOURCE_SHA256,
+                "Pre-declared together with the opposite session leg before either result was seen. No EA exists unless locked development and untouched tests both pass.",
+            )
+        return str(version["id"])
+
     async def ensure_gold_h4_strategy_version(self) -> str:
         strategy = await self.repo.get_strategy_by_slug(GOLD_H4_STRATEGY_SLUG)
         if strategy is None:
@@ -822,6 +923,17 @@ class BacktestService:
             task = asyncio.create_task(
                 self._run_comex_closing_momentum(run_id, request),
                 name=f"comex-closing-momentum-backtest-{run_id}",
+            )
+            self.tasks[run_id] = task
+            task.add_done_callback(lambda _: self.tasks.pop(run_id, None))
+
+    async def start_gold_session_anomaly(self, run_id: str, request: dict[str, Any]) -> None:
+        async with self._lock:
+            if run_id in self.tasks and not self.tasks[run_id].done():
+                return
+            task = asyncio.create_task(
+                self._run_gold_session_anomaly(run_id, request),
+                name=f"gold-session-anomaly-backtest-{run_id}",
             )
             self.tasks[run_id] = task
             task.add_done_callback(lambda _: self.tasks.pop(run_id, None))
@@ -2763,5 +2875,296 @@ class BacktestService:
                 "error",
                 "backtester",
                 f"{COMEX_CLOSING_MOMENTUM_STRATEGY_NAME} backtest failed",
+                {"run_id": run_id, "error": str(exc)},
+            )
+
+    async def _run_gold_session_anomaly(self, run_id: str, request: dict[str, Any]) -> None:
+        started_at = datetime.now(timezone.utc)
+        data_interval = "1min"
+        test_segment = str(request.get("test_segment", "full"))
+        session_leg = str(request.get("session_leg", "overnight_long"))
+        identity = gold_session_anomaly_identity(session_leg)
+        strategy_code = identity["code"]
+        accuracy = (
+            "Verified M1 13:30 New York long entry, next eligible 08:20 exit, financing and hard-money stop replay"
+            if session_leg == "overnight_long"
+            else "Verified M1 08:20 New York short entry, 13:30 exit and hard-money stop replay"
+        )
+        try:
+            await self.repo.update_backtest_run(
+                run_id,
+                status="running",
+                started_at=started_at.isoformat(),
+                reliability={
+                    "progress_percent": 0,
+                    "message": f"Loading verified XAU/USD M1 candles for {identity['name']}",
+                    "accuracy": accuracy,
+                    "input_interval": data_interval,
+                    "signal_interval": "1min",
+                    "strategy": strategy_code,
+                    "session_leg": session_leg,
+                    "test_segment": test_segment,
+                    "locked_development_run_id": request.get("locked_development_run_id"),
+                    "source_sha256": GOLD_SESSION_ANOMALY_SOURCE_SHA256,
+                },
+            )
+            await self.repo.log_event(
+                "info",
+                "backtester",
+                f"{identity['name']} M1 replay started",
+                {"run_id": run_id, "test_segment": test_segment, "session_leg": session_leg},
+            )
+
+            params = GoldSessionAnomalyParameters(
+                session_leg=session_leg,
+                timezone_name=str(request.get("timezone_name", "America/New_York")),
+                day_open_hour=int(request.get("day_open_hour", 8)),
+                day_open_minute=int(request.get("day_open_minute", 20)),
+                settlement_hour=int(request.get("settlement_hour", 13)),
+                settlement_minute=int(request.get("settlement_minute", 30)),
+                fixed_lot=float(request.get("fixed_lot", 0.01)),
+                maximum_loss_percent=float(request.get("maximum_loss_percent", 0.25)),
+                long_overnight_cost_per_001_lot=float(
+                    request.get("long_overnight_cost_per_001_lot", 0.70)
+                ),
+                triple_swap_weekday=int(request.get("triple_swap_weekday", 2)),
+                spread_price=float(request.get("spread_price", 0.05)),
+                commission_per_001_lot=float(request.get("commission_per_001_lot", 0.08)),
+                slippage_price=float(request.get("slippage_price", 0.0)),
+                money_per_price_per_001_lot=float(request.get("money_per_price_per_001_lot", 1.0)),
+                path_mode=str(request.get("path_mode", "candle_direction")),
+            )
+            simulator = GoldSessionAnomalyBacktester(
+                float(request.get("starting_balance", 10_000.0)),
+                params,
+            )
+
+            symbol = str(request.get("symbol", "XAU/USD"))
+            date_from = request.get("date_from")
+            date_to = request.get("date_to")
+            expected_rows = await self.repo.count_market_candles(symbol, data_interval, date_from, date_to)
+            if expected_rows <= 0:
+                raise RuntimeError("No M1 candles exist for the selected date range")
+
+            cursor: str | None = None
+            processed = 0
+            trade_buffer: list[dict[str, Any]] = []
+            basket_buffer: list[dict[str, Any]] = []
+            last_progress_update = 0
+            page_number = 0
+
+            while True:
+                if page_number % 10 == 0:
+                    run = await self.repo.get_backtest_run(run_id)
+                    if not run or run.get("status") == "cancelled":
+                        await self.repo.log_event(
+                            "warning",
+                            "backtester",
+                            f"{identity['name']} backtest cancelled",
+                            {"run_id": run_id},
+                        )
+                        return
+                page = await self.repo.fetch_candles_page(
+                    symbol=symbol,
+                    interval=data_interval,
+                    after=cursor,
+                    date_from=date_from,
+                    date_to=date_to,
+                    limit=1000,
+                )
+                if not page:
+                    break
+                page_number += 1
+                page_processed = 0
+                last_processed_row: dict[str, Any] | None = None
+                for row in page:
+                    simulator.process_candle(Candle.from_row(row))
+                    page_processed += 1
+                    last_processed_row = row
+                    if simulator.account_ruined:
+                        break
+                processed += page_processed
+                if last_processed_row is not None:
+                    cursor = str(last_processed_row["candle_time"])
+
+                trade_buffer.extend(trade.to_trade_row(run_id) for trade in simulator.drain_trades())
+                basket_buffer.extend(trade.to_basket_row(run_id) for trade in simulator.drain_baskets())
+                if len(trade_buffer) >= 1000:
+                    await self.repo.bulk_insert_backtest_trades(trade_buffer)
+                    trade_buffer.clear()
+                if len(basket_buffer) >= 500:
+                    await self.repo.bulk_insert_backtest_baskets(basket_buffer)
+                    basket_buffer.clear()
+
+                progress = min(99.5, processed / expected_rows * 100.0)
+                if processed - last_progress_update >= 10_000 or processed == expected_rows:
+                    last_progress_update = processed
+                    await self.repo.update_backtest_run(
+                        run_id,
+                        reliability={
+                            "progress_percent": round(progress, 3),
+                            "message": f"Processed {processed:,} of {expected_rows:,} verified M1 candles",
+                            "accuracy": accuracy,
+                            "input_interval": data_interval,
+                            "signal_interval": "1min",
+                            "strategy": strategy_code,
+                            "session_leg": session_leg,
+                            "test_segment": test_segment,
+                            "locked_development_run_id": request.get("locked_development_run_id"),
+                            "sessions_traded": simulator.sessions_traded,
+                            "maximum_trades_per_day": 1,
+                            "source_sha256": GOLD_SESSION_ANOMALY_SOURCE_SHA256,
+                        },
+                    )
+                if simulator.account_ruined or len(page) < 1000:
+                    break
+
+            final_trades, final_baskets = simulator.finalise()
+            trade_buffer.extend(trade.to_trade_row(run_id) for trade in final_trades)
+            basket_buffer.extend(trade.to_basket_row(run_id) for trade in final_baskets)
+            if trade_buffer:
+                await self.repo.bulk_insert_backtest_trades(trade_buffer)
+            if basket_buffer:
+                await self.repo.bulk_insert_backtest_baskets(basket_buffer)
+
+            summary = simulator.summary()
+            if not summary.basket_pnls:
+                raise RuntimeError(f"No complete {identity['name']} trades were found in the selected period")
+            position_metrics = calculate_metrics(summary.position_pnls, summary.starting_balance)
+            trade_metrics = calculate_metrics(summary.basket_pnls, summary.starting_balance)
+            profit_factor = (
+                trade_metrics.profit_factor
+                if trade_metrics.profit_factor is not None and math.isfinite(trade_metrics.profit_factor)
+                else None
+            )
+            recovery_factor = (
+                trade_metrics.recovery_factor
+                if trade_metrics.recovery_factor is not None and math.isfinite(trade_metrics.recovery_factor)
+                else None
+            )
+            first = datetime.fromisoformat(summary.first_candle) if summary.first_candle else None
+            last = datetime.fromisoformat(summary.last_candle) if summary.last_candle else None
+            weeks = max(1.0 / 7.0, ((last - first).total_seconds() / 604800.0) if first and last else 0.0)
+            drawdown_percent = max(trade_metrics.max_drawdown_percent, summary.max_equity_drawdown_percent)
+            verdict = _daily_momentum_verdict(
+                net_profit=trade_metrics.net_profit,
+                profit_factor=trade_metrics.profit_factor,
+                expectancy=trade_metrics.expectancy,
+                max_drawdown_percent=drawdown_percent,
+                total_trades=summary.total_baskets,
+                yearly_net=summary.yearly_net,
+                test_segment=test_segment,
+                locked_development_run_id=request.get("locked_development_run_id"),
+                account_ruined=summary.account_ruined,
+            )
+            reliability = {
+                "progress_percent": 100,
+                "message": (
+                    f"{identity['name']} stopped when the account reached $0"
+                    if summary.account_ruined
+                    else f"{identity['name']} backtest complete"
+                ),
+                "accuracy": accuracy,
+                "warning": "M1 cannot prove tick ordering or exact broker fills. The overnight financing input is a frozen conservative proxy and any survivor still needs broker-specific MT5 real-tick verification.",
+                "input_interval": data_interval,
+                "signal_interval": "1min",
+                "strategy": strategy_code,
+                "session_leg": session_leg,
+                "test_segment": test_segment,
+                "locked_development_run_id": request.get("locked_development_run_id"),
+                "candles_processed": summary.candles_processed,
+                "candles_available": expected_rows,
+                "terminated_early": summary.account_ruined and summary.candles_processed < expected_rows,
+                "account_ruined": summary.account_ruined,
+                "ruin_time": summary.ruin_time,
+                "ambiguous_candles": 0,
+                "maximum_trades_per_day": 1,
+                "sessions_seen": summary.sessions_seen,
+                "eligible_sessions": summary.eligible_sessions,
+                "sessions_traded": summary.sessions_traded,
+                "missing_entry_skips": summary.missing_entry_skips,
+                "missing_exit_fallbacks": summary.missing_exit_fallbacks,
+                "incomplete_end_discards": summary.incomplete_end_discards,
+                "financing_events": summary.financing_events,
+                "financing_costs": summary.financing_costs,
+                "gap_stop_fills": summary.gap_stop_fills,
+                "first_candle": summary.first_candle,
+                "last_candle": summary.last_candle,
+                "exit_reasons": summary.exit_reasons,
+                "monthly_net": summary.monthly_net,
+                "yearly_net": summary.yearly_net,
+                "profitable_years": sum(float(value) > 0 for value in summary.yearly_net.values()),
+                "position_metrics": position_metrics.as_dict(),
+                "basket_metrics": trade_metrics.as_dict(),
+                "trade_metrics": trade_metrics.as_dict(),
+                "worst_basket": round(min(summary.basket_pnls), 2),
+                "worst_trade": round(min(summary.basket_pnls), 2),
+                "longest_losing_streak": _longest_losing_streak(summary.basket_pnls),
+                "baskets_per_week": round(summary.total_baskets / weeks, 3),
+                "trades_per_week": round(summary.total_baskets / weeks, 3),
+                "risk_model": "Fixed 0.01 lot with a hard stop capped at 0.25% of current balance",
+                "verdict": verdict,
+                "source_sha256": GOLD_SESSION_ANOMALY_SOURCE_SHA256,
+            }
+            await self.repo.update_backtest_run(
+                run_id,
+                status="complete",
+                ending_balance=summary.ending_balance,
+                net_profit=trade_metrics.net_profit,
+                gross_profit=trade_metrics.gross_profit,
+                gross_loss=trade_metrics.gross_loss,
+                profit_factor=profit_factor,
+                max_balance_drawdown=trade_metrics.max_drawdown,
+                max_equity_drawdown=summary.max_equity_drawdown,
+                max_drawdown_percent=drawdown_percent,
+                total_positions=summary.total_positions,
+                total_baskets=summary.total_baskets,
+                winning_baskets=summary.winning_baskets,
+                losing_baskets=summary.losing_baskets,
+                basket_win_rate=(summary.winning_baskets / summary.total_baskets * 100.0) if summary.total_baskets else 0,
+                expectancy=trade_metrics.expectancy,
+                recovery_factor=recovery_factor,
+                reliability=reliability,
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+            await self.repo.log_event(
+                "success",
+                "backtester",
+                f"{identity['name']} completed: {verdict['label']}",
+                {
+                    "run_id": run_id,
+                    "candles": summary.candles_processed,
+                    "trades": summary.total_baskets,
+                    "net_profit": trade_metrics.net_profit,
+                    "profit_factor": profit_factor,
+                    "verdict": verdict["code"],
+                    "test_segment": test_segment,
+                    "session_leg": session_leg,
+                },
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception("Gold Session Anomaly backtest %s failed", run_id)
+            await self.repo.update_backtest_run(
+                run_id,
+                status="failed",
+                error=str(exc),
+                reliability={
+                    "progress_percent": 0,
+                    "message": str(exc),
+                    "accuracy": accuracy,
+                    "input_interval": data_interval,
+                    "signal_interval": "1min",
+                    "strategy": strategy_code,
+                    "session_leg": session_leg,
+                    "test_segment": test_segment,
+                },
+                finished_at=datetime.now(timezone.utc).isoformat(),
+            )
+            await self.repo.log_event(
+                "error",
+                "backtester",
+                f"{identity['name']} backtest failed",
                 {"run_id": run_id, "error": str(exc)},
             )
