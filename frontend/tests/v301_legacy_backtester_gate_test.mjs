@@ -10,8 +10,10 @@ test("Strategy Tester is a dedicated research workspace with the once-a-day gold
   assert.match(html, /id="backtester"[^>]*hidden[^>]*aria-hidden="true"/);
   assert.match(html, /id="closeLegacyBacktester"/);
   assert.match(html, /data-workspace="tester"/);
-  assert.match(html, /Gold Overnight Long v1 — current once-a-day experiment/);
-  assert.match(html, /COMEX Day Short v1 — predeclared backup, not tested/);
+  assert.match(html, /Asia Session Long v1 — current once-a-day experiment/);
+  assert.match(html, /Shanghai Day Long v1 — predeclared backup, not tested/);
+  assert.match(html, /Gold Overnight Long v1 — failed development/);
+  assert.match(html, /COMEX Day Short v1 — failed development/);
   assert.match(html, /COMEX Closing Momentum v1 — failed development/);
   assert.match(html, /New York Morning Momentum v1 — failed development/);
   assert.match(html, /Gold H1 Trend 55\/20 v1 — failed development/);
@@ -60,6 +62,9 @@ test("Gold session, COMEX and New York daily momentum, Gold trend, London and ar
   assert.match(js, /MAX 1 TRADE\/DAY/);
   assert.match(js, /BUY 13:30 NEW YORK/);
   assert.match(js, /SELL 08:20 NEW YORK/);
+  assert.match(js, /BUY 18:00 NEW YORK/);
+  assert.match(js, /15:30 SHANGHAI EXIT/);
+  assert.match(js, /BUY 09:00 SHANGHAI/);
   assert.match(js, /PRIOR 13:29 REFERENCE/);
   assert.match(js, /55-\$\{trendFrame\} BREAKOUT/);
   assert.match(js, /renderBacktestVerdict/);

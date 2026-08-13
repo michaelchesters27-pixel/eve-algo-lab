@@ -1,6 +1,18 @@
-# EVE Command Centre v3.8
+# EVE Command Centre v3.9
 
 EVE is a private XAU/USD research, strategy-evolution and MT5 bot-development platform using Supabase, Railway, Netlify and Twelve Data.
+
+## What v3.9 changes
+
+- Adds two eastern-session hypotheses frozen before either result: **Asia Session Long v1** first and **Shanghai Day Long v1** as its predeclared backup.
+- Buys one fixed 0.01-lot XAU/USD position at the exact 18:00 `America/New_York` M1 open from Sunday through Thursday and exits at the associated 15:30 `Asia/Shanghai` M1 open.
+- Targets the published positive eastern-hours gold effect while avoiding the 17:00 New York rollover charge.
+- Shanghai Day Long uses the official 09:00–15:30 Shanghai Gold Exchange day session if the broader eastern window fails.
+- Uses New York daylight saving for entry and fixed China Standard Time for exit, skips missing entry minutes, includes spread/commission/slippage and caps total loss at 0.25% of current balance.
+- Preserves the strict development gate and only unlocks the untouched final third after an exact-settings development pass.
+- Archives Gold Overnight Long v1 and COMEX Day Short v1 as failed evidence rather than tuning either on the observed result.
+
+No Supabase SQL or new Railway/Netlify variables are required for v3.9.
 
 ## What v3.8 changes
 

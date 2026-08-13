@@ -213,7 +213,7 @@ class ComexClosingMomentumBacktestRequest(BaseModel):
 
 class GoldSessionAnomalyBacktestRequest(BaseModel):
     name: str = Field(default="Gold Overnight Long v1 — M1 Replay", min_length=3, max_length=120)
-    session_leg: Literal["overnight_long", "day_short"] = "overnight_long"
+    session_leg: Literal["overnight_long", "day_short", "asia_long", "shanghai_day_long"] = "overnight_long"
     symbol: str = Field(default="XAU/USD", min_length=3, max_length=40)
     interval: Literal["1min"] = "1min"
     resolution: Literal["m1_replay"] = "m1_replay"
@@ -228,6 +228,13 @@ class GoldSessionAnomalyBacktestRequest(BaseModel):
     day_open_minute: Literal[20] = 20
     settlement_hour: Literal[13] = 13
     settlement_minute: Literal[30] = 30
+    asia_entry_hour: Literal[18] = 18
+    asia_entry_minute: Literal[0] = 0
+    asia_exit_timezone_name: Literal["Asia/Shanghai"] = "Asia/Shanghai"
+    shanghai_entry_hour: Literal[9] = 9
+    shanghai_entry_minute: Literal[0] = 0
+    asia_exit_hour: Literal[15] = 15
+    asia_exit_minute: Literal[30] = 30
     long_overnight_cost_per_001_lot: float = Field(default=0.70, ge=0, le=1000)
     triple_swap_weekday: Literal[2] = 2
     spread_price: float = Field(default=0.05, ge=0, le=100)
