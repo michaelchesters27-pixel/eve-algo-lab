@@ -5,13 +5,14 @@ import test from "node:test";
 const html = fs.readFileSync(new URL("../index.html", import.meta.url), "utf8");
 const js = fs.readFileSync(new URL("../app.js", import.meta.url), "utf8");
 
-test("Strategy Tester is a dedicated research workspace with the once-a-day gold session experiments and archived hypotheses", () => {
+test("Strategy Tester is a dedicated research workspace with the current abnormal-momentum experiment and archived hypotheses", () => {
   assert.match(html, /id="openLegacyBacktester"/);
   assert.match(html, /id="backtester"[^>]*hidden[^>]*aria-hidden="true"/);
   assert.match(html, /id="closeLegacyBacktester"/);
   assert.match(html, /data-workspace="tester"/);
-  assert.match(html, /Asia Session Long v1 — current once-a-day experiment/);
-  assert.match(html, /Shanghai Day Long v1 — predeclared backup, not tested/);
+  assert.match(html, /Gold Abnormal Momentum v1 — current once-a-day experiment/);
+  assert.match(html, /Asia Session Long v1 — failed development/);
+  assert.match(html, /Shanghai Day Long v1 — failed development/);
   assert.match(html, /Gold Overnight Long v1 — failed development/);
   assert.match(html, /COMEX Day Short v1 — failed development/);
   assert.match(html, /COMEX Closing Momentum v1 — failed development/);
@@ -60,6 +61,8 @@ test("Gold session, COMEX and New York daily momentum, Gold trend, London and ar
   assert.match(js, /breakout_continuation/);
   assert.match(js, /MIDPOINT STOP/);
   assert.match(js, /MAX 1 TRADE\/DAY/);
+  assert.match(js, /2-SIGMA TRIGGER/);
+  assert.match(js, /17:00 SHORT \/ 19:00 BUY/);
   assert.match(js, /BUY 13:30 NEW YORK/);
   assert.match(js, /SELL 08:20 NEW YORK/);
   assert.match(js, /BUY 18:00 NEW YORK/);
