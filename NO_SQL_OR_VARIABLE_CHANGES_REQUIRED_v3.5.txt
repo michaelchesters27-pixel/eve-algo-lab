@@ -1,0 +1,3 @@
+EVE Algo Lab v3.5 requires no Supabase SQL changes.
+It also requires no new Railway or Netlify environment variables.
+Deploy the repository update, then run Gold H1 Trend 55/20 v1 from Strategy Tester.

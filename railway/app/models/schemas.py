@@ -178,6 +178,42 @@ class GoldH4TrendBacktestRequest(BaseModel):
         return value
 
 
+class GoldH1TrendBacktestRequest(BaseModel):
+    name: str = Field(default="Gold H1 Trend 55/20 v1 — M1 Replay", min_length=3, max_length=120)
+    symbol: str = Field(default="XAU/USD", min_length=3, max_length=40)
+    interval: Literal["1min"] = "1min"
+    resolution: Literal["m1_replay"] = "m1_replay"
+    test_segment: BacktestTestSegment = "full"
+    date_from: datetime | None = None
+    date_to: datetime | None = None
+    starting_balance: float = Field(default=10_000.0, gt=0, le=100_000_000)
+    entry_lookback_h1: Literal[55] = 55
+    exit_lookback_h1: Literal[20] = 20
+    daily_trend_lookback: Literal[60] = 60
+    atr_period_h1: Literal[20] = 20
+    atr_multiplier: Literal[2.0] = 2.0
+    risk_percent: float = Field(default=0.25, ge=0.01, le=5.0)
+    minimum_lot: float = Field(default=0.01, gt=0, le=100)
+    lot_step: float = Field(default=0.01, gt=0, le=100)
+    maximum_lot: float = Field(default=1.0, gt=0, le=100)
+    spread_price: float = Field(default=0.05, ge=0, le=100)
+    commission_per_001_lot: float = Field(default=0.08, ge=0, le=1000)
+    slippage_price: float = Field(default=0.0, ge=0, le=100)
+    money_per_price_per_001_lot: float = Field(default=1.0, gt=0, le=10_000)
+    overnight_long_cost_per_001_lot: float = Field(default=0.70, ge=0, le=1000)
+    overnight_short_cost_per_001_lot: float = Field(default=0.70, ge=0, le=1000)
+    triple_swap_weekday: Literal[2] = 2
+    path_mode: PathMode = "candle_direction"
+
+    @field_validator("date_to")
+    @classmethod
+    def validate_date_range(cls, value: datetime | None, info):
+        start = info.data.get("date_from")
+        if value is not None and start is not None and value <= start:
+            raise ValueError("date_to must be later than date_from")
+        return value
+
+
 class FleetHeartbeatRequest(BaseModel):
     package_id: str = Field(min_length=8, max_length=80)
     strategy_code: str = Field(min_length=3, max_length=120)

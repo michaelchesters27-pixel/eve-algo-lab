@@ -1,6 +1,16 @@
-# EVE Command Centre v3.4
+# EVE Command Centre v3.5
 
 EVE is a private XAU/USD research, strategy-evolution and MT5 bot-development platform using Supabase, Railway, Netlify and Twelve Data.
+
+## What v3.5 changes
+
+- Adds **Gold H1 Trend 55/20 v1**, the pre-declared higher-frequency follow-up after the H4 development test produced only 62 trades.
+- Preserves the same daily-direction filter, one-position risk model, 55-bar breakout, 2 × ATR(20) stop and opposite 20-bar channel exit on completed H1 candles.
+- Uses stored H1 and D1 candles for decisions and verified M1 candles for entry, stop, gap and cost replay.
+- Keeps the H4 result archived as inconclusive and leaves its untouched final third sealed.
+- Applies the same strict gate: at least 100 trades, PF 1.25, positive expectancy and no more than 15% drawdown.
+
+No Supabase SQL or new Railway/Netlify variables are required for v3.5.
 
 ## What v3.4 changes
 
