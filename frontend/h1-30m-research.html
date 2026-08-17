@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EVE · H1 30-Minute Range Research</title>
+  <style>
+    :root{color-scheme:dark;--bg:#091016;--panel:#111b23;--panel2:#17242e;--text:#edf5f8;--muted:#8ca1ad;--line:#263843;--good:#68d391;--bad:#fc8181;--accent:#63b3ed}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,Segoe UI,sans-serif}.wrap{max-width:1180px;margin:auto;padding:28px}.eyebrow{letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-size:11px}h1{font-size:34px;margin:6px 0 8px}h2{font-size:19px;margin:0 0 14px}.lead{color:var(--muted);max-width:840px}.toolbar,.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;margin-top:18px}.toolbar{display:flex;gap:12px;align-items:end;flex-wrap:wrap}.field{display:grid;gap:6px}.field label{color:var(--muted);font-size:12px}select,button{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:9px;padding:10px 12px}button{cursor:pointer;font-weight:700}button.primary{background:#1d4f6d;border-color:#3178a0}button:disabled{opacity:.5;cursor:not-allowed}.status{margin-left:auto;color:var(--muted)}.progress{height:8px;background:#0b1319;border-radius:99px;overflow:hidden;margin-top:12px}.progress>i{display:block;height:100%;width:0;background:var(--accent)}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:18px}.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}.card small{display:block;color:var(--muted);margin-bottom:7px}.card strong{font-size:26px}.interpretation{font-size:17px}.good{color:var(--good)}.bad{color:var(--bad)}table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:10px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.scroll{overflow:auto}.hidden{display:none}.note{color:var(--muted);font-size:12px}.pill{display:inline-block;padding:3px 7px;border-radius:99px;background:var(--panel2);border:1px solid var(--line);font-size:11px}@media(max-width:850px){.grid{grid-template-columns:1fr}.status{width:100%;margin-left:0}}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">EVE Research Engine · Exact M1 Reconstruction</div>
+  <h1>H1 30-Minute Range Theory v1</h1>
+  <p class="lead">At minute 30 of every complete H1 candle, EVE freezes the first-half range. Only hours already showing both an upper and lower wick qualify. EVE then reveals minutes 30–59 and measures whether the first-half high, low, both or neither are broken.</p>
+
+  <div class="toolbar">
+    <div class="field"><label>Market</label><select id="symbol"><option>XAU/USD</option></select></div>
+    <div class="field"><label>H1 alignment timezone</label><select id="tz"><option value="UTC">UTC</option><option value="Europe/London">London</option><option value="America/New_York">New York</option></select></div>
+    <button class="primary" id="run">Run full-history test</button>
+    <button id="refresh">Refresh</button>
+    <div class="status" id="status">Checking latest run…</div>
+  </div>
+  <div class="progress"><i id="bar"></i></div>
+
+  <div id="empty" class="panel hidden"><h2>No run yet</h2><p class="lead">Press <strong>Run full-history test</strong>. EVE will scan the stored M1 Market Memory and save the completed report in the existing backtest-runs storage.</p></div>
+
+  <div id="results" class="hidden">
+    <div class="cards" id="cards"></div>
+    <div class="panel"><h2>What the theory actually did</h2><div class="interpretation" id="interpretation"></div><p class="note" id="ci"></p></div>
+    <div class="grid">
+      <div class="panel"><h2>Chronological stability</h2><div class="scroll"><table><thead><tr><th>Sample</th><th>N</th><th>Both extremes held</th><th>At least one broke</th><th>High first*</th></tr></thead><tbody id="splits"></tbody></table></div><p class="note">*High-first percentage excludes neither outcomes and same-M1 ambiguous double breaks.</p></div>
+      <div class="panel"><h2>Best stable directional clues</h2><div class="scroll"><table><thead><tr><th>Condition</th><th>N</th><th>Favours</th><th>Full</th><th>Dev</th><th>Untouched</th></tr></thead><tbody id="candidates"></tbody></table></div></div>
+    </div>
+    <div class="grid">
+      <div class="panel"><h2>By UTC hour</h2><div class="scroll"><table><thead><tr><th>Hour</th><th>N</th><th>High only</th><th>Low only</th><th>Both</th><th>Neither</th><th>High first*</th></tr></thead><tbody id="hours"></tbody></table></div></div>
+      <div class="panel"><h2>Minute-30 price position</h2><div class="scroll"><table><thead><tr><th>Position</th><th>N</th><th>High only</th><th>Low only</th><th>Both</th><th>Neither</th><th>High first*</th></tr></thead><tbody id="positions"></tbody></table></div></div>
+    </div>
+    <div class="panel"><h2>Wick dominance</h2><div class="scroll"><table><thead><tr><th>Wicks at minute 30</th><th>N</th><th>High only</th><th>Low only</th><th>Both</th><th>Neither</th><th>High first*</th></tr></thead><tbody id="wicks"></tbody></table></div></div>
+    <div class="panel"><h2>Method</h2><p class="note" id="method"></p></div>
+  </div>
+</div>
+<script>
+const $=s=>document.querySelector(s);let currentId=null,poller=null;
+const pct=v=>`${Number(v||0).toFixed(2)}%`;const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+async function api(path,opts={}){const r=await fetch(path,{headers:{"Content-Type":"application/json",...(opts.headers||{})},...opts});const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.detail||j.message||`HTTP ${r.status}`);return j.data??j;}
+function row(label,s){return `<tr><td>${esc(label)}</td><td>${s.n}</td><td>${pct(s.outcomes.high_only.rate_pct)}</td><td>${pct(s.outcomes.low_only.rate_pct)}</td><td>${pct(s.outcomes.both.rate_pct)}</td><td>${pct(s.outcomes.neither.rate_pct)}</td><td>${pct(s.first_break.high_rate_resolved_pct)}</td></tr>`}
+function render(run){currentId=run?.id||null;const p=Number(run?.progress_percent||0);$("#bar").style.width=`${p}%`;$("#status").textContent=run?`${run.status.toUpperCase()} · ${p.toFixed(1)}% · ${run.message||""}`:"No H1 30-minute run yet";$("#run").disabled=run&&["queued","running"].includes(run.status);if(!run){$("#empty").classList.remove("hidden");$("#results").classList.add("hidden");return}if(run.status!=="complete"||!run.report){$("#empty").classList.add("hidden");$("#results").classList.add("hidden");if(["queued","running"].includes(run.status))startPolling();return}stopPolling();$("#empty").classList.add("hidden");$("#results").classList.remove("hidden");const r=run.report,f=r.full,q=r.data_quality;const cards=[
+["Complete H1 candles",q.complete_hours],["Two-wick qualifiers",q.qualifying_two_wick_hours],["Both extremes held",pct(f.both_extremes_survived.rate_pct)],["At least one broke",pct(f.at_least_one_break.rate_pct)],["High only",pct(f.outcomes.high_only.rate_pct)],["Low only",pct(f.outcomes.low_only.rate_pct)],["Both broke",pct(f.outcomes.both.rate_pct)]];
+$("#cards").innerHTML=cards.map(([a,b])=>`<div class="card"><small>${esc(a)}</small><strong>${esc(b)}</strong></div>`).join("");const held=f.both_extremes_survived.rate_pct,broken=f.at_least_one_break.rate_pct;$("#interpretation").innerHTML=held>50?`The original idea is <span class="good">supported in this sample</span>: both first-half extremes survived the second half in <strong>${pct(held)}</strong> of qualifying H1 candles.`:`The original idea is <span class="bad">not supported as a general rule</span>: both first-half extremes survived in only <strong>${pct(held)}</strong>, while at least one was broken in <strong>${pct(broken)}</strong>. The more useful question is which side breaks first.`;$("#ci").textContent=`95% Wilson interval for the “both extremes held” rate: ${pct(f.both_extremes_survived.wilson_95_pct[0])} to ${pct(f.both_extremes_survived.wilson_95_pct[1])}.`;
+const d=r.chronological_split.development_first_two_thirds,t=r.chronological_split.untouched_final_third;$("#splits").innerHTML=[["Full",f],["Development first 2/3",d],["Untouched final 1/3",t]].map(([n,s])=>`<tr><td>${n}</td><td>${s.n}</td><td>${pct(s.both_extremes_survived.rate_pct)}</td><td>${pct(s.at_least_one_break.rate_pct)}</td><td>${pct(s.first_break.high_rate_resolved_pct)}</td></tr>`).join("");
+$("#candidates").innerHTML=(r.stable_directional_candidates||[]).slice(0,15).map(x=>`<tr><td><span class="pill">${esc(x.group_type)}</span> ${esc(x.group)}</td><td>${x.resolved_n}</td><td>${x.favoured_side.toUpperCase()}</td><td>${pct(x.full_high_first_pct)}</td><td>${pct(x.development_high_first_pct)}</td><td>${pct(x.untouched_high_first_pct)}</td></tr>`).join("")||`<tr><td colspan="6">No condition met the minimum sample/stability gate.</td></tr>`;
+$("#hours").innerHTML=(r.breakdowns.hour_utc||[]).map(x=>row(`${String(x.group).padStart(2,"0")}:00`,x)).join("");$("#positions").innerHTML=(r.breakdowns.price_position||[]).map(x=>row(x.group.replaceAll("_"," "),x)).join("");$("#wicks").innerHTML=(r.breakdowns.wick_dominance||[]).map(x=>row(x.group.replaceAll("_"," "),x)).join("");
+$("#method").textContent=`${r.definition.observation_window}; ${r.definition.reveal_window}. ${r.definition.qualifier}. ${r.definition.complete_hour_rule}. ${r.definition.same_minute_rule}. Source: ${r.source.rows_scanned.toLocaleString()} stored M1 candles from ${r.source.date_from} to ${r.source.date_to}.`;
+}
+async function latest(){try{render(await api("/api/research/h1-30m/status"))}catch(e){$("#status").textContent=e.message}}
+async function refresh(){try{if(currentId)render(await api(`/api/research/h1-30m/${currentId}`));else await latest()}catch(e){$("#status").textContent=e.message}}
+async function run(){try{$("#run").disabled=true;const data=await api("/api/research/h1-30m/run",{method:"POST",body:JSON.stringify({symbol:$("#symbol").value,timezone_name:$("#tz").value})});render(data);startPolling()}catch(e){$("#status").textContent=e.message;$("#run").disabled=false}}
+function startPolling(){if(poller)return;poller=setInterval(refresh,3000)}function stopPolling(){if(poller){clearInterval(poller);poller=null}}
+$("#run").addEventListener("click",run);$("#refresh").addEventListener("click",refresh);latest();
+</script>
+</body>
+</html>
