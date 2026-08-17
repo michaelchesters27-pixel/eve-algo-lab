@@ -1,0 +1,10 @@
+name: Check H1 30m automation status
+on: push
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read status
+        run: |
+          curl -fsS https://evealgolab.netlify.app/api/research/h1-30m/status
+          echo
