@@ -1,0 +1,17 @@
+name: Check H1 30m research
+
+on:
+  push:
+    branches:
+      - agent/run-h1-30m-research
+    paths:
+      - ".github/workflows/check-h1-30m-research.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read EVE research status
+        run: |
+          curl -fsS https://evealgolab.netlify.app/api/research/h1-30m/status
+          echo
