@@ -1,0 +1,60 @@
+name: Start H1 30m research
+
+on:
+  push:
+    branches:
+      - agent/run-h1-30m-research
+    paths:
+      - ".github/workflows/start-h1-30m-research.yml"
+
+jobs:
+  start:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for deployed EVE research route
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 36); do
+            code=$(curl -sS -o /tmp/status.json -w "%{http_code}" https://evealgolab.netlify.app/api/research/h1-30m/status || true)
+            echo "Attempt ${attempt}: HTTP ${code}"
+            cat /tmp/status.json 2>/dev/null || true
+            echo
+            if [ "$code" = "200" ]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "EVE research route did not become ready"
+          exit 1
+
+      - name: Start full-history H1 30-minute research
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /tmp/start.json -w "%{http_code}" \
+            -X POST https://evealgolab.netlify.app/api/research/h1-30m/run \
+            -H 'Content-Type: application/json' \
+            --data '{"symbol":"XAU/USD","timezone_name":"UTC"}')
+          echo "HTTP ${code}"
+          cat /tmp/start.json
+          echo
+          if [ "$code" != "200" ]; then
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          data=json.load(open('/tmp/start.json'))
+          if not data.get('ok'):
+              raise SystemExit('API did not return ok=true')
+          run=(data.get('data') or {})
+          print('RUN_ID=' + str(run.get('id') or ''))
+          print('STATUS=' + str(run.get('status') or ''))
+          PY
+
+      - name: Confirm run is visible
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS https://evealgolab.netlify.app/api/research/h1-30m/status | tee /tmp/latest.json
+          echo
