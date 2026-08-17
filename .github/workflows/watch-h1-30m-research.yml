@@ -1,0 +1,53 @@
+name: Watch H1 30m research
+
+on:
+  push:
+    branches:
+      - agent/run-h1-30m-research
+    paths:
+      - ".github/workflows/watch-h1-30m-research.yml"
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Watch EVE until H1 research completes
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 180); do
+            curl -fsS https://evealgolab.netlify.app/api/research/h1-30m/status -o /tmp/status.json
+            python - <<'PY'
+          import json
+          d=json.load(open('/tmp/status.json')).get('data') or {}
+          print(f"STATUS={d.get('status')} PROGRESS={d.get('progress_percent')} MESSAGE={d.get('message')}")
+          if d.get('report'):
+              r=d['report']
+              f=r['full']
+              q=r['data_quality']
+              print(f"QUALIFYING={q['qualifying_two_wick_hours']}")
+              print(f"HELD_PCT={f['both_extremes_survived']['rate_pct']}")
+              print(f"BROKE_PCT={f['at_least_one_break']['rate_pct']}")
+              print(f"HIGH_ONLY_PCT={f['outcomes']['high_only']['rate_pct']}")
+              print(f"LOW_ONLY_PCT={f['outcomes']['low_only']['rate_pct']}")
+              print(f"BOTH_PCT={f['outcomes']['both']['rate_pct']}")
+              print("FINAL_JSON=" + json.dumps(d, separators=(',',':')))
+          PY
+            status=$(python - <<'PY'
+          import json
+          print((json.load(open('/tmp/status.json')).get('data') or {}).get('status') or '')
+          PY
+          )
+            if [ "$status" = "complete" ]; then
+              exit 0
+            fi
+            if [ "$status" = "failed" ] || [ "$status" = "cancelled" ]; then
+              cat /tmp/status.json
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "Research still running after monitor window"
+          cat /tmp/status.json
+          exit 1
