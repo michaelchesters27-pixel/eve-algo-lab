@@ -71,6 +71,8 @@ GOLD_ABNORMAL_MOMENTUM_STRATEGY_SLUG = "eve-gold-abnormal-momentum-v1"
 GOLD_ABNORMAL_MOMENTUM_STRATEGY_NAME = "EVE Gold Abnormal Momentum v1"
 GOLD_INTRADAY_CLOSE_MOMENTUM_STRATEGY_SLUG = "eve-gold-intraday-close-momentum-v1"
 GOLD_INTRADAY_CLOSE_MOMENTUM_STRATEGY_NAME = "EVE Gold Intraday Close Momentum v1"
+GOLD_HIGH_VOL_CLOSE_MOMENTUM_STRATEGY_SLUG = "eve-gold-high-vol-close-momentum-v1"
+GOLD_HIGH_VOL_CLOSE_MOMENTUM_STRATEGY_NAME = "EVE Gold High-Volatility Close Momentum v1"
 GOLD_REST_OF_DAY_CLOSE_MOMENTUM_STRATEGY_SLUG = "eve-gold-rest-of-day-close-momentum-v1"
 GOLD_REST_OF_DAY_CLOSE_MOMENTUM_STRATEGY_NAME = "EVE Gold Rest-of-Day Close Momentum v1"
 GOLD_ETF_INTRADAY_SHORT_STRATEGY_SLUG = "eve-gold-etf-hours-intraday-short-v1"
@@ -78,7 +80,7 @@ GOLD_ETF_INTRADAY_SHORT_STRATEGY_NAME = "EVE Gold ETF-Hours Intraday Short v1"
 GOLD_ETF_OVERNIGHT_LONG_STRATEGY_SLUG = "eve-gold-etf-hours-overnight-long-v1"
 GOLD_ETF_OVERNIGHT_LONG_STRATEGY_NAME = "EVE Gold ETF-Hours Overnight Long v1"
 GOLD_SESSION_ANOMALY_STRATEGY_VERSION = "1.0"
-GOLD_SESSION_ANOMALY_SOURCE_SHA256 = "42f5446a9d743d9574e9ff5889237b3e525d3c801566a43fc0e30ea74bf486c0"
+GOLD_SESSION_ANOMALY_SOURCE_SHA256 = "b36df1f2d6593eedfca8374353a58834ccddf6cc31d27c972e30ea7ad1ef355f"
 GOLD_H4_STRATEGY_SLUG = "eve-gold-h4-trend-55-20-v1"
 GOLD_H4_STRATEGY_NAME = "EVE Gold H4 Trend 55/20 v1"
 GOLD_H4_STRATEGY_VERSION = "1.0"
@@ -205,6 +207,7 @@ GOLD_SESSION_ANOMALY_LOCKED_SETTING_KEYS = (
     "intraday_predictor_start_minute",
     "intraday_predictor_end_hour",
     "intraday_predictor_end_minute",
+    "intraday_volatility_lookback_days",
     "intraday_entry_hour",
     "intraday_entry_minute",
     "intraday_exit_hour",
@@ -314,6 +317,15 @@ def comex_closing_momentum_settings_match(first: dict[str, Any], second: dict[st
 
 
 def gold_session_anomaly_identity(session_leg: str) -> dict[str, str]:
+    if session_leg == "gld_high_vol_fifth_half_hour_momentum":
+        return {
+            "code": "gold_high_vol_close_momentum",
+            "name": GOLD_HIGH_VOL_CLOSE_MOMENTUM_STRATEGY_NAME,
+            "slug": GOLD_HIGH_VOL_CLOSE_MOMENTUM_STRATEGY_SLUG,
+            "description": "One fixed-size XAU/USD closing-half-hour trade only when the complete 11:30-12:00 New York window is more volatile than the median of its previous 60 complete windows.",
+            "entry": "at 15:30 New York, follow the 11:30-12:00 return only when that window's realized volatility exceeds the causal 60-window median",
+            "exit": "close at the exact 16:00 New York M1 open",
+        }
     if session_leg == "etf_intraday_short":
         return {
             "code": "gold_etf_intraday_short",
@@ -595,6 +607,111 @@ def _daily_momentum_verdict(
         "tone": "failed",
         "summary": "The locked daily strategy failed: " + "; ".join(failed_gates) + ".",
         "next_action": "Reject v1. Do not tune it on the same development result.",
+    }
+
+
+def _high_vol_close_momentum_verdict(
+    *,
+    net_profit: float,
+    profit_factor: float | None,
+    expectancy: float,
+    max_drawdown_percent: float,
+    total_trades: int,
+    yearly_net: dict[str, float],
+    test_segment: str,
+    locked_development_run_id: str | None = None,
+    account_ruined: bool = False,
+) -> dict[str, Any]:
+    """Frozen gate sized for the predeclared above-median volatility subset."""
+
+    pf = float(profit_factor or 0.0)
+    profitable_years = sum(float(value) > 0 for value in yearly_net.values())
+    untouched = test_segment == "untouched"
+    required_trades = 200 if untouched else 400
+    required_years = 2 if untouched else 3
+    passed = (
+        not account_ruined
+        and total_trades >= required_trades
+        and profitable_years >= required_years
+        and net_profit > 0
+        and expectancy > 0
+        and pf >= 1.20
+        and max_drawdown_percent <= 15.0
+    )
+    if account_ruined:
+        return {
+            "code": "account_ruined",
+            "label": "ACCOUNT BLOWN — FAILED",
+            "tone": "failed",
+            "summary": "The high-volatility close-momentum strategy exhausted the test account.",
+            "next_action": "Reject it. Do not open untouched data or build an EA.",
+        }
+    if untouched and not locked_development_run_id:
+        return {
+            "code": "unlocked_untouched",
+            "label": "INVALID UNTOUCHED TEST — NO PASS",
+            "tone": "failed",
+            "summary": "No passing development run with identical frozen rules was linked.",
+            "next_action": "Run Development first, then reuse every setting unchanged.",
+        }
+    if passed and untouched:
+        return {
+            "code": "untouched_pass",
+            "label": "UNTOUCHED PASS — VERIFY IN MT5",
+            "tone": "promising",
+            "summary": "The unchanged high-volatility rule remained profitable on unseen history after costs.",
+            "next_action": "Verify with broker-specific MT5 real ticks, adverse costs and a demo forward test.",
+        }
+    if passed and test_segment == "development":
+        return {
+            "code": "promising",
+            "label": "PROMISING — RUN UNTOUCHED TEST",
+            "tone": "promising",
+            "summary": "Development cleared the predeclared 400-trade, repeatability, PF 1.20 and drawdown gates.",
+            "next_action": "Freeze every setting and run the untouched final third.",
+        }
+    if passed:
+        return {
+            "code": "exploratory_pass",
+            "label": "EXPLORATORY PASS — NOT PROOF",
+            "tone": "warning",
+            "summary": "This period cleared the numbers outside the locked development-to-untouched sequence.",
+            "next_action": "Run Development first, then the untouched final third unchanged.",
+        }
+
+    failed_gates: list[str] = []
+    if total_trades < required_trades:
+        failed_gates.append(f"only {total_trades} of {required_trades} required trades")
+    if profitable_years < required_years:
+        failed_gates.append(f"only {profitable_years} of {required_years} required profitable years")
+    if pf < 1.20:
+        failed_gates.append(f"profit factor {pf:.3f} below 1.20")
+    if net_profit <= 0 or expectancy <= 0:
+        failed_gates.append("profit or expectancy not positive")
+    if max_drawdown_percent > 15.0:
+        failed_gates.append(f"drawdown {max_drawdown_percent:.2f}% above 15%")
+    evidence_only = (
+        total_trades < required_trades
+        and profitable_years >= required_years
+        and net_profit > 0
+        and expectancy > 0
+        and pf >= 1.20
+        and max_drawdown_percent <= 15.0
+    )
+    if evidence_only:
+        return {
+            "code": "insufficient_evidence",
+            "label": "NOT ENOUGH TRADES — NO VERDICT",
+            "tone": "waiting",
+            "summary": f"Only {total_trades} completed high-volatility trades were found; EVE locked the minimum at {required_trades} before this run.",
+            "next_action": "Do not build an EA from this sample.",
+        }
+    return {
+        "code": "failed",
+        "label": "FAILED — DO NOT BUILD EA",
+        "tone": "failed",
+        "summary": "The locked high-volatility strategy failed: " + "; ".join(failed_gates) + ".",
+        "next_action": "Reject v1. Do not tune the volatility cutoff on this result.",
     }
 
 
@@ -994,6 +1111,11 @@ class BacktestService:
                     if session_leg == "abnormal_momentum"
                     else None
                 ),
+                "intraday_volatility_filter": (
+                    "sum of 30 squared one-minute log returns from the complete 11:30-12:00 New York window must exceed the median of the previous 60 complete weekday windows"
+                    if session_leg == "gld_high_vol_fifth_half_hour_momentum"
+                    else None
+                ),
                 "stop": "hard money stop at 0.25% of current balance, including costs already charged",
                 "maximum_trades_per_day": 1,
                 "fixed_lot": 0.01,
@@ -1010,7 +1132,7 @@ class BacktestService:
                         else (
                             "not applicable to the same-day Shanghai long"
                             if session_leg == "shanghai_day_long"
-                            else "not applicable to the same-day short"
+                            else "not applicable to the same-day trade"
                         )
                     )
                 ),
@@ -1019,12 +1141,16 @@ class BacktestService:
                     "rolling baseline uses completed prior days only; chronological split day is skipped"
                     if session_leg == "abnormal_momentum"
                     else (
-                        "the 11:30-12:00 predictor is complete three and a half hours before the 15:30 entry"
-                        if session_leg == "gld_fifth_half_hour_momentum"
+                        "the volatility threshold uses only the previous 60 complete windows; today's complete 11:30-12:00 direction and volatility are known before the 15:30 entry"
+                        if session_leg == "gld_high_vol_fifth_half_hour_momentum"
                         else (
-                            "the previous 16:00 close is known before the current 15:30 entry; missing references skip the day"
-                            if session_leg == "rest_of_day_close_momentum"
-                            else None
+                            "the 11:30-12:00 predictor is complete three and a half hours before the 15:30 entry"
+                            if session_leg == "gld_fifth_half_hour_momentum"
+                            else (
+                                "the previous 16:00 close is known before the current 15:30 entry; missing references skip the day"
+                                if session_leg == "rest_of_day_close_momentum"
+                                else None
+                            )
                         )
                     )
                 ),
@@ -1036,7 +1162,10 @@ class BacktestService:
                         if session_leg == "abnormal_momentum"
                         else (
                             "Xu, Bouri, Saeed and Wen (2020), Resources Policy 69, DOI 10.1016/j.resourpol.2020.101830"
-                            if session_leg == "gld_fifth_half_hour_momentum"
+                            if session_leg in {
+                                "gld_fifth_half_hour_momentum",
+                                "gld_high_vol_fifth_half_hour_momentum",
+                            }
                             else (
                                 "Baltussen, Da, Lammers and Martens (2021), Journal of Financial Economics 142, DOI 10.1016/j.jfineco.2021.04.029"
                                 if session_leg == "rest_of_day_close_momentum"
@@ -1059,15 +1188,19 @@ class BacktestService:
                         "Published same-day abnormal-return momentum hypothesis translated into a causal rolling rule and frozen before its EVE result was seen. No EA exists unless locked development and untouched tests both pass."
                         if session_leg == "abnormal_momentum"
                         else (
-                            "Published GLD intraday-predictability rule translated once into XAU/USD and frozen before its EVE result was seen. No EA exists unless locked development and untouched tests both pass."
-                            if session_leg == "gld_fifth_half_hour_momentum"
+                            "Published GLD high-volatility subgroup rule translated into a causal 60-window XAU/USD filter and frozen before its EVE result was seen. No EA exists unless locked development and untouched tests both pass."
+                            if session_leg == "gld_high_vol_fifth_half_hour_momentum"
                             else (
-                                "Published futures rest-of-day momentum rule translated once into XAU/USD and frozen before its EVE result was seen. No EA exists unless locked development and untouched tests both pass."
-                                if session_leg == "rest_of_day_close_momentum"
+                                "Published GLD intraday-predictability rule translated once into XAU/USD and frozen before its EVE result was seen. No EA exists unless locked development and untouched tests both pass."
+                                if session_leg == "gld_fifth_half_hour_momentum"
                                 else (
-                                    "Two eastern-session hypotheses frozen together after both COMEX session legs failed, before either eastern result was seen. No EA exists unless locked development and untouched tests both pass."
-                                    if session_leg in {"asia_long", "shanghai_day_long"}
-                                    else "Pre-declared together with the opposite session leg before either result was seen. No EA exists unless locked development and untouched tests both pass."
+                                    "Published futures rest-of-day momentum rule translated once into XAU/USD and frozen before its EVE result was seen. No EA exists unless locked development and untouched tests both pass."
+                                    if session_leg == "rest_of_day_close_momentum"
+                                    else (
+                                        "Two eastern-session hypotheses frozen together after both COMEX session legs failed, before either eastern result was seen. No EA exists unless locked development and untouched tests both pass."
+                                        if session_leg in {"asia_long", "shanghai_day_long"}
+                                        else "Pre-declared together with the opposite session leg before either result was seen. No EA exists unless locked development and untouched tests both pass."
+                                    )
                                 )
                             )
                         )
@@ -3155,6 +3288,7 @@ class BacktestService:
         accuracy = {
             "abnormal_momentum": "Verified M1 causal 60-day abnormal-return baseline, sign-specific GMT+3 entry, day-end exit and hard-money stop replay",
             "gld_fifth_half_hour_momentum": "Verified M1 11:30-12:00 New York predictor, 15:30 entry, 16:00 exit and hard-money stop replay",
+            "gld_high_vol_fifth_half_hour_momentum": "Verified M1 30-return realized-volatility window, causal prior-60-window median, 15:30 entry, 16:00 exit and hard-money stop replay",
             "rest_of_day_close_momentum": "Verified M1 prior-16:00 New York reference, 15:30 entry, 16:00 exit and hard-money stop replay",
             "etf_intraday_short": "Verified M1 09:30 New York short entry, 16:00 exit and hard-money stop replay",
             "etf_overnight_long": "Verified M1 16:00 New York long entry, next eligible 09:30 exit, financing and hard-money stop replay",
@@ -3215,6 +3349,9 @@ class BacktestService:
                 intraday_predictor_start_minute=int(request.get("intraday_predictor_start_minute", 30)),
                 intraday_predictor_end_hour=int(request.get("intraday_predictor_end_hour", 12)),
                 intraday_predictor_end_minute=int(request.get("intraday_predictor_end_minute", 0)),
+                intraday_volatility_lookback_days=int(
+                    request.get("intraday_volatility_lookback_days", 60)
+                ),
                 intraday_entry_hour=int(request.get("intraday_entry_hour", 15)),
                 intraday_entry_minute=int(request.get("intraday_entry_minute", 30)),
                 intraday_exit_hour=int(request.get("intraday_exit_hour", 16)),
@@ -3243,7 +3380,10 @@ class BacktestService:
             symbol = str(request.get("symbol", "XAU/USD"))
             date_from = request.get("date_from")
             date_to = request.get("date_to")
-            if session_leg == "abnormal_momentum" and date_from:
+            if session_leg in {
+                "abnormal_momentum",
+                "gld_high_vol_fifth_half_hour_momentum",
+            } and date_from:
                 evaluation_start = datetime.fromisoformat(str(date_from).replace("Z", "+00:00"))
                 warmup_from = (evaluation_start - timedelta(days=120)).isoformat()
                 warmup_to = (evaluation_start - timedelta(microseconds=1)).isoformat()
@@ -3376,7 +3516,11 @@ class BacktestService:
             verdict_builder = (
                 _abnormal_momentum_verdict
                 if session_leg == "abnormal_momentum"
-                else _daily_momentum_verdict
+                else (
+                    _high_vol_close_momentum_verdict
+                    if session_leg == "gld_high_vol_fifth_half_hour_momentum"
+                    else _daily_momentum_verdict
+                )
             )
             verdict = verdict_builder(
                 net_profit=trade_metrics.net_profit,
@@ -3427,6 +3571,11 @@ class BacktestService:
                 "abnormal_positive_signals": summary.abnormal_positive_signals,
                 "abnormal_missing_open_skips": summary.abnormal_missing_open_skips,
                 "abnormal_missing_signal_skips": summary.abnormal_missing_signal_skips,
+                "high_vol_completed_windows": summary.high_vol_completed_windows,
+                "high_vol_warmup_windows": summary.high_vol_warmup_windows,
+                "high_vol_qualifying_windows": summary.high_vol_qualifying_windows,
+                "high_vol_filtered_windows": summary.high_vol_filtered_windows,
+                "high_vol_incomplete_windows": summary.high_vol_incomplete_windows,
                 "financing_events": summary.financing_events,
                 "financing_costs": summary.financing_costs,
                 "gap_stop_fills": summary.gap_stop_fills,
