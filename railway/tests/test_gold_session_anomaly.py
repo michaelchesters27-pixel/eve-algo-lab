@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -12,6 +13,7 @@ from app.services.backtests import (
     BacktestService,
     _abnormal_momentum_verdict,
     _daily_momentum_verdict,
+    _high_vol_close_momentum_verdict,
     gold_session_anomaly_settings_match,
 )
 
@@ -346,6 +348,60 @@ def new_york_time(day: int, hour: int, minute_: int = 0) -> datetime:
     return datetime(2026, 1, day, hour + 5, minute_, tzinfo=timezone.utc)
 
 
+def weekday_dates(start: date, count: int) -> list[date]:
+    result: list[date] = []
+    cursor = start
+    while len(result) < count:
+        if cursor.weekday() < 5:
+            result.append(cursor)
+        cursor += timedelta(days=1)
+    return result
+
+
+def complete_high_vol_window_candles(
+    session_date: date,
+    *,
+    minute_return: float,
+    entry_price: float | None = None,
+    exit_price: float | None = None,
+) -> list[Candle]:
+    new_york = ZoneInfo("America/New_York")
+    start = datetime.combine(session_date, time(11, 30), tzinfo=new_york)
+    price = 100.0
+    candles: list[Candle] = []
+    for offset in range(30):
+        close = price * (1.0 + minute_return)
+        at = (start + timedelta(minutes=offset)).astimezone(timezone.utc)
+        candles.append(minute(at, price, max(price, close), min(price, close), close))
+        price = close
+    noon = datetime.combine(session_date, time(12, 0), tzinfo=new_york).astimezone(timezone.utc)
+    candles.append(minute(noon, price, price, price, price))
+    if entry_price is not None:
+        entry = datetime.combine(session_date, time(15, 30), tzinfo=new_york).astimezone(timezone.utc)
+        candles.append(minute(entry, entry_price, entry_price, entry_price, entry_price))
+    if exit_price is not None:
+        exit_ = datetime.combine(session_date, time(16, 0), tzinfo=new_york).astimezone(timezone.utc)
+        candles.append(minute(exit_, exit_price, exit_price, exit_price, exit_price))
+    return candles
+
+
+def feed_complete_high_vol_window(
+    simulator: GoldSessionAnomalyBacktester,
+    session_date: date,
+    *,
+    minute_return: float,
+    entry_price: float | None = None,
+    exit_price: float | None = None,
+) -> None:
+    for candle in complete_high_vol_window_candles(
+        session_date,
+        minute_return=minute_return,
+        entry_price=entry_price,
+        exit_price=exit_price,
+    ):
+        simulator.process_candle(candle)
+
+
 def test_intraday_close_momentum_follows_fifth_half_hour_and_exits_at_1600() -> None:
     simulator = GoldSessionAnomalyBacktester(
         10_000.0,
@@ -430,6 +486,111 @@ def test_intraday_close_momentum_uses_the_predeclared_daily_gate() -> None:
         test_segment="development",
     )
     assert verdict["code"] == "promising"
+
+
+def test_high_vol_close_momentum_trades_only_above_prior_60_window_median() -> None:
+    simulator = GoldSessionAnomalyBacktester(
+        10_000.0,
+        parameters("gld_high_vol_fifth_half_hour_momentum"),
+    )
+    sessions = weekday_dates(date(2025, 1, 2), 61)
+    for session_date in sessions[:60]:
+        feed_complete_high_vol_window(simulator, session_date, minute_return=0.0001)
+
+    feed_complete_high_vol_window(
+        simulator,
+        sessions[60],
+        minute_return=0.001,
+        entry_price=104.0,
+        exit_price=106.0,
+    )
+    trades, _ = simulator.finalise()
+
+    assert len(trades) == 1
+    assert trades[0].side == "buy"
+    assert trades[0].strategy_code == "gold_high_vol_close_momentum"
+    assert trades[0].net_pnl == pytest.approx(2.0)
+    assert trades[0].signal.predictor_realized_volatility_percent is not None
+    assert trades[0].signal.volatility_threshold_percent is not None
+    assert (
+        trades[0].signal.predictor_realized_volatility_percent
+        > trades[0].signal.volatility_threshold_percent
+    )
+    assert trades[0].to_trade_row("run-1")["metadata"]["volatility_lookback_days"] == 60
+    summary = simulator.summary()
+    assert summary.high_vol_completed_windows == 61
+    assert summary.high_vol_warmup_windows == 60
+    assert summary.high_vol_qualifying_windows == 1
+    assert summary.high_vol_filtered_windows == 0
+
+
+def test_high_vol_close_momentum_filters_a_below_median_window() -> None:
+    simulator = GoldSessionAnomalyBacktester(
+        10_000.0,
+        parameters("gld_high_vol_fifth_half_hour_momentum"),
+    )
+    sessions = weekday_dates(date(2025, 1, 2), 61)
+    for session_date in sessions[:60]:
+        feed_complete_high_vol_window(simulator, session_date, minute_return=0.001)
+
+    feed_complete_high_vol_window(
+        simulator,
+        sessions[60],
+        minute_return=0.0001,
+        entry_price=101.0,
+    )
+
+    assert simulator.position is None
+    assert simulator.summary().sessions_traded == 0
+    assert simulator.summary().high_vol_qualifying_windows == 0
+    assert simulator.summary().high_vol_filtered_windows == 1
+
+
+def test_high_vol_close_momentum_rejects_an_incomplete_30_minute_window() -> None:
+    simulator = GoldSessionAnomalyBacktester(
+        10_000.0,
+        parameters("gld_high_vol_fifth_half_hour_momentum"),
+    )
+    session_date = date(2025, 1, 6)
+    new_york = ZoneInfo("America/New_York")
+    start = datetime.combine(session_date, time(11, 30), tzinfo=new_york)
+    for offset in range(30):
+        if offset == 12:
+            continue
+        at = (start + timedelta(minutes=offset)).astimezone(timezone.utc)
+        simulator.process_candle(minute(at, 100.0, 100.1, 99.9, 100.05))
+    noon = datetime.combine(session_date, time(12, 0), tzinfo=new_york).astimezone(timezone.utc)
+    entry = datetime.combine(session_date, time(15, 30), tzinfo=new_york).astimezone(timezone.utc)
+    simulator.process_candle(minute(noon, 101.0, 101.0, 101.0, 101.0))
+    simulator.process_candle(minute(entry, 102.0, 102.0, 102.0, 102.0))
+
+    assert simulator.position is None
+    assert simulator.summary().high_vol_incomplete_windows == 1
+    assert simulator.summary().missing_entry_skips == 1
+
+
+def test_high_vol_close_momentum_uses_its_predeclared_subset_gate() -> None:
+    development = _high_vol_close_momentum_verdict(
+        net_profit=100.0,
+        profit_factor=1.20,
+        expectancy=0.10,
+        max_drawdown_percent=15.0,
+        total_trades=400,
+        yearly_net={"2021": 1.0, "2022": 1.0, "2023": 1.0},
+        test_segment="development",
+    )
+    insufficient = _high_vol_close_momentum_verdict(
+        net_profit=100.0,
+        profit_factor=1.20,
+        expectancy=0.10,
+        max_drawdown_percent=15.0,
+        total_trades=399,
+        yearly_net={"2021": 1.0, "2022": 1.0, "2023": 1.0},
+        test_segment="development",
+    )
+
+    assert development["code"] == "promising"
+    assert insufficient["code"] == "insufficient_evidence"
 
 
 def test_rest_of_day_close_momentum_uses_prior_close_and_exits_at_1600() -> None:
@@ -610,6 +771,7 @@ def test_request_and_untouched_lock_cover_both_predeclared_session_legs() -> Non
     assert (request.abnormal_exit_hour, request.abnormal_exit_minute) == (23, 59)
     assert (request.intraday_predictor_start_hour, request.intraday_predictor_start_minute) == (11, 30)
     assert (request.intraday_predictor_end_hour, request.intraday_predictor_end_minute) == (12, 0)
+    assert request.intraday_volatility_lookback_days == 60
     assert (request.intraday_entry_hour, request.intraday_entry_minute) == (15, 30)
     assert (request.intraday_exit_hour, request.intraday_exit_minute) == (16, 0)
     assert (request.etf_market_open_hour, request.etf_market_open_minute) == (9, 30)
@@ -627,6 +789,10 @@ def test_request_and_untouched_lock_cover_both_predeclared_session_legs() -> Non
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "shanghai_entry_hour": 8})
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "abnormal_lookback_days": 59})
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "abnormal_sigma": 1.5})
+    assert not gold_session_anomaly_settings_match(
+        baseline,
+        {**untouched, "intraday_volatility_lookback_days": 59},
+    )
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "intraday_entry_minute": 29})
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "etf_market_open_minute": 29})
     assert not gold_session_anomaly_settings_match(baseline, {**untouched, "etf_market_close_hour": 15})
@@ -787,6 +953,58 @@ async def test_service_persists_each_daily_session_hypothesis(
     assert len(repo.trades) == 1
     assert repo.trades[0]["metadata"]["strategy"] == expected_code
     assert len(repo.baskets) == 1
+
+
+@pytest.mark.asyncio
+async def test_service_runs_high_vol_close_momentum_and_persists_filter_evidence() -> None:
+    source: list[Candle] = []
+    sessions = weekday_dates(date(2025, 1, 2), 61)
+    for session_date in sessions[:60]:
+        source.extend(
+            complete_high_vol_window_candles(session_date, minute_return=0.0001)
+        )
+    source.extend(
+        complete_high_vol_window_candles(
+            sessions[60],
+            minute_return=0.001,
+            entry_price=104.0,
+            exit_price=109.0,
+        )
+    )
+    rows = [
+        {
+            "candle_time": item.candle_time.isoformat(),
+            "open": item.open,
+            "high": item.high,
+            "low": item.low,
+            "close": item.close,
+            "volume": 1,
+        }
+        for item in source
+    ]
+    repo = FakeGoldSessionRepository(rows)
+    service = BacktestService(repo)  # type: ignore[arg-type]
+    request = {
+        **GoldSessionAnomalyBacktestRequest(
+            session_leg="gld_high_vol_fifth_half_hour_momentum",
+            test_segment="development",
+        ).model_dump(mode="json"),
+        "strategy": "gold_high_vol_close_momentum",
+        "spread_price": 0.0,
+        "commission_per_001_lot": 0.0,
+        "long_overnight_cost_per_001_lot": 0.0,
+    }
+
+    await service._run_gold_session_anomaly("run-1", request)
+
+    assert repo.run["status"] == "complete"
+    assert repo.run["net_profit"] == pytest.approx(5.0)
+    assert repo.run["total_baskets"] == 1
+    assert repo.run["reliability"]["strategy"] == "gold_high_vol_close_momentum"
+    assert repo.run["reliability"]["high_vol_completed_windows"] == 61
+    assert repo.run["reliability"]["high_vol_qualifying_windows"] == 1
+    assert repo.run["reliability"]["high_vol_filtered_windows"] == 0
+    assert repo.trades[0]["metadata"]["volatility_lookback_days"] == 60
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,19 @@
-# EVE Command Centre v4.3
+# EVE Command Centre v4.4
 
 EVE is a private XAU/USD research, strategy-evolution and MT5 bot-development platform using Supabase, Railway, Netlify and Twelve Data.
+
+## What v4.4 changes
+
+- Adds **Gold High-Volatility Close Momentum v1**, the predeclared follow-up to the failed unfiltered GLD fifth-half-hour translation.
+- Reconstructs all 30 one-minute log returns from 11:30–12:00 New York and requires a complete window; a missing minute skips the day.
+- Trades at 15:30 only when the current window's realized volatility is above the median of the previous 60 complete weekday windows, then follows that window's direction until 16:00.
+- Uses only prior windows for the volatility threshold and warms each chronological test from pre-period candles without allowing a warm-up trade.
+- Keeps one fixed 0.01-lot position, the 0.25% hard-money stop, spread, commission, optional slippage, no re-entry, no averaging and no martingale.
+- Freezes a subset-aware development gate before results: at least 400 trades, three profitable years, positive net profit and expectancy, PF 1.20 and no more than 15% drawdown.
+- Keeps untouched history sealed unless the identical development rules pass; untouched then requires at least 200 trades and two profitable years under the same PF and drawdown limits.
+- Archives both ETF-hours tests as failed development evidence rather than changing their rules after seeing the results.
+
+No Supabase SQL or new Railway/Netlify variables are required for v4.4.
 
 ## What v4.3 changes
 

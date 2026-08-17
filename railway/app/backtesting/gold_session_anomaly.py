@@ -3,7 +3,8 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, time, timedelta
-from statistics import fmean, stdev
+from math import log, sqrt
+from statistics import fmean, median, stdev
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -17,6 +18,7 @@ SessionLeg = Literal[
     "shanghai_day_long",
     "abnormal_momentum",
     "gld_fifth_half_hour_momentum",
+    "gld_high_vol_fifth_half_hour_momentum",
     "rest_of_day_close_momentum",
     "etf_intraday_short",
     "etf_overnight_long",
@@ -52,6 +54,7 @@ class GoldSessionAnomalyParameters:
     intraday_predictor_start_minute: int = 30
     intraday_predictor_end_hour: int = 12
     intraday_predictor_end_minute: int = 0
+    intraday_volatility_lookback_days: int = 60
     intraday_entry_hour: int = 15
     intraday_entry_minute: int = 30
     intraday_exit_hour: int = 16
@@ -88,7 +91,10 @@ class GoldSessionAnomalyParameters:
             return self.shanghai_entry_hour * 60 + self.shanghai_entry_minute
         if self.session_leg == "abnormal_momentum":
             return self.abnormal_negative_entry_total_minutes
-        if self.session_leg == "gld_fifth_half_hour_momentum":
+        if self.session_leg in {
+            "gld_fifth_half_hour_momentum",
+            "gld_high_vol_fifth_half_hour_momentum",
+        }:
             return self.intraday_entry_total_minutes
         if self.session_leg == "rest_of_day_close_momentum":
             return self.intraday_entry_total_minutes
@@ -106,7 +112,10 @@ class GoldSessionAnomalyParameters:
             return self.asia_exit_hour * 60 + self.asia_exit_minute
         if self.session_leg == "abnormal_momentum":
             return self.abnormal_exit_total_minutes
-        if self.session_leg == "gld_fifth_half_hour_momentum":
+        if self.session_leg in {
+            "gld_fifth_half_hour_momentum",
+            "gld_high_vol_fifth_half_hour_momentum",
+        }:
             return self.intraday_exit_total_minutes
         if self.session_leg == "rest_of_day_close_momentum":
             return self.intraday_exit_total_minutes
@@ -168,6 +177,8 @@ class GoldSessionAnomalyParameters:
             return "gold_abnormal_momentum"
         if self.session_leg == "gld_fifth_half_hour_momentum":
             return "gold_intraday_close_momentum"
+        if self.session_leg == "gld_high_vol_fifth_half_hour_momentum":
+            return "gold_high_vol_close_momentum"
         if self.session_leg == "rest_of_day_close_momentum":
             return "gold_rest_of_day_close_momentum"
         if self.session_leg == "etf_intraday_short":
@@ -184,6 +195,7 @@ class GoldSessionAnomalyParameters:
             "shanghai_day_long",
             "abnormal_momentum",
             "gld_fifth_half_hour_momentum",
+            "gld_high_vol_fifth_half_hour_momentum",
             "rest_of_day_close_momentum",
             "etf_intraday_short",
             "etf_overnight_long",
@@ -219,6 +231,8 @@ class GoldSessionAnomalyParameters:
             raise ValueError("Gold Intraday Close Momentum v1 must start its predictor at 11:30 New York")
         if (self.intraday_predictor_end_hour, self.intraday_predictor_end_minute) != (12, 0):
             raise ValueError("Gold Intraday Close Momentum v1 must end its predictor at 12:00 New York")
+        if self.intraday_volatility_lookback_days != 60:
+            raise ValueError("Gold High-Volatility Close Momentum v1 requires 60 prior complete windows")
         if (self.intraday_entry_hour, self.intraday_entry_minute) != (15, 30):
             raise ValueError("Gold Intraday Close Momentum v1 must enter at 15:30 New York")
         if (self.intraday_exit_hour, self.intraday_exit_minute) != (16, 0):
@@ -259,6 +273,9 @@ class GoldSessionSignal:
     trigger_percent: float | None = None
     predictor_start_price: float | None = None
     predictor_end_price: float | None = None
+    predictor_realized_volatility_percent: float | None = None
+    volatility_threshold_percent: float | None = None
+    volatility_lookback_days: int | None = None
 
 
 @dataclass
@@ -313,6 +330,8 @@ class GoldSessionCompletedTrade:
             return "gold_abnormal_momentum"
         if self.signal.session_leg == "gld_fifth_half_hour_momentum":
             return "gold_intraday_close_momentum"
+        if self.signal.session_leg == "gld_high_vol_fifth_half_hour_momentum":
+            return "gold_high_vol_close_momentum"
         if self.signal.session_leg == "rest_of_day_close_momentum":
             return "gold_rest_of_day_close_momentum"
         if self.signal.session_leg == "etf_intraday_short":
@@ -385,15 +404,19 @@ class GoldSessionCompletedTrade:
                                 "follow the 11:30-12:00 New York return at 15:30 and hold to the 16:00 open"
                                 if self.signal.session_leg == "gld_fifth_half_hour_momentum"
                                 else (
-                                    "follow the move from the previous 16:00 New York close at 15:30 and hold to the 16:00 open"
-                                    if self.signal.session_leg == "rest_of_day_close_momentum"
+                                    "follow the 11:30-12:00 New York return at 15:30 only when its realized volatility exceeds the median of the previous 60 complete windows"
+                                    if self.signal.session_leg == "gld_high_vol_fifth_half_hour_momentum"
                                     else (
-                                        "sell the 09:30 America/New_York M1 open and hold to the 16:00 open"
-                                        if self.signal.session_leg == "etf_intraday_short"
+                                        "follow the move from the previous 16:00 New York close at 15:30 and hold to the 16:00 open"
+                                        if self.signal.session_leg == "rest_of_day_close_momentum"
                                         else (
-                                            "buy the 16:00 America/New_York M1 open and hold to the next eligible 09:30 open"
-                                            if self.signal.session_leg == "etf_overnight_long"
-                                            else "sell the 08:20 America/New_York M1 open and hold to the 13:30 open"
+                                            "sell the 09:30 America/New_York M1 open and hold to the 16:00 open"
+                                            if self.signal.session_leg == "etf_intraday_short"
+                                            else (
+                                                "buy the 16:00 America/New_York M1 open and hold to the next eligible 09:30 open"
+                                                if self.signal.session_leg == "etf_overnight_long"
+                                                else "sell the 08:20 America/New_York M1 open and hold to the 13:30 open"
+                                            )
                                         )
                                     )
                                 )
@@ -412,6 +435,7 @@ class GoldSessionCompletedTrade:
                         "0.25% hard money stop or the 16:00 America/New_York M1 open"
                         if self.signal.session_leg in {
                             "gld_fifth_half_hour_momentum",
+                            "gld_high_vol_fifth_half_hour_momentum",
                             "rest_of_day_close_momentum",
                             "etf_intraday_short",
                         }
@@ -432,6 +456,7 @@ class GoldSessionCompletedTrade:
             )
         if self.signal.session_leg in {
             "gld_fifth_half_hour_momentum",
+            "gld_high_vol_fifth_half_hour_momentum",
             "rest_of_day_close_momentum",
         }:
             metadata.update(
@@ -446,8 +471,21 @@ class GoldSessionCompletedTrade:
                     "research_translation": (
                         "GLD fifth half-hour direction applied to XAU/USD"
                         if self.signal.session_leg == "gld_fifth_half_hour_momentum"
-                        else "futures rest-of-day closing momentum applied to XAU/USD"
+                        else (
+                            "GLD fifth half-hour direction plus published high-volatility condition applied causally to XAU/USD"
+                            if self.signal.session_leg == "gld_high_vol_fifth_half_hour_momentum"
+                            else "futures rest-of-day closing momentum applied to XAU/USD"
+                        )
                     ),
+                }
+            )
+        if self.signal.session_leg == "gld_high_vol_fifth_half_hour_momentum":
+            metadata.update(
+                {
+                    "predictor_realized_volatility_percent": self.signal.predictor_realized_volatility_percent,
+                    "volatility_threshold_percent": self.signal.volatility_threshold_percent,
+                    "volatility_lookback_days": self.signal.volatility_lookback_days,
+                    "volatility_rule": "current complete-window realized volatility above the median of 60 prior complete weekday windows",
                 }
             )
         return metadata
@@ -479,6 +517,11 @@ class GoldSessionSimulationSummary:
     abnormal_positive_signals: int
     abnormal_missing_open_skips: int
     abnormal_missing_signal_skips: int
+    high_vol_completed_windows: int
+    high_vol_warmup_windows: int
+    high_vol_qualifying_windows: int
+    high_vol_filtered_windows: int
+    high_vol_incomplete_windows: int
     financing_events: int
     financing_costs: float
     gap_stop_fills: int
@@ -528,6 +571,15 @@ class GoldSessionAnomalyBacktester:
         self._abnormal_positive_checked = False
         self._intraday_predictor_start_price: float | None = None
         self._intraday_predictor_end_price: float | None = None
+        self._intraday_rv_history: list[float] = []
+        self._intraday_rv_sum = 0.0
+        self._intraday_rv_count = 0
+        self._intraday_rv_last_close: float | None = None
+        self._intraday_rv_last_time: datetime | None = None
+        self._intraday_rv_window_valid = False
+        self._intraday_realized_variance: float | None = None
+        self._intraday_volatility_threshold: float | None = None
+        self._intraday_is_high_volatility: bool | None = None
         self._rest_of_day_reference_price: float | None = None
         self._rest_of_day_reference_date: date | None = None
 
@@ -550,6 +602,11 @@ class GoldSessionAnomalyBacktester:
         self.abnormal_positive_signals = 0
         self.abnormal_missing_open_skips = 0
         self.abnormal_missing_signal_skips = 0
+        self.high_vol_completed_windows = 0
+        self.high_vol_warmup_windows = 0
+        self.high_vol_qualifying_windows = 0
+        self.high_vol_filtered_windows = 0
+        self.high_vol_incomplete_windows = 0
         self.financing_events = 0
         self.financing_costs = 0.0
         self.gap_stop_fills = 0
@@ -638,6 +695,14 @@ class GoldSessionAnomalyBacktester:
         self._abnormal_positive_checked = False
         self._intraday_predictor_start_price = None
         self._intraday_predictor_end_price = None
+        self._intraday_rv_sum = 0.0
+        self._intraday_rv_count = 0
+        self._intraday_rv_last_close = None
+        self._intraday_rv_last_time = None
+        self._intraday_rv_window_valid = False
+        self._intraday_realized_variance = None
+        self._intraday_volatility_threshold = None
+        self._intraday_is_high_volatility = None
         if count_metrics:
             self.sessions_seen += 1
             if self._entry_day_is_eligible(session_date.weekday()):
@@ -669,6 +734,98 @@ class GoldSessionAnomalyBacktester:
             return None
         sample = self._abnormal_daily_returns[-lookback:]
         return fmean(sample), stdev(sample)
+
+    @staticmethod
+    def _realized_volatility_percent(realized_variance: float) -> float:
+        return sqrt(max(0.0, realized_variance)) * 100.0
+
+    def _observe_high_vol_predictor(
+        self,
+        candle: Candle,
+        local: datetime,
+        *,
+        count_metrics: bool,
+    ) -> None:
+        """Build one complete 30-return RV window without using future days."""
+
+        if local.weekday() >= 5:
+            return
+        minute = self._minute_of_day(local)
+        start = self.params.intraday_predictor_start_total_minutes
+        end = self.params.intraday_predictor_end_total_minutes
+        if minute == start:
+            self._intraday_predictor_start_price = candle.open
+            self._intraday_predictor_end_price = None
+            self._intraday_rv_sum = 0.0
+            self._intraday_rv_count = 0
+            self._intraday_rv_last_close = None
+            self._intraday_rv_last_time = None
+            self._intraday_realized_variance = None
+            self._intraday_volatility_threshold = None
+            self._intraday_is_high_volatility = None
+            self._intraday_rv_window_valid = candle.open > 0 and candle.close > 0
+            if self._intraday_rv_window_valid:
+                self._intraday_rv_sum = log(candle.close / candle.open) ** 2
+                self._intraday_rv_count = 1
+                self._intraday_rv_last_close = candle.close
+                self._intraday_rv_last_time = candle.candle_time
+            return
+
+        if start < minute < end:
+            if not self._intraday_rv_window_valid:
+                return
+            is_next_minute = (
+                self._intraday_rv_last_time is not None
+                and candle.candle_time == self._intraday_rv_last_time + timedelta(minutes=1)
+            )
+            if (
+                not is_next_minute
+                or self._intraday_rv_last_close is None
+                or self._intraday_rv_last_close <= 0
+                or candle.close <= 0
+            ):
+                self._intraday_rv_window_valid = False
+                return
+            self._intraday_rv_sum += log(candle.close / self._intraday_rv_last_close) ** 2
+            self._intraday_rv_count += 1
+            self._intraday_rv_last_close = candle.close
+            self._intraday_rv_last_time = candle.candle_time
+            return
+
+        if minute != end:
+            return
+
+        expected_returns = end - start
+        complete = (
+            self._intraday_rv_window_valid
+            and self._intraday_rv_count == expected_returns
+            and self._intraday_rv_last_time is not None
+            and candle.candle_time == self._intraday_rv_last_time + timedelta(minutes=1)
+            and candle.open > 0
+        )
+        if not complete:
+            self._intraday_predictor_end_price = None
+            if count_metrics:
+                self.high_vol_incomplete_windows += 1
+            return
+
+        self._intraday_predictor_end_price = candle.open
+        self._intraday_realized_variance = self._intraday_rv_sum
+        lookback = self.params.intraday_volatility_lookback_days
+        if len(self._intraday_rv_history) >= lookback:
+            self._intraday_volatility_threshold = median(self._intraday_rv_history[-lookback:])
+            self._intraday_is_high_volatility = (
+                self._intraday_realized_variance > self._intraday_volatility_threshold
+            )
+        if count_metrics:
+            self.high_vol_completed_windows += 1
+            if self._intraday_volatility_threshold is None:
+                self.high_vol_warmup_windows += 1
+            elif self._intraday_is_high_volatility:
+                self.high_vol_qualifying_windows += 1
+            else:
+                self.high_vol_filtered_windows += 1
+        self._intraday_rv_history.append(self._intraday_realized_variance)
 
     def _open_abnormal_trade(self, at: datetime, mid: float, local: datetime, side: Side) -> bool:
         if (
@@ -741,12 +898,20 @@ class GoldSessionAnomalyBacktester:
         ):
             return False
         self._day_signal_consumed = True
-        if self.params.session_leg == "gld_fifth_half_hour_momentum":
+        if self.params.session_leg in {
+            "gld_fifth_half_hour_momentum",
+            "gld_high_vol_fifth_half_hour_momentum",
+        }:
             if (
                 self._intraday_predictor_start_price is None
                 or self._intraday_predictor_end_price is None
             ):
                 self.missing_entry_skips += 1
+                return False
+            if self.params.session_leg == "gld_high_vol_fifth_half_hour_momentum" and (
+                self._intraday_volatility_threshold is None
+                or not self._intraday_is_high_volatility
+            ):
                 return False
             side: Side = (
                 "buy"
@@ -779,7 +944,10 @@ class GoldSessionAnomalyBacktester:
             session_leg=self.params.session_leg,
             predictor_start_price=(
                 self._intraday_predictor_start_price
-                if self.params.session_leg == "gld_fifth_half_hour_momentum"
+                if self.params.session_leg in {
+                    "gld_fifth_half_hour_momentum",
+                    "gld_high_vol_fifth_half_hour_momentum",
+                }
                 else (
                     self._rest_of_day_reference_price
                     if self.params.session_leg == "rest_of_day_close_momentum"
@@ -788,8 +956,28 @@ class GoldSessionAnomalyBacktester:
             ),
             predictor_end_price=(
                 self._intraday_predictor_end_price
-                if self.params.session_leg == "gld_fifth_half_hour_momentum"
+                if self.params.session_leg in {
+                    "gld_fifth_half_hour_momentum",
+                    "gld_high_vol_fifth_half_hour_momentum",
+                }
                 else (mid if self.params.session_leg == "rest_of_day_close_momentum" else None)
+            ),
+            predictor_realized_volatility_percent=(
+                round(self._realized_volatility_percent(self._intraday_realized_variance), 10)
+                if self.params.session_leg == "gld_high_vol_fifth_half_hour_momentum"
+                and self._intraday_realized_variance is not None
+                else None
+            ),
+            volatility_threshold_percent=(
+                round(self._realized_volatility_percent(self._intraday_volatility_threshold), 10)
+                if self.params.session_leg == "gld_high_vol_fifth_half_hour_momentum"
+                and self._intraday_volatility_threshold is not None
+                else None
+            ),
+            volatility_lookback_days=(
+                self.params.intraday_volatility_lookback_days
+                if self.params.session_leg == "gld_high_vol_fifth_half_hour_momentum"
+                else None
             ),
         )
         self._sequence += 1
@@ -808,15 +996,19 @@ class GoldSessionAnomalyBacktester:
                         "INTRADAY-CLOSE-MOM"
                         if self.params.session_leg == "gld_fifth_half_hour_momentum"
                         else (
-                            "REST-DAY-CLOSE-MOM"
-                            if self.params.session_leg == "rest_of_day_close_momentum"
+                            "HIGH-VOL-CLOSE-MOM"
+                            if self.params.session_leg == "gld_high_vol_fifth_half_hour_momentum"
                             else (
-                                "ETF-INTRADAY-SHORT"
-                                if self.params.session_leg == "etf_intraday_short"
+                                "REST-DAY-CLOSE-MOM"
+                                if self.params.session_leg == "rest_of_day_close_momentum"
                                 else (
-                                    "ETF-OVERNIGHT-LONG"
-                                    if self.params.session_leg == "etf_overnight_long"
-                                    else "DAY-SHORT"
+                                    "ETF-INTRADAY-SHORT"
+                                    if self.params.session_leg == "etf_intraday_short"
+                                    else (
+                                        "ETF-OVERNIGHT-LONG"
+                                        if self.params.session_leg == "etf_overnight_long"
+                                        else "DAY-SHORT"
+                                    )
                                 )
                             )
                         )
@@ -1039,6 +1231,11 @@ class GoldSessionAnomalyBacktester:
         self.abnormal_positive_signals = 0
         self.abnormal_missing_open_skips = 0
         self.abnormal_missing_signal_skips = 0
+        self.high_vol_completed_windows = 0
+        self.high_vol_warmup_windows = 0
+        self.high_vol_qualifying_windows = 0
+        self.high_vol_filtered_windows = 0
+        self.high_vol_incomplete_windows = 0
         self.candles_processed = 0
         self.first_candle = None
         self.last_candle = None
@@ -1048,6 +1245,13 @@ class GoldSessionAnomalyBacktester:
             self._day_signal_consumed = True
             self._abnormal_negative_checked = True
             self._abnormal_positive_checked = True
+        if (
+            self.params.session_leg == "gld_high_vol_fifth_half_hour_momentum"
+            and self._session_date is not None
+        ):
+            # Keep a split day available as past volatility evidence, but never
+            # let a signal spanning the chronological boundary become a trade.
+            self._day_signal_consumed = True
 
     def process_candle(
         self,
@@ -1080,6 +1284,7 @@ class GoldSessionAnomalyBacktester:
             elif self.position is not None and self.params.session_leg in {
                 "day_short",
                 "gld_fifth_half_hour_momentum",
+                "gld_high_vol_fifth_half_hour_momentum",
                 "rest_of_day_close_momentum",
                 "etf_intraday_short",
             }:
@@ -1116,6 +1321,8 @@ class GoldSessionAnomalyBacktester:
                 self._intraday_predictor_start_price = candle.open
             if minute == self.params.intraday_predictor_end_total_minutes:
                 self._intraday_predictor_end_price = candle.open
+        if self.params.session_leg == "gld_high_vol_fifth_half_hour_momentum":
+            self._observe_high_vol_predictor(candle, local, count_metrics=count_metrics)
         if (
             self.params.session_leg == "rest_of_day_close_momentum"
             and local.weekday() < 5
@@ -1249,6 +1456,11 @@ class GoldSessionAnomalyBacktester:
             abnormal_positive_signals=self.abnormal_positive_signals,
             abnormal_missing_open_skips=self.abnormal_missing_open_skips,
             abnormal_missing_signal_skips=self.abnormal_missing_signal_skips,
+            high_vol_completed_windows=self.high_vol_completed_windows,
+            high_vol_warmup_windows=self.high_vol_warmup_windows,
+            high_vol_qualifying_windows=self.high_vol_qualifying_windows,
+            high_vol_filtered_windows=self.high_vol_filtered_windows,
+            high_vol_incomplete_windows=self.high_vol_incomplete_windows,
             financing_events=self.financing_events,
             financing_costs=round(self.financing_costs, 6),
             gap_stop_fills=self.gap_stop_fills,
