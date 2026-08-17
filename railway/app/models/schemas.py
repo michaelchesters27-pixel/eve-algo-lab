@@ -220,6 +220,7 @@ class GoldSessionAnomalyBacktestRequest(BaseModel):
         "shanghai_day_long",
         "abnormal_momentum",
         "gld_fifth_half_hour_momentum",
+        "gld_high_vol_fifth_half_hour_momentum",
         "rest_of_day_close_momentum",
         "etf_intraday_short",
         "etf_overnight_long",
@@ -258,6 +259,7 @@ class GoldSessionAnomalyBacktestRequest(BaseModel):
     intraday_predictor_start_minute: Literal[30] = 30
     intraday_predictor_end_hour: Literal[12] = 12
     intraday_predictor_end_minute: Literal[0] = 0
+    intraday_volatility_lookback_days: Literal[60] = 60
     intraday_entry_hour: Literal[15] = 15
     intraday_entry_minute: Literal[30] = 30
     intraday_exit_hour: Literal[16] = 16
