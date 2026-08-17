@@ -13,7 +13,7 @@ def hour_rows(start: datetime, outcome: str) -> list[dict[str, object]]:
         high = 101.5
         low = 99.0
         if minute == 5:
-            high = 102.0
+            high = 101.8
         if minute == 12:
             low = 98.0
         if minute >= 30:
