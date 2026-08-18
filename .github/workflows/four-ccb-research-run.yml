@@ -10,6 +10,15 @@ on:
       - "railway/app/entrypoint.py"
       - "frontend/netlify/functions/api.mjs"
       - ".github/workflows/four-ccb-research-run.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "railway/app/four_ccb_research.py"
+      - "railway/app/four_ccb_research_api.py"
+      - "railway/app/entrypoint.py"
+      - "frontend/netlify/functions/api.mjs"
+      - ".github/workflows/four-ccb-research-run.yml"
   workflow_dispatch:
 
 jobs:
