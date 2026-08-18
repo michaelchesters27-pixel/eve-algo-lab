@@ -7,3 +7,4 @@ from app.main import app, repo, require_admin
 
 app.include_router(build_h1_30m_router(repo, require_admin))
 app.include_router(build_four_ccb_router(repo, require_admin))
+# PR workflow trigger only; no runtime behaviour change.
