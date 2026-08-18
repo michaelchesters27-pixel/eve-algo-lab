@@ -1,0 +1,103 @@
+name: 4CCB H1 discovery run
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "railway/app/four_ccb_research.py"
+      - "railway/app/four_ccb_research_api.py"
+      - "railway/app/entrypoint.py"
+      - "frontend/netlify/functions/api.mjs"
+      - ".github/workflows/four-ccb-research-run.yml"
+  workflow_dispatch:
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Syntax check
+        working-directory: railway
+        run: python -m compileall app/four_ccb_research.py app/four_ccb_research_api.py app/entrypoint.py
+
+      - name: Wait for Netlify and Railway deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/status.json -w "%{http_code}" https://evealgolab.netlify.app/api/research/4ccb-h1/status || true)
+            echo "deployment check $i -> HTTP $code"
+            if [ "$code" = "200" ]; then
+              cat /tmp/status.json
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "4CCB route did not become available in time"
+          cat /tmp/status.json 2>/dev/null || true
+          exit 1
+
+      - name: Start 4CCB discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body -sS \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -d '{"symbol":"XAU/USD"}' \
+            https://evealgolab.netlify.app/api/research/4ccb-h1/run \
+            | tee /tmp/start.json
+          run_id=$(python - <<'PY'
+          import json
+          with open('/tmp/start.json', 'r', encoding='utf-8') as f:
+              data = json.load(f)
+          print(data['data']['id'])
+          PY
+          )
+          echo "RUN_ID=$run_id" >> "$GITHUB_ENV"
+          echo "Started run $run_id"
+
+      - name: Poll until complete
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 180); do
+            curl --fail-with-body -sS \
+              "https://evealgolab.netlify.app/api/research/4ccb-h1/${RUN_ID}" \
+              > /tmp/result.json
+            status=$(python - <<'PY'
+          import json
+          with open('/tmp/result.json', 'r', encoding='utf-8') as f:
+              data = json.load(f)
+          print(data['data']['status'])
+          PY
+            )
+            message=$(python - <<'PY'
+          import json
+          with open('/tmp/result.json', 'r', encoding='utf-8') as f:
+              data = json.load(f)
+          print(data['data'].get('message') or '')
+          PY
+            )
+            echo "poll $i -> $status -> $message"
+            if [ "$status" = "complete" ]; then
+              echo "===== FINAL 4CCB RESULT ====="
+              python -m json.tool /tmp/result.json
+              exit 0
+            fi
+            if [ "$status" = "failed" ] || [ "$status" = "cancelled" ]; then
+              echo "===== FAILED 4CCB RESULT ====="
+              python -m json.tool /tmp/result.json
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for 4CCB research"
+          python -m json.tool /tmp/result.json || true
+          exit 1
