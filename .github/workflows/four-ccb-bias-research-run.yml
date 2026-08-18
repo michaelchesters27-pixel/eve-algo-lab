@@ -9,6 +9,8 @@ on:
       - "railway/app/entrypoint.py"
       - "frontend/netlify/functions/api.mjs"
       - ".github/workflows/four-ccb-bias-research-run.yml"
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
