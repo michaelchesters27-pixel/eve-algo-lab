@@ -1,0 +1,86 @@
+name: 4CCB H1 bias discovery run
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "railway/app/four_ccb_bias_research.py"
+      - "railway/app/four_ccb_bias_research_api.py"
+      - "railway/app/entrypoint.py"
+      - "frontend/netlify/functions/api.mjs"
+      - ".github/workflows/four-ccb-bias-research-run.yml"
+  workflow_dispatch:
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Syntax check
+        working-directory: railway
+        run: python -m compileall app/four_ccb_research.py app/four_ccb_bias_research.py app/four_ccb_bias_research_api.py app/entrypoint.py
+
+      - name: Wait for deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            code=$(curl -sS -o /tmp/status.json -w "%{http_code}" https://evealgolab.netlify.app/api/research/4ccb-h1-bias/status || true)
+            echo "deployment check $i -> HTTP $code"
+            if [ "$code" = "200" ]; then
+              cat /tmp/status.json
+              exit 0
+            fi
+            sleep 10
+          done
+          cat /tmp/status.json 2>/dev/null || true
+          exit 1
+
+      - name: Start bias discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body -sS -X POST -H "Content-Type: application/json" \
+            -d '{"symbol":"XAU/USD"}' \
+            https://evealgolab.netlify.app/api/research/4ccb-h1-bias/run | tee /tmp/start.json
+          run_id=$(python - <<'PY'
+          import json
+          print(json.load(open('/tmp/start.json', encoding='utf-8'))['data']['id'])
+          PY
+          )
+          echo "RUN_ID=$run_id" >> "$GITHUB_ENV"
+
+      - name: Poll until complete
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 240); do
+            curl --fail-with-body -sS "https://evealgolab.netlify.app/api/research/4ccb-h1-bias/${RUN_ID}" > /tmp/result.json
+            status=$(python - <<'PY'
+          import json
+          print(json.load(open('/tmp/result.json', encoding='utf-8'))['data']['status'])
+          PY
+            )
+            message=$(python - <<'PY'
+          import json
+          print(json.load(open('/tmp/result.json', encoding='utf-8'))['data'].get('message') or '')
+          PY
+            )
+            echo "poll $i -> $status -> $message"
+            if [ "$status" = "complete" ]; then
+              echo "===== FINAL 4CCB BIAS RESULT ====="
+              python -m json.tool /tmp/result.json
+              exit 0
+            fi
+            if [ "$status" = "failed" ] || [ "$status" = "cancelled" ]; then
+              python -m json.tool /tmp/result.json
+              exit 1
+            fi
+            sleep 10
+          done
+          python -m json.tool /tmp/result.json || true
+          exit 1
