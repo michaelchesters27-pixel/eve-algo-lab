@@ -220,26 +220,26 @@ async def _run_analysis(repo: Any, run_id: str, request: FourCCBM1ExecutionReque
             "m1_latest_stored": m1_latest.isoformat() if m1_latest else None,
         }
 
-        baseline = report["cost_stress"]["baseline_0p05"]["overall"]
-        later = report["cost_stress"]["baseline_0p05"]["2024_plus"]
+        broker_proxy = report["cost_stress"]["ic_mt5_raw_proxy_0p18"]["overall"]
+        later = report["cost_stress"]["ic_mt5_raw_proxy_0p18"]["2024_plus"]
         await repo.update_backtest_run(
             run_id,
             status="complete",
-            total_positions=int(baseline["trades"]),
-            total_baskets=int(baseline["trades"]),
-            winning_baskets=int(baseline["wins"]),
-            losing_baskets=int(baseline["losses"]),
-            basket_win_rate=float(baseline["win_rate_pct"]),
-            expectancy=float(baseline["expectancy_r"]),
+            total_positions=int(broker_proxy["trades"]),
+            total_baskets=int(broker_proxy["trades"]),
+            winning_baskets=int(broker_proxy["wins"]),
+            losing_baskets=int(broker_proxy["losses"]),
+            basket_win_rate=float(broker_proxy["win_rate_pct"]),
+            expectancy=float(broker_proxy["expectancy_r"]),
             finished_at=datetime.now(timezone.utc).isoformat(),
             reliability={
                 "engine_version": ENGINE_VERSION,
                 "strategy": STRATEGY_CODE,
-                "accuracy": "H1 signals with stored M1 execution replay; same-M1 stop/target ambiguity is resolved against the strategy by assuming stop first. Signals outside stored M1 coverage are excluded from the resolution denominator.",
+                "accuracy": "Frozen H1 signals with stored M1 execution replay. Same-M1 stop/target ambiguity is resolved against the strategy. Signals outside stored M1 coverage are excluded. Broker costs are still a public-data IC MT5 Raw proxy, not account telemetry.",
                 "input_interval": "1h + 1min execution replay",
                 "progress_percent": 100.0,
                 "message": (
-                    f"Complete · {len(trades)} M1-replayed trades · 2024+ PF {later['profit_factor']} · "
+                    f"Complete · {len(trades)} M1-replayed trades · IC-proxy 2024+ PF {later['profit_factor']} · "
                     f"in-coverage resolved {report['data']['resolved_rate']:.1%} · {report['verdict']}"
                 ),
                 "research_report": report,
@@ -248,7 +248,7 @@ async def _run_analysis(repo: Any, run_id: str, request: FourCCBM1ExecutionReque
         await repo.log_event(
             "success",
             "4ccb-h1-m1-execution",
-            "4CCB M1 execution validation completed",
+            "4CCB M1 broker-proxy execution validation completed",
             {
                 "run_id": run_id,
                 "verdict": report["verdict"],
@@ -256,7 +256,8 @@ async def _run_analysis(repo: Any, run_id: str, request: FourCCBM1ExecutionReque
                 "resolved_trades": len(trades),
                 "unresolved_in_coverage": unresolved,
                 "outside_m1_coverage": outside_m1_coverage,
-                "baseline_2024_plus_pf": later["profit_factor"],
+                "ic_proxy_2024_plus_pf": later["profit_factor"],
+                "failure_margin": report.get("failure_margin"),
             },
         )
     except Exception as exc:
@@ -269,10 +270,10 @@ async def _run_analysis(repo: Any, run_id: str, request: FourCCBM1ExecutionReque
                 "engine_version": ENGINE_VERSION,
                 "strategy": STRATEGY_CODE,
                 "progress_percent": 0.0,
-                "message": f"4CCB M1 execution validation failed: {exc}",
+                "message": f"4CCB M1 broker-proxy execution validation failed: {exc}",
             },
         )
-        await repo.log_event("error", "4ccb-h1-m1-execution", "4CCB M1 execution validation failed", {"run_id": run_id, "error": str(exc)})
+        await repo.log_event("error", "4ccb-h1-m1-execution", "4CCB M1 broker-proxy execution validation failed", {"run_id": run_id, "error": str(exc)})
 
 
 def build_four_ccb_execution_router(repo: Any, require_admin: Callable[..., Any]) -> APIRouter:
@@ -300,7 +301,7 @@ def build_four_ccb_execution_router(repo: Any, require_admin: Callable[..., Any]
         date_to = str(h1_state["latest_stored"])
         run = await repo.create_backtest_run(
             {
-                "name": "4CCB H1 → M1 Execution Validation v0.5.1",
+                "name": "4CCB H1 → M1 IC Markets Proxy Validation v0.6",
                 "symbol": request.symbol,
                 "interval": "1min",
                 "resolution": "candle",
@@ -315,16 +316,17 @@ def build_four_ccb_execution_router(repo: Any, require_admin: Callable[..., Any]
                     "execution_timeframe": "M1",
                     "frozen_from": "v0.4 director audit",
                     "breakout_excess_atr_min": 0.10,
-                    "cost_price_scenarios": [0.05, 0.10, 0.15],
+                    "cost_price_scenarios": [0.05, 0.10, 0.15, 0.18, 0.25, 0.35, 0.50],
                     "same_m1_ambiguity": "stop_first",
                     "coverage_rule": "signals outside stored M1 coverage excluded from resolution denominator",
-                    "note": "Execution validation of a reverse-engineered public-chart hypothesis; not represented as private/VIP rules.",
+                    "broker_proxy": "IC Markets MT5 Raw public-data proxy; exact account telemetry still required",
+                    "note": "Execution robustness of a reverse-engineered public-chart hypothesis; no claim about private/VIP rules and no live-capital approval.",
                 },
                 "reliability": {
                     "engine_version": ENGINE_VERSION,
                     "strategy": STRATEGY_CODE,
                     "progress_percent": 0.0,
-                    "message": "Queued for H1 signal → M1 execution validation",
+                    "message": "Queued for frozen H1 signal → M1 broker-proxy execution validation",
                 },
             }
         )
@@ -332,7 +334,7 @@ def build_four_ccb_execution_router(repo: Any, require_admin: Callable[..., Any]
         task = asyncio.create_task(_run_analysis(repo, run_id, request, date_from, date_to), name=f"four-ccb-h1-m1-{run_id}")
         tasks[run_id] = task
         task.add_done_callback(lambda _: tasks.pop(run_id, None))
-        return {"ok": True, "data": _public_run(run), "message": "4CCB M1 execution validation queued"}
+        return {"ok": True, "data": _public_run(run), "message": "4CCB M1 broker-proxy validation queued"}
 
     @router.get("/api/research/4ccb-h1-m1/status")
     async def latest_research() -> dict[str, Any]:
@@ -344,7 +346,7 @@ def build_four_ccb_execution_router(repo: Any, require_admin: Callable[..., Any]
     async def get_research(run_id: str) -> dict[str, Any]:
         run = await repo.get_backtest_run(run_id)
         if not run or (run.get("settings") or {}).get("strategy") != STRATEGY_CODE:
-            raise HTTPException(status_code=404, detail="4CCB M1 execution validation run not found")
+            raise HTTPException(status_code=404, detail="4CCB M1 broker-proxy validation run not found")
         return {"ok": True, "data": _public_run(run)}
 
     return router
