@@ -1,0 +1,59 @@
+name: 4CCB broker calibration check
+
+on:
+  push:
+    paths:
+      - "railway/app/four_ccb_broker_calibration_api.py"
+      - "railway/app/entrypoint.py"
+      - "frontend/netlify/functions/api.mjs"
+      - "mt5/EVE_4CCB_IC_Broker_Calibrator.mq5"
+      - ".github/workflows/4ccb-broker-calibration-check.yml"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python syntax check
+        working-directory: railway
+        run: python -m compileall app/four_ccb_broker_calibration_api.py app/entrypoint.py
+
+      - name: Confirm calibrator contains no trade execution calls
+        run: |
+          set -euo pipefail
+          file="mt5/EVE_4CCB_IC_Broker_Calibrator.mq5"
+          forbidden='CTrade|OrderSend|PositionOpen|trade\.Buy|trade\.Sell|PositionClose|OrderDelete'
+          if grep -En "$forbidden" "$file"; then
+            echo "Forbidden trade-execution marker found in read-only calibrator"
+            exit 1
+          fi
+          grep -q 'void OnTick()' "$file"
+          grep -q 'WebRequest' "$file"
+
+      - name: Wait for deployed calibration status endpoint
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            code=$(curl -sS -o /tmp/status.json -w "%{http_code}" https://evealgolab.netlify.app/api/research/4ccb-broker-calibration/status || true)
+            echo "deployment check $i -> HTTP $code"
+            if [ "$code" = "200" ]; then
+              python - <<'PY'
+          import json
+          payload=json.load(open('/tmp/status.json', encoding='utf-8'))
+          assert payload.get('ok') is True, payload
+          data=payload.get('data') or {}
+          assert data.get('status') in {'waiting_for_mt5','collecting'}, data
+          assert data.get('live_capital_approved') is False, data
+          print(json.dumps(data, indent=2))
+          PY
+              exit 0
+            fi
+            sleep 10
+          done
+          cat /tmp/status.json 2>/dev/null || true
+          exit 1
