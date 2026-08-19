@@ -2,6 +2,7 @@
 //| EVE_4CCB_IC_Broker_Calibrator.mq5                                |
 //| Research-only telemetry for the frozen 4CCB project.             |
 //| This EA NEVER places, modifies or closes trades.                 |
+//| Verification branch marker: deployment/read-only checks only.    |
 //+------------------------------------------------------------------+
 #property strict
 #property version   "0.10"
