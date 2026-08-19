@@ -1,0 +1,46 @@
+name: EVE downloads portal check
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify canonical download sources exist
+        run: |
+          set -euo pipefail
+          test -f mt5/EVE_4CCB_IC_Broker_Calibrator.mq5
+          test -f docs/4ccb-operator-setup.md
+          test -f docs/4ccb-director-v0.6-ic-markets-proxy-2026-08-19.md
+          test -f frontend/downloads.html
+          test -f frontend/netlify/functions/download.mjs
+
+      - name: Wait for Netlify downloads page
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 90); do
+            code=$(curl -L -sS -o /tmp/downloads.html -w "%{http_code}" https://evealgolab.netlify.app/downloads || true)
+            echo "downloads page check $i -> HTTP $code"
+            if [ "$code" = "200" ] && grep -q "No GitHub hunting" /tmp/downloads.html; then
+              exit 0
+            fi
+            sleep 10
+          done
+          cat /tmp/downloads.html 2>/dev/null || true
+          exit 1
+
+      - name: Verify canonical calibrator download
+        run: |
+          set -euo pipefail
+          curl -L --fail-with-body -sS -D /tmp/headers.txt https://evealgolab.netlify.app/download/4ccb-calibrator -o /tmp/calibrator.mq5
+          grep -qi 'content-disposition: attachment; filename="EVE_4CCB_IC_Broker_Calibrator.mq5"' /tmp/headers.txt
+          cmp mt5/EVE_4CCB_IC_Broker_Calibrator.mq5 /tmp/calibrator.mq5
+          grep -q 'TELEMETRY ONLY' /tmp/calibrator.mq5
+          if grep -En 'CTrade|OrderSend|PositionOpen|trade\.Buy|trade\.Sell|PositionClose|OrderDelete' /tmp/calibrator.mq5; then
+            echo "Trade execution marker found in calibrator"
+            exit 1
+          fi
