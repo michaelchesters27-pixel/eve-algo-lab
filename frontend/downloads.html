@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07110f">
+  <title>EVE Downloads</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root { color-scheme: dark; --bg:#07110f; --panel:#0c1b17; --panel2:#10231d; --line:#1d3a31; --mint:#8cf1c7; --text:#ecfff7; --muted:#90aaa0; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:radial-gradient(circle at 20% 0%,#15382d 0,transparent 35%),var(--bg); color:var(--text); font-family:Manrope,system-ui,sans-serif; }
+    .wrap { width:min(980px,calc(100% - 32px)); margin:0 auto; padding:34px 0 64px; }
+    .top { display:flex; align-items:center; justify-content:space-between; gap:20px; margin-bottom:46px; }
+    .brand { display:flex; align-items:center; gap:12px; color:var(--text); text-decoration:none; }
+    .mark { width:44px; height:44px; border-radius:13px; display:grid; place-items:center; background:var(--mint); color:#07110f; font-weight:800; font-size:20px; }
+    .brand strong { display:block; font-size:20px; }
+    .brand small,.eyebrow { font-family:"DM Mono",monospace; color:var(--mint); letter-spacing:.12em; font-size:11px; }
+    .back { color:var(--text); text-decoration:none; border:1px solid var(--line); padding:11px 15px; border-radius:12px; }
+    h1 { font-size:clamp(38px,7vw,72px); line-height:.95; margin:12px 0 18px; letter-spacing:-.055em; }
+    .intro { max-width:700px; color:#b9cec6; font-size:18px; line-height:1.6; margin-bottom:34px; }
+    .notice { border:1px solid #27604d; background:rgba(140,241,199,.06); border-radius:18px; padding:18px 20px; margin:24px 0 28px; }
+    .notice strong { color:var(--mint); }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+    .card { background:linear-gradient(145deg,var(--panel),var(--panel2)); border:1px solid var(--line); border-radius:22px; padding:24px; min-height:230px; display:flex; flex-direction:column; }
+    .card.primary { grid-column:1/-1; border-color:#35715c; }
+    .card small { font-family:"DM Mono",monospace; color:var(--mint); letter-spacing:.1em; }
+    .card h2 { margin:10px 0 8px; font-size:26px; letter-spacing:-.03em; }
+    .card p { color:var(--muted); line-height:1.55; margin:0 0 22px; }
+    .actions { margin-top:auto; display:flex; gap:10px; flex-wrap:wrap; }
+    .button { display:inline-flex; align-items:center; justify-content:center; min-height:46px; padding:0 18px; border-radius:12px; text-decoration:none; font-weight:800; border:1px solid var(--line); color:var(--text); }
+    .button.primary { background:var(--mint); color:#07110f; border-color:var(--mint); }
+    .path { margin-top:12px; font-family:"DM Mono",monospace; font-size:11px; color:#66857a; word-break:break-all; }
+    footer { margin-top:30px; color:#627d73; font-size:13px; }
+    @media (max-width:720px) { .grid { grid-template-columns:1fr; } .card.primary { grid-column:auto; } .top { align-items:flex-start; } .back { font-size:13px; } }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="top">
+      <a class="brand" href="/#home"><span class="mark">E</span><span><strong>EVE</strong><small>ALGO LAB</small></span></a>
+      <a class="back" href="/#home">← Back to EVE</a>
+    </div>
+
+    <p class="eyebrow">FILES & DOWNLOADS</p>
+    <h1>No GitHub hunting.</h1>
+    <p class="intro">Download the exact files you need from EVE. The download service fetches the canonical version from GitHub <strong>main</strong>, so GitHub remains the source of truth while this page stays simple to use.</p>
+
+    <div class="notice"><strong>What you need now:</strong> download the 4CCB IC Markets broker calibrator below. It is telemetry-only and does not place, modify or close trades.</div>
+
+    <section class="grid">
+      <article class="card primary">
+        <small>4CCB · CURRENT JOB</small>
+        <h2>IC Markets Broker Calibrator</h2>
+        <p>Attach this to your IC Markets Gold/XAUUSD MT5 chart so EVE can measure your actual spread, tick value, contract size and symbol settings.</p>
+        <div class="actions">
+          <a class="button primary" href="/download/4ccb-calibrator">Download .mq5 file</a>
+          <a class="button" href="/download/4ccb-operator-setup">Download setup instructions</a>
+        </div>
+        <div class="path">GitHub source: mt5/EVE_4CCB_IC_Broker_Calibrator.mq5</div>
+      </article>
+
+      <article class="card">
+        <small>GENERATED BOTS</small>
+        <h2>Bot Factory</h2>
+        <p>Your generated MT5 bot packages remain in EVE's Bot Factory. Use this when you want an actual generated trading EA rather than the calibration tool.</p>
+        <div class="actions"><a class="button primary" href="/#bot-library?view=files">Open Bot Factory</a></div>
+      </article>
+
+      <article class="card">
+        <small>RESEARCH RECORD</small>
+        <h2>4CCB Director Audit v0.6</h2>
+        <p>The frozen rules, M1 replay results, IC Markets proxy test and the current promotion gates in one file.</p>
+        <div class="actions"><a class="button" href="/download/4ccb-director-audit">Download audit</a></div>
+      </article>
+    </section>
+
+    <footer>Files are served from the canonical GitHub main branch. Local MT5 copies are not the master version.</footer>
+  </main>
+</body>
+</html>
