@@ -15,6 +15,16 @@
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
 
 [[redirects]]
+  from = "/downloads"
+  to = "/downloads.html"
+  status = 200
+
+[[redirects]]
+  from = "/download/:file"
+  to = "/.netlify/functions/download?file=:file"
+  status = 200
+
+[[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api/:splat"
   status = 200
