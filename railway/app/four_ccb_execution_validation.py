@@ -7,15 +7,28 @@ from typing import Any
 from app.four_ccb_research import _metrics
 from app.four_ccb_structure_research import FourCCBH1StructureDiscovery, StructureVariant
 
-ENGINE_VERSION = "0.5.0"
-STRATEGY_CODE = "four_ccb_h1_m1_execution_validation_v0_5"
+ENGINE_VERSION = "0.6.0"
+STRATEGY_CODE = "four_ccb_h1_m1_execution_validation_v0_6"
 
-BASE_COST_PRICE = 0.05
+# Existing generic execution stresses are retained for continuity. The broker-proxy
+# scenarios do not alter the frozen signal logic. IC's public help material states
+# that Raw Spread MT5 gold averages 1 pip and a 0.01-lot MT5 commission is rounded
+# to $0.04 per side ($0.08 round turn). EVE's existing XAU model uses $1 P/L for a
+# $1 XAU move at 0.01 lot, so $0.08 round-turn commission maps to 0.08 XAU price
+# units. We conservatively infer 1 gold pip as 0.10 XAU price units from IC's own
+# quoted XAU display convention. Therefore 0.18 is a public-data broker proxy, not
+# a substitute for the exact Symbol Specification and measured spreads from the
+# user's own MT5 account.
 COST_SCENARIOS = {
-    "baseline_0p05": 0.05,
-    "double_0p10": 0.10,
-    "triple_0p15": 0.15,
+    "legacy_0p05": 0.05,
+    "legacy_0p10": 0.10,
+    "legacy_0p15": 0.15,
+    "ic_mt5_raw_proxy_0p18": 0.18,
+    "adverse_0p25": 0.25,
+    "severe_0p35": 0.35,
+    "extreme_0p50": 0.50,
 }
+IC_MT5_RAW_PROXY_COST = 0.18
 BREAKOUT_EXCESS_ATR_MIN = 0.10
 
 
@@ -249,6 +262,54 @@ class FourCCBH1M1ExecutionValidator(FourCCBH1StructureDiscovery):
         return {label: cls.metrics(items, cost_price) for label, items in sorted(groups.items())}
 
     @classmethod
+    def _failure_margin(cls, trades: list[ExecutionTrade]) -> dict[str, Any]:
+        later = [trade for trade in trades if trade.signal.entry_time.year >= 2024]
+        last_pass: dict[str, Any] | None = None
+        first_fail: dict[str, Any] | None = None
+        # A 0.01 XAU-price-unit grid is deliberately coarser than tick-level fitting;
+        # this is a robustness boundary, not an optimizer.
+        for step in range(0, 201):
+            cost = round(step / 100.0, 2)
+            metrics = cls.metrics(later, cost)
+            pf = metrics.get("profit_factor")
+            passes = (
+                metrics["trades"] >= 20
+                and metrics["expectancy_r"] > 0
+                and metrics["net_r"] > 0
+                and pf is not None
+                and float(pf) >= 1.20
+            )
+            point = {
+                "cost_price_per_trade": cost,
+                "profit_factor": pf,
+                "expectancy_r": metrics["expectancy_r"],
+                "net_r": metrics["net_r"],
+            }
+            if passes:
+                last_pass = point
+                continue
+            first_fail = point
+            break
+        return {
+            "gate": "2024+ requires >=20 trades, positive expectancy/net R and PF >=1.20",
+            "last_passing_cost": last_pass,
+            "first_failing_cost": first_fail,
+            "grid_step_price_units": 0.01,
+            "grid_max_price_units": 2.0,
+        }
+
+    @staticmethod
+    def _passes_cost_gate(metrics: dict[str, Any], minimum_pf: float) -> bool:
+        pf = metrics.get("profit_factor")
+        return (
+            metrics["trades"] >= 20
+            and metrics["expectancy_r"] > 0
+            and metrics["net_r"] > 0
+            and pf is not None
+            and float(pf) >= minimum_pf
+        )
+
+    @classmethod
     def report(
         cls,
         h1_rows: list[dict[str, Any]],
@@ -272,47 +333,50 @@ class FourCCBH1M1ExecutionValidator(FourCCBH1StructureDiscovery):
                 "side": cls.grouped_metrics(trades, cost, "side"),
             }
 
-        baseline = cost_reports["baseline_0p05"]
-        later = baseline["2024_plus"]
-        double_later = cost_reports["double_0p10"]["2024_plus"]
-        triple_later = cost_reports["triple_0p15"]["2024_plus"]
-        later_pf = later["profit_factor"]
-        double_pf = double_later["profit_factor"]
-        triple_pf = triple_later["profit_factor"]
+        legacy_later = cost_reports["legacy_0p05"]["2024_plus"]
+        legacy_double_later = cost_reports["legacy_0p10"]["2024_plus"]
+        legacy_triple_later = cost_reports["legacy_0p15"]["2024_plus"]
+        ic_later = cost_reports["ic_mt5_raw_proxy_0p18"]["2024_plus"]
+        adverse_later = cost_reports["adverse_0p25"]["2024_plus"]
+        severe_later = cost_reports["severe_0p35"]["2024_plus"]
+        extreme_later = cost_reports["extreme_0p50"]["2024_plus"]
 
-        pass_base = (
-            resolved_rate >= 0.98
-            and later["trades"] >= 20
-            and later["expectancy_r"] > 0
-            and later["net_r"] > 0
-            and later_pf is not None
-            and later_pf >= 1.20
-        )
-        pass_double = (
-            double_later["expectancy_r"] > 0
-            and double_later["net_r"] > 0
-            and double_pf is not None
-            and double_pf >= 1.10
-        )
-        pass_triple = (
-            triple_later["expectancy_r"] > 0
-            and triple_later["net_r"] > 0
-            and triple_pf is not None
-            and triple_pf >= 1.02
-        )
-        verdict = "M1_EXECUTION_FAILED"
-        if pass_base and pass_double and pass_triple:
-            verdict = "M1_EXECUTION_SURVIVES_COST_STRESS"
-        elif pass_base and pass_double:
-            verdict = "M1_EXECUTION_PROMISING_COST_SENSITIVE"
-        elif pass_base:
-            verdict = "M1_EXECUTION_BASELINE_ONLY"
+        pass_legacy = resolved_rate >= 0.98 and cls._passes_cost_gate(legacy_later, 1.20)
+        pass_legacy_double = cls._passes_cost_gate(legacy_double_later, 1.10)
+        pass_legacy_triple = cls._passes_cost_gate(legacy_triple_later, 1.02)
+        pass_ic_proxy = resolved_rate >= 0.98 and cls._passes_cost_gate(ic_later, 1.20)
+        pass_adverse = cls._passes_cost_gate(adverse_later, 1.10)
+        pass_severe = cls._passes_cost_gate(severe_later, 1.05)
+        pass_extreme = cls._passes_cost_gate(extreme_later, 1.00)
+
+        verdict = "M1_BROKER_PROXY_FAILED"
+        if pass_ic_proxy and pass_adverse and pass_severe and pass_extreme:
+            verdict = "M1_BROKER_PROXY_SURVIVES_EXTREME_STRESS"
+        elif pass_ic_proxy and pass_adverse and pass_severe:
+            verdict = "M1_BROKER_PROXY_SURVIVES_SEVERE_STRESS"
+        elif pass_ic_proxy and pass_adverse:
+            verdict = "M1_BROKER_PROXY_SURVIVES_ADVERSE_STRESS"
+        elif pass_ic_proxy:
+            verdict = "M1_BROKER_PROXY_SURVIVES"
 
         return {
             "engine_version": ENGINE_VERSION,
             "strategy_code": STRATEGY_CODE,
-            "research_question": "Does the frozen v0.4 4CCB candidate survive conservative M1 execution replay and 1x/2x/3x transaction-cost stress?",
-            "important_note": "This is a reverse-engineered public-chart hypothesis, not a claim about private/VIP rules. Historical data has already informed earlier research; this is execution robustness, not a pristine discovery holdout.",
+            "research_question": "Does the frozen v0.4 4CCB candidate survive conservative M1 replay under an IC Markets MT5 Raw-Spread public-data cost proxy and wider adverse-cost margins?",
+            "important_note": "This remains a reverse-engineered public-chart hypothesis. The 0.18 broker proxy uses public IC information plus EVE's existing XAU P/L conversion and must still be replaced by exact MT5 Symbol Specification plus measured live/demo spread and slippage telemetry before any live promotion.",
+            "broker_proxy": {
+                "broker": "IC Markets / IC",
+                "platform": "MetaTrader 5",
+                "account_model": "Raw Spread proxy",
+                "public_average_gold_spread_pips": 1.0,
+                "inferred_average_gold_spread_price_units": 0.10,
+                "mt5_micro_lot_commission_usd_per_side_rounded": 0.04,
+                "mt5_micro_lot_round_turn_commission_usd": 0.08,
+                "eve_money_per_1_xau_price_move_at_0p01_lot_usd": 1.0,
+                "commission_price_equivalent": 0.08,
+                "all_in_proxy_price_units": IC_MT5_RAW_PROXY_COST,
+                "status": "PUBLIC_DATA_PROXY_NOT_ACCOUNT_TELEMETRY",
+            },
             "frozen_rules": {
                 **cls.primary_variant().as_dict(),
                 "breakout_close_excess_atr_min": BREAKOUT_EXCESS_ATR_MIN,
@@ -334,10 +398,15 @@ class FourCCBH1M1ExecutionValidator(FourCCBH1StructureDiscovery):
                 "signals_skipped_while_position_open": skipped_while_open,
             },
             "cost_stress": cost_reports,
+            "failure_margin": cls._failure_margin(trades),
             "gates": {
-                "baseline_2024_plus_pass": pass_base,
-                "double_cost_2024_plus_pass": pass_double,
-                "triple_cost_2024_plus_pass": pass_triple,
+                "legacy_0p05_2024_plus_pass": pass_legacy,
+                "legacy_0p10_2024_plus_pass": pass_legacy_double,
+                "legacy_0p15_2024_plus_pass": pass_legacy_triple,
+                "ic_mt5_raw_proxy_0p18_2024_plus_pass": pass_ic_proxy,
+                "adverse_0p25_2024_plus_pass": pass_adverse,
+                "severe_0p35_2024_plus_pass": pass_severe,
+                "extreme_0p50_2024_plus_pass": pass_extreme,
             },
             "verdict": verdict,
         }
