@@ -4,7 +4,7 @@
 //| This EA NEVER places, modifies or closes trades.                 |
 //+------------------------------------------------------------------+
 #property strict
-#property version   "0.10"
+#property version   "0.100"
 #property description "EVE 4CCB broker/symbol calibration telemetry - no trading"
 
 input bool   InpEnableTelemetry       = true;
@@ -12,7 +12,7 @@ input int    InpSampleSeconds         = 30;
 input string InpEndpoint              = "https://evealgolab.netlify.app/api/research/4ccb-broker-calibration/sample";
 input bool   InpVerboseLogging        = true;
 
-const string CLIENT_VERSION = "EVE-4CCB-calibrator-0.1";
+const string CLIENT_VERSION = "EVE-4CCB-calibrator-0.100";
 
 string JsonEscape(string value)
 {
