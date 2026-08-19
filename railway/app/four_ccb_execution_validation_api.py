@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field
 from app.four_ccb_execution_validation import (
     ENGINE_VERSION,
     STRATEGY_CODE,
-    ExecutionSignal,
     ExecutionTrade,
     FourCCBH1M1ExecutionValidator,
 )
@@ -22,6 +21,14 @@ class FourCCBM1ExecutionRequest(BaseModel):
 
 def _is_ready(state: dict[str, Any] | None) -> bool:
     return bool(state and state.get("status") == "complete" and state.get("oldest_stored") and state.get("latest_stored"))
+
+
+def _as_datetime(value: Any) -> datetime | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
 
 
 def _public_run(run: dict[str, Any]) -> dict[str, Any]:
@@ -111,6 +118,8 @@ async def _run_analysis(repo: Any, run_id: str, request: FourCCBM1ExecutionReque
         m1_total = await repo.count_market_candles(request.symbol, "1min")
         if m1_total <= 0:
             raise RuntimeError("No stored XAU/USD M1 candles are available. Complete M1 Market Memory before execution validation.")
+        m1_oldest = _as_datetime((m1_state or {}).get("oldest_stored"))
+        m1_latest = _as_datetime((m1_state or {}).get("latest_stored"))
 
         await repo.update_backtest_run(
             run_id,
@@ -144,11 +153,18 @@ async def _run_analysis(repo: Any, run_id: str, request: FourCCBM1ExecutionReque
 
         trades: list[ExecutionTrade] = []
         unresolved = 0
+        outside_m1_coverage = 0
         skipped_while_open = 0
         m1_rows_loaded = 0
         active_until: datetime | None = None
 
         for number, signal in enumerate(signals, start=1):
+            if m1_oldest is not None and signal.entry_time < m1_oldest:
+                outside_m1_coverage += 1
+                continue
+            if m1_latest is not None and signal.entry_time > m1_latest:
+                outside_m1_coverage += 1
+                continue
             if active_until is not None and signal.entry_time <= active_until:
                 skipped_while_open += 1
                 continue
@@ -176,7 +192,8 @@ async def _run_analysis(repo: Any, run_id: str, request: FourCCBM1ExecutionReque
                         "progress_percent": round(min(90.0, progress), 3),
                         "message": (
                             f"M1 replay {number}/{len(signals)} signals · {len(trades)} resolved · "
-                            f"{unresolved} unresolved · {skipped_while_open} skipped while position open"
+                            f"{unresolved} unresolved in coverage · {outside_m1_coverage} before/after M1 coverage · "
+                            f"{skipped_while_open} skipped while position open"
                         ),
                     },
                 )
@@ -190,6 +207,8 @@ async def _run_analysis(repo: Any, run_id: str, request: FourCCBM1ExecutionReque
             m1_rows_loaded,
             m1_state,
         )
+        report["data"]["signals_outside_m1_coverage"] = outside_m1_coverage
+        report["data"]["coverage_rule"] = "signals outside stored M1 date coverage are excluded from the M1 resolution-rate denominator"
         report["source"] = {
             "symbol": request.symbol,
             "h1_date_from": date_from,
@@ -197,6 +216,8 @@ async def _run_analysis(repo: Any, run_id: str, request: FourCCBM1ExecutionReque
             "h1_rows_scanned": len(h1_rows),
             "m1_total_rows_in_store": m1_total,
             "m1_rows_loaded_across_signal_windows": m1_rows_loaded,
+            "m1_oldest_stored": m1_oldest.isoformat() if m1_oldest else None,
+            "m1_latest_stored": m1_latest.isoformat() if m1_latest else None,
         }
 
         baseline = report["cost_stress"]["baseline_0p05"]["overall"]
@@ -214,12 +235,12 @@ async def _run_analysis(repo: Any, run_id: str, request: FourCCBM1ExecutionReque
             reliability={
                 "engine_version": ENGINE_VERSION,
                 "strategy": STRATEGY_CODE,
-                "accuracy": "H1 signals with stored M1 execution replay; same-M1 stop/target ambiguity is resolved against the strategy by assuming stop first.",
+                "accuracy": "H1 signals with stored M1 execution replay; same-M1 stop/target ambiguity is resolved against the strategy by assuming stop first. Signals outside stored M1 coverage are excluded from the resolution denominator.",
                 "input_interval": "1h + 1min execution replay",
                 "progress_percent": 100.0,
                 "message": (
                     f"Complete · {len(trades)} M1-replayed trades · 2024+ PF {later['profit_factor']} · "
-                    f"resolved {report['data']['resolved_rate']:.1%} · {report['verdict']}"
+                    f"in-coverage resolved {report['data']['resolved_rate']:.1%} · {report['verdict']}"
                 ),
                 "research_report": report,
             },
@@ -233,7 +254,8 @@ async def _run_analysis(repo: Any, run_id: str, request: FourCCBM1ExecutionReque
                 "verdict": report["verdict"],
                 "signals": len(signals),
                 "resolved_trades": len(trades),
-                "unresolved": unresolved,
+                "unresolved_in_coverage": unresolved,
+                "outside_m1_coverage": outside_m1_coverage,
                 "baseline_2024_plus_pf": later["profit_factor"],
             },
         )
@@ -278,7 +300,7 @@ def build_four_ccb_execution_router(repo: Any, require_admin: Callable[..., Any]
         date_to = str(h1_state["latest_stored"])
         run = await repo.create_backtest_run(
             {
-                "name": "4CCB H1 → M1 Execution Validation v0.5",
+                "name": "4CCB H1 → M1 Execution Validation v0.5.1",
                 "symbol": request.symbol,
                 "interval": "1min",
                 "resolution": "candle",
@@ -295,6 +317,7 @@ def build_four_ccb_execution_router(repo: Any, require_admin: Callable[..., Any]
                     "breakout_excess_atr_min": 0.10,
                     "cost_price_scenarios": [0.05, 0.10, 0.15],
                     "same_m1_ambiguity": "stop_first",
+                    "coverage_rule": "signals outside stored M1 coverage excluded from resolution denominator",
                     "note": "Execution validation of a reverse-engineered public-chart hypothesis; not represented as private/VIP rules.",
                 },
                 "reliability": {
