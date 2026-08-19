@@ -8,6 +8,13 @@ on:
       - "frontend/netlify/functions/api.mjs"
       - "mt5/EVE_4CCB_IC_Broker_Calibrator.mq5"
       - ".github/workflows/4ccb-broker-calibration-check.yml"
+  pull_request:
+    paths:
+      - "railway/app/four_ccb_broker_calibration_api.py"
+      - "railway/app/entrypoint.py"
+      - "frontend/netlify/functions/api.mjs"
+      - "mt5/EVE_4CCB_IC_Broker_Calibrator.mq5"
+      - ".github/workflows/4ccb-broker-calibration-check.yml"
   workflow_dispatch:
 
 jobs:
