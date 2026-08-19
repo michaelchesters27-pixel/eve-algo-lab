@@ -14,14 +14,23 @@
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
 
+[[headers]]
+  for = "/files/EVE_4CCB_IC_Broker_Calibrator.mq5"
+  [headers.values]
+    Content-Type = "text/plain; charset=utf-8"
+    Content-Disposition = "attachment; filename=EVE_4CCB_IC_Broker_Calibrator.mq5"
+    Cache-Control = "no-store"
+
+[[headers]]
+  for = "/files/4ccb-operator-setup.md"
+  [headers.values]
+    Content-Type = "text/markdown; charset=utf-8"
+    Content-Disposition = "attachment; filename=4ccb-operator-setup.md"
+    Cache-Control = "no-store"
+
 [[redirects]]
   from = "/downloads"
   to = "/downloads.html"
-  status = 200
-
-[[redirects]]
-  from = "/download/:file"
-  to = "/.netlify/functions/download?file=:file"
   status = 200
 
 [[redirects]]
