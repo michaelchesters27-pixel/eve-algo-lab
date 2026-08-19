@@ -1,0 +1,55 @@
+name: Add Downloads nav once
+
+on:
+  push:
+    paths:
+      - ".github/workflows/add-downloads-nav-once.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Add Downloads buttons to EVE sidebar
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('frontend/index.html')
+          text = path.read_text(encoding='utf-8')
+
+          operator_marker = '<a class="nav-link" href="#demo-fleet" data-workspace-link="demo-fleet" data-nav-view="operator"><span>03</span><b>Demo Fleet</b><small>Bots EVE can actually see</small></a>'
+          operator_download = '<a class="nav-link" href="/downloads"><span>04</span><b>Downloads</b><small>MT5 files & setup</small></a>'
+          if operator_download not in text:
+              if operator_marker not in text:
+                  raise SystemExit('Operator nav marker not found')
+              text = text.replace(operator_marker, operator_marker + '\n          ' + operator_download, 1)
+
+          research_marker = '<a class="nav-link" href="#advanced" data-workspace-link="advanced" data-nav-view="research"><span>05</span><b>Advanced</b><small>Data · diagnostics · logs</small></a>'
+          research_download = '<a class="nav-link" href="/downloads"><span>06</span><b>Downloads</b><small>MT5 files & setup</small></a>'
+          if research_download not in text:
+              if research_marker not in text:
+                  raise SystemExit('Research nav marker not found')
+              text = text.replace(research_marker, research_marker + '\n          ' + research_download, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit frontend change
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- frontend/index.html; then
+            echo "Downloads navigation already present"
+            exit 0
+          fi
+          git config user.name "EVE Algo Lab"
+          git config user.email "actions@users.noreply.github.com"
+          git add frontend/index.html
+          git commit -m "Add Downloads button to EVE frontend"
+          git push origin HEAD:main
