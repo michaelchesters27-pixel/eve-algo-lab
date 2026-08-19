@@ -29,6 +29,8 @@ const ALLOWED = [
   /^research\/4ccb-h1-m1\/run$/,
   /^research\/4ccb-h1-m1\/status$/,
   /^research\/4ccb-h1-m1\/[0-9a-f-]+$/i,
+  /^research\/4ccb-broker-calibration\/sample$/,
+  /^research\/4ccb-broker-calibration\/status$/,
   /^strategy-lab\/status$/,
   /^strategy-lab\/candidates$/,
   /^strategy-lab\/wake$/,
