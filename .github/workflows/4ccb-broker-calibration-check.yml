@@ -64,3 +64,5 @@ jobs:
           done
           cat /tmp/status.json 2>/dev/null || true
           exit 1
+
+# temporary operational probe 2026-08-20; do not merge
