@@ -1,28 +1,37 @@
-name: H1 30m research tests
+name: Algo Lab Backend CI
 
 on:
   pull_request:
     paths:
-      - "railway/app/h1_30m_research.py"
-      - "railway/app/h1_30m_research_api.py"
-      - "railway/app/entrypoint.py"
-      - "railway/tests/test_h1_30m_research.py"
-      - "railway/Dockerfile"
-      - "frontend/h1-30m-research.html"
-      - "frontend/netlify/functions/api.mjs"
+      - "railway/**"
+      - ".github/workflows/h1-30m-research-tests.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "railway/**"
       - ".github/workflows/h1-30m-research-tests.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  backend-tests:
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: railway
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt
-      - run: pytest -q tests/test_h1_30m_research.py
+          cache: pip
+          cache-dependency-path: railway/requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run full backend suite
+        run: pytest -q
