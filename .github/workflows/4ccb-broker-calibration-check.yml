@@ -46,7 +46,7 @@ jobs:
         run: |
           set -euo pipefail
           for i in $(seq 1 90); do
-            code=$(curl -sS -o /tmp/status.json -w "%{http_code}" https://evealgolab.netlify.app/api/research/4ccb-broker-calibration/status || true)
+            code=$(curl -sS -o /tmp/status.json -w "%{http_code}" 'https://evealgolab.netlify.app/api/research/4ccb-broker-calibration/status?limit=2000' || true)
             echo "deployment check $i -> HTTP $code"
             if [ "$code" = "200" ]; then
               python - <<'PY'
@@ -64,3 +64,4 @@ jobs:
           done
           cat /tmp/status.json 2>/dev/null || true
           exit 1
+# 24h operational probe 2026-08-21 08:09 BST
