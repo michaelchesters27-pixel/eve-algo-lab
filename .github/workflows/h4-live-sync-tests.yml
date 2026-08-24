@@ -1,0 +1,26 @@
+name: H4 live sync tests
+
+on:
+  pull_request:
+    paths:
+      - "railway/app/__init__.py"
+      - "railway/app/services/ingestion.py"
+      - "railway/app/services/h4_live_sync_freshness_v1.py"
+      - "railway/tests/test_ingestion.py"
+      - "railway/tests/test_h4_live_sync_freshness_v1.py"
+      - ".github/workflows/h4-live-sync-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: railway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: pytest -q tests/test_ingestion.py tests/test_h4_live_sync_freshness_v1.py
