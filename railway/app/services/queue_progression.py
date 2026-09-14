@@ -184,7 +184,7 @@ async def progressive_list_validation_seed_candidates(
         "expectancy_r,max_drawdown_r,trades_total,metrics,evidence,finished_at"
     )
     evolution_filters = (
-        f"&symbol=eq.{encoded_symbol}&snapshot_interval=eq.{encoded_interval}"
+        f"symbol=eq.{encoded_symbol}&snapshot_interval=eq.{encoded_interval}"
         "&status=eq.complete&result_status=in.(champion,elite)"
         "&selection_passed=eq.true&locked_test_passed=eq.true"
     )
@@ -193,7 +193,7 @@ async def progressive_list_validation_seed_candidates(
         "expectancy_r,max_drawdown_r,trades_total,metrics,evidence,finished_at"
     )
     strategy_filters = (
-        f"&symbol=eq.{encoded_symbol}&snapshot_interval=eq.{encoded_interval}"
+        f"symbol=eq.{encoded_symbol}&snapshot_interval=eq.{encoded_interval}"
         "&status=eq.complete&result_status=in.(elite,validated)&trades_total=gte.50"
     )
 
