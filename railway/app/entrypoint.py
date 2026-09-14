@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from app.services.queue_progression import apply_queue_progression
+
+# Apply queue-selection fixes before app.main imports and instantiates the workers.
+apply_queue_progression()
+
 from app.four_ccb_bias_research_api import build_four_ccb_bias_router
 from app.four_ccb_broker_calibration_api import build_four_ccb_broker_calibration_router
 from app.four_ccb_candidate_audit_api import build_four_ccb_candidate_audit_router
