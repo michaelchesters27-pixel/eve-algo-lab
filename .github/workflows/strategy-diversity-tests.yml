@@ -1,0 +1,48 @@
+name: Strategy diversity tests
+
+on:
+  pull_request:
+    paths:
+      - "railway/app/entrypoint.py"
+      - "railway/app/services/strategy_diversity.py"
+      - "railway/tests/test_strategy_diversity.py"
+      - "railway/tests/test_strategy_lab.py"
+      - "railway/tests/test_strategy_evolution.py"
+      - "railway/tests/test_high_resolution_validation.py"
+      - "railway/tests/test_mt5_generator.py"
+      - "railway/tests/test_demo_eligibility.py"
+      - ".github/workflows/strategy-diversity-tests.yml"
+  push:
+    paths:
+      - "railway/app/entrypoint.py"
+      - "railway/app/services/strategy_diversity.py"
+      - "railway/tests/test_strategy_diversity.py"
+      - "railway/tests/test_strategy_lab.py"
+      - "railway/tests/test_strategy_evolution.py"
+      - "railway/tests/test_high_resolution_validation.py"
+      - "railway/tests/test_mt5_generator.py"
+      - "railway/tests/test_demo_eligibility.py"
+      - ".github/workflows/strategy-diversity-tests.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: railway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: railway/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: >-
+          pytest -q
+          tests/test_strategy_diversity.py
+          tests/test_strategy_lab.py
+          tests/test_strategy_evolution.py
+          tests/test_high_resolution_validation.py
+          tests/test_mt5_generator.py
+          tests/test_demo_eligibility.py
