@@ -12,6 +12,11 @@ apply_strategy_diversity()
 from app.services.everyday_bot_hunt import apply_everyday_bot_hunt
 apply_everyday_bot_hunt()
 
+# Seed the dedicated Everyday Hunt immediately on worker startup instead of
+# waiting for hundreds of normal queued candidates to drain first.
+from app.services.everyday_bot_hunt_startup import apply_everyday_startup_seed
+apply_everyday_startup_seed()
+
 from app.four_ccb_bias_research_api import build_four_ccb_bias_router
 from app.four_ccb_broker_calibration_api import build_four_ccb_broker_calibration_router
 from app.four_ccb_candidate_audit_api import build_four_ccb_candidate_audit_router

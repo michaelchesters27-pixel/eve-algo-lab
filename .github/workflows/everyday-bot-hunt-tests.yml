@@ -5,13 +5,17 @@ on:
     paths:
       - "railway/app/entrypoint.py"
       - "railway/app/services/everyday_bot_hunt.py"
+      - "railway/app/services/everyday_bot_hunt_startup.py"
       - "railway/tests/test_everyday_bot_hunt.py"
+      - "railway/tests/test_everyday_bot_hunt_startup.py"
       - ".github/workflows/everyday-bot-hunt-tests.yml"
   push:
     paths:
       - "railway/app/entrypoint.py"
       - "railway/app/services/everyday_bot_hunt.py"
+      - "railway/app/services/everyday_bot_hunt_startup.py"
       - "railway/tests/test_everyday_bot_hunt.py"
+      - "railway/tests/test_everyday_bot_hunt_startup.py"
       - ".github/workflows/everyday-bot-hunt-tests.yml"
 
 jobs:
@@ -28,4 +32,4 @@ jobs:
           cache: pip
           cache-dependency-path: railway/requirements.txt
       - run: pip install -r requirements.txt
-      - run: pytest -q tests/test_everyday_bot_hunt.py tests/test_strategy_diversity.py tests/test_queue_progression.py
+      - run: pytest -q tests/test_everyday_bot_hunt.py tests/test_everyday_bot_hunt_startup.py tests/test_strategy_diversity.py tests/test_queue_progression.py
