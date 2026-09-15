@@ -3,9 +3,14 @@ from __future__ import annotations
 from app.services.queue_progression import apply_queue_progression
 from app.services.strategy_diversity import apply_strategy_diversity
 
-# Apply research-factory fixes before app.main imports and instantiates the workers.
+# Apply research-factory fixes before later services import Strategy Lab symbols.
 apply_queue_progression()
 apply_strategy_diversity()
+
+# Import this only after strategy diversity is installed so high-resolution
+# validation captures the broadened direction rules rather than stale originals.
+from app.services.everyday_bot_hunt import apply_everyday_bot_hunt
+apply_everyday_bot_hunt()
 
 from app.four_ccb_bias_research_api import build_four_ccb_bias_router
 from app.four_ccb_broker_calibration_api import build_four_ccb_broker_calibration_router
