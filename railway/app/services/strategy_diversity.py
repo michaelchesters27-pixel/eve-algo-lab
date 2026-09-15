@@ -5,7 +5,6 @@ from copy import deepcopy
 from typing import Any
 
 from app.services import demo_eligibility as demo_eligibility_module
-from app.services import historical_research as historical_research_module
 from app.services import mt5_generator as mt5_generator_module
 from app.services import strategy_evolution as strategy_evolution_module
 from app.services import strategy_lab as strategy_lab_module
@@ -15,15 +14,6 @@ from app.services.autonomy import number
 # This compatibility layer deliberately broadens strategy *concepts* without
 # weakening any of EVE's existing chronological, M1, cost-stress or robustness
 # gates. It is installed before app.main creates the workers.
-
-DIVERSE_DIRECTION_RULES = {
-    "inverse_current_direction",
-    "inverse_alignment_direction",
-    "trend_direction",
-    "inverse_trend_direction",
-    "streak_direction",
-    "inverse_streak_direction",
-}
 
 DIRECTION_SUMMARIES = {
     "inverse_current_direction": "fade the current M5 candle direction",
@@ -57,7 +47,6 @@ DIRECTION_MUTATION_OPTIONS = {
 }
 
 
-_original_metric_value = historical_research_module.metric_value
 _original_candidate_direction = strategy_lab_module.candidate_direction
 _original_generate_evolution_specs = strategy_evolution_module.generate_evolution_specs
 _original_generate_mq5_source = mt5_generator_module.generate_mq5_source
@@ -71,33 +60,14 @@ def _sign(value: Any) -> int:
     return 1 if parsed > 0 else -1 if parsed < 0 else 0
 
 
-def diversified_metric_value(row: dict[str, Any], metric: str, horizon: int) -> float | None:
-    """Add explicit trend/streak continuation-vs-reversal research outcomes."""
-
-    if metric == "trend_follow":
-        actual = historical_research_module.outcome_direction(row, horizon)
-        direction = _sign(row.get("trend_12_atr"))
-        if actual is None or direction == 0:
-            return None
-        return 1.0 if actual == ("up" if direction > 0 else "down") else 0.0
-
-    if metric == "streak_follow":
-        actual = historical_research_module.outcome_direction(row, horizon)
-        direction = _sign(row.get("streak"))
-        if actual is None or direction == 0:
-            return None
-        return 1.0 if actual == ("up" if direction > 0 else "down") else 0.0
-
-    return _original_metric_value(row, metric, horizon)
-
-
 def diversified_infer_families(source: dict[str, Any]) -> list[tuple[str, str, str]]:
     """Route research into a wider set of genuinely different trade directions.
 
-    Directional research has a natural family. Magnitude-only research (excursion
-    and absolute-return findings) is distributed deterministically across four
-    strategy concept pairs so the factory does not keep funnelling every useful
-    context into momentum/alignment continuation.
+    Existing directional research keeps a natural interpretation, including true
+    reversal families when continuation/alignment evidence is negative. Research
+    that only proves a context changes movement size is distributed deterministically
+    across four concept pairs, preventing the factory from funnelling nearly every
+    useful context back into momentum/alignment continuation.
     """
 
     definition = dict(source.get("test_definition") or {})
@@ -114,16 +84,6 @@ def diversified_infer_families(source: dict[str, Any]) -> list[tuple[str, str, s
         if positive:
             return [("alignment_continuation", "alignment_direction", "include")]
         return [("alignment_reversal", "inverse_alignment_direction", "include")]
-
-    if metric == "trend_follow":
-        if positive:
-            return [("trend_continuation", "trend_direction", "include")]
-        return [("trend_reversal", "inverse_trend_direction", "include")]
-
-    if metric == "streak_follow":
-        if positive:
-            return [("streak_continuation", "streak_direction", "include")]
-        return [("streak_reversal", "inverse_streak_direction", "include")]
 
     if metric == "up_probability":
         return [("directional_bias", "fixed_long" if positive else "fixed_short", "include")]
@@ -252,20 +212,10 @@ def diversified_plain_rule_summary(rules: dict[str, Any]) -> str:
 
 
 def apply_strategy_diversity() -> None:
-    """Install broader research/strategy directions before worker construction."""
+    """Install broader strategy directions before worker construction."""
 
     if getattr(strategy_lab_module, "_eve_strategy_diversity_applied", False):
         return
-
-    existing_metrics = list(historical_research_module.OUTCOME_OPTIONS)
-    for metric in (
-        ("trend_follow", "short-trend follow-through"),
-        ("streak_follow", "candle-streak follow-through"),
-    ):
-        if metric[0] not in {item[0] for item in existing_metrics}:
-            existing_metrics.append(metric)
-    historical_research_module.OUTCOME_OPTIONS = tuple(existing_metrics)
-    historical_research_module.metric_value = diversified_metric_value
 
     strategy_lab_module.infer_families = diversified_infer_families
     strategy_lab_module.candidate_direction = diversified_candidate_direction
