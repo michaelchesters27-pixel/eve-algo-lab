@@ -1,10 +1,9 @@
-from app.services import historical_research, mt5_generator
+from app.services import mt5_generator
 from app.services.strategy_diversity import (
     diversified_candidate_direction,
     diversified_generate_evolution_specs,
     diversified_generate_mq5_source,
     diversified_infer_families,
-    diversified_metric_value,
     diversified_plain_rule_summary,
 )
 from app.services.strategy_evolution import strategy_seed_to_lineage
@@ -108,12 +107,6 @@ def test_negative_directional_findings_create_reversal_families():
     assert diversified_infer_families(_source("alignment_follow", -8.0)) == [
         ("alignment_reversal", "inverse_alignment_direction", "include")
     ]
-    assert diversified_infer_families(_source("trend_follow", -8.0)) == [
-        ("trend_reversal", "inverse_trend_direction", "include")
-    ]
-    assert diversified_infer_families(_source("streak_follow", -8.0)) == [
-        ("streak_reversal", "inverse_streak_direction", "include")
-    ]
 
 
 def test_magnitude_research_is_distributed_beyond_momentum_and_alignment():
@@ -128,7 +121,10 @@ def test_magnitude_research_is_distributed_beyond_momentum_and_alignment():
     assert "momentum_continuation" in families
     assert "alignment_continuation" in families
     assert "momentum_reversal" in families
+    assert "alignment_reversal" in families
     assert "trend_continuation" in families
+    assert "trend_reversal" in families
+    assert "streak_continuation" in families
     assert "streak_reversal" in families
 
 
@@ -140,19 +136,6 @@ def test_new_direction_rules_are_real_opposites_and_independent_signals():
     assert diversified_candidate_direction(row, "inverse_trend_direction") == -1
     assert diversified_candidate_direction(row, "streak_direction") == -1
     assert diversified_candidate_direction(row, "inverse_streak_direction") == 1
-
-
-def test_historical_research_scores_trend_and_streak_follow_through():
-    row = {
-        "trend_12_atr": 0.5,
-        "streak": -4,
-        "outcomes": {"30": {"direction": "up"}},
-    }
-    assert diversified_metric_value(row, "trend_follow", 30) == 1.0
-    assert diversified_metric_value(row, "streak_follow", 30) == 0.0
-    assert diversified_metric_value(row, "up_probability", 30) == historical_research.metric_value(
-        row, "up_probability", 30
-    )
 
 
 def test_evolution_adds_cross_concept_direction_mutation():
