@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from app.services.queue_progression import apply_queue_progression
 from app.services.strategy_diversity import apply_strategy_diversity
+from app.services.everyday_bot_hunt import apply_everyday_bot_hunt
 
 # Apply research-factory fixes before app.main imports and instantiates the workers.
 apply_queue_progression()
 apply_strategy_diversity()
+apply_everyday_bot_hunt()
 
 from app.four_ccb_bias_research_api import build_four_ccb_bias_router
 from app.four_ccb_broker_calibration_api import build_four_ccb_broker_calibration_router
