@@ -66,3 +66,9 @@ def test_strategy_candidate_uses_locked_chronological_data_and_beats_baseline():
     assert result["result_status"] in {"validated", "elite"}
     assert result["evidence"]["chronological_split"]["test_rows"] > 0
     assert result["evidence"]["caveats"]
+
+
+def test_bounded_pipeline_worker_imports_without_starting_it():
+    from app import bounded_pipeline_worker
+
+    assert callable(bounded_pipeline_worker.run_once)
