@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
@@ -81,6 +82,52 @@ mt5_generator = MT5GeneratorService(settings, repo)
 background_tasks: list[asyncio.Task[Any]] = []
 
 
+async def _bounded_pipeline_loop() -> None:
+    """Run one full autonomous production cycle in a disposable child process."""
+    if settings.bounded_pipeline_startup_seconds:
+        await asyncio.sleep(settings.bounded_pipeline_startup_seconds)
+    while True:
+        process: asyncio.subprocess.Process | None = None
+        try:
+            process = await asyncio.create_subprocess_exec(
+                sys.executable,
+                "-m",
+                "app.bounded_pipeline_worker",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+            )
+            try:
+                stdout, _ = await asyncio.wait_for(
+                    process.communicate(),
+                    timeout=settings.bounded_pipeline_timeout_seconds,
+                )
+            except asyncio.TimeoutError:
+                logger.error(
+                    "Bounded pipeline exceeded %ss; terminating it safely",
+                    settings.bounded_pipeline_timeout_seconds,
+                )
+                process.kill()
+                stdout, _ = await process.communicate()
+            output = stdout.decode("utf-8", errors="replace") if stdout else ""
+            if process.returncode == 0:
+                logger.info("Bounded autonomous pipeline finished: %s", output[-6000:])
+            else:
+                logger.error(
+                    "Bounded autonomous pipeline exited with code %s: %s",
+                    process.returncode,
+                    output[-6000:],
+                )
+        except asyncio.CancelledError:
+            if process is not None and process.returncode is None:
+                process.kill()
+                await process.wait()
+            raise
+        except Exception:
+            logger.exception("Could not launch bounded autonomous pipeline")
+
+        await asyncio.sleep(settings.bounded_pipeline_interval_minutes * 60)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await repo.fail_interrupted_backtests()
@@ -93,6 +140,8 @@ async def lifespan(_: FastAPI):
     background_tasks.append(asyncio.create_task(strategy_evolution.loop(), name="strategy-evolution-engine"))
     background_tasks.append(asyncio.create_task(high_resolution_validation.loop(), name="high-resolution-validation"))
     background_tasks.append(asyncio.create_task(mt5_generator.loop(), name="mt5-ea-generator"))
+    if settings.bounded_pipeline_enabled:
+        background_tasks.append(asyncio.create_task(_bounded_pipeline_loop(), name="bounded-autonomous-pipeline"))
     for sync_index, interval in enumerate(settings.auto_sync_interval_list):
         if interval not in INTERVAL_SECONDS:
             logger.warning("Skipping unsupported AUTO_SYNC_INTERVALS value: %s", interval)
