@@ -38,18 +38,17 @@ class Settings(BaseSettings):
     max_http_retries: int = Field(default=6, ge=1, le=12)
     exact_count_every_batches: int = Field(default=5, ge=1, le=50)
 
-    # Autonomous learning defaults require no new Railway variables. They can be
-    # overridden later, but autonomous learning is active with the existing deployment.
-    autonomous_learning_enabled: bool = True
+    # Heavy research workers are opt-in. Persistent memory/results stay in Supabase;
+    # Railway should not run the historical research factory continuously by default.
+    autonomous_learning_enabled: bool = False
     autonomous_cycle_minutes: int = Field(default=15, ge=5, le=1440)
     autonomous_research_hours: int = Field(default=6, ge=1, le=168)
     autonomous_model_hours: int = Field(default=24, ge=6, le=720)
     autonomous_startup_delay_seconds: int = Field(default=120, ge=15, le=1800)
     autonomous_model_promotion_enabled: bool = True
 
-    # v1.7 dedicated historical research worker. Defaults are active so the
-    # existing Railway deployment needs no additional variables.
-    historical_research_enabled: bool = True
+    # v1.7 dedicated historical research worker. Opt in only for bounded research runs.
+    historical_research_enabled: bool = False
     historical_research_startup_delay_seconds: int = Field(default=150, ge=15, le=1800)
     historical_research_job_delay_seconds: float = Field(default=20.0, ge=2.0, le=600.0)
     historical_research_idle_seconds: float = Field(default=30.0, ge=5.0, le=900.0)
@@ -57,8 +56,8 @@ class Settings(BaseSettings):
     historical_research_seed_batch: int = Field(default=250, ge=25, le=1000)
     historical_research_cache_minutes: int = Field(default=180, ge=15, le=1440)
 
-    # v2.0 autonomous Strategy Lab. Defaults are active and require no new Railway variables.
-    strategy_lab_enabled: bool = True
+    # v2.0 autonomous Strategy Lab. Opt in only when research is intentionally running.
+    strategy_lab_enabled: bool = False
     strategy_lab_startup_delay_seconds: int = Field(default=240, ge=15, le=1800)
     strategy_lab_job_delay_seconds: float = Field(default=30.0, ge=2.0, le=900.0)
     strategy_lab_idle_seconds: float = Field(default=45.0, ge=5.0, le=900.0)
@@ -67,7 +66,7 @@ class Settings(BaseSettings):
 
     # v2.2 autonomous Strategy Evolution Engine. It shares the historical
     # research dataset and runs controlled one-child-at-a-time mutations.
-    strategy_evolution_enabled: bool = True
+    strategy_evolution_enabled: bool = False
     strategy_evolution_startup_delay_seconds: int = Field(default=360, ge=30, le=3600)
     strategy_evolution_job_delay_seconds: float = Field(default=60.0, ge=5.0, le=1800.0)
     strategy_evolution_idle_seconds: float = Field(default=60.0, ge=5.0, le=1800.0)
@@ -76,7 +75,7 @@ class Settings(BaseSettings):
 
     # v2.3 automatic high-resolution validation. Strong strategies are replayed
     # on M1 data with conservative order resolution and execution-cost stress.
-    high_resolution_validation_enabled: bool = True
+    high_resolution_validation_enabled: bool = False
     high_resolution_validation_startup_delay_seconds: int = Field(default=480, ge=30, le=7200)
     high_resolution_validation_job_delay_seconds: float = Field(default=90.0, ge=10.0, le=3600.0)
     high_resolution_validation_idle_seconds: float = Field(default=90.0, ge=10.0, le=3600.0)
@@ -84,7 +83,7 @@ class Settings(BaseSettings):
 
     # v2.5 automatic MT5 source generator and demo eligibility labelling. Frozen strategies are converted into
     # versioned .mq5 demo-testing packages without adding Railway variables.
-    mt5_generator_enabled: bool = True
+    mt5_generator_enabled: bool = False
     mt5_generator_startup_delay_seconds: int = Field(default=120, ge=30, le=7200)
     mt5_generator_job_delay_seconds: float = Field(default=60.0, ge=5.0, le=3600.0)
     mt5_generator_idle_seconds: float = Field(default=90.0, ge=10.0, le=3600.0)
