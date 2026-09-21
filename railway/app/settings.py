@@ -38,6 +38,13 @@ class Settings(BaseSettings):
     max_http_retries: int = Field(default=6, ge=1, le=12)
     exact_count_every_batches: int = Field(default=5, ge=1, le=50)
 
+    # Cost-safe autonomous pipeline. Expensive historical stages run inside a
+    # short-lived child process; the always-on API/ingestion process stays small.
+    bounded_pipeline_enabled: bool = False
+    bounded_pipeline_startup_seconds: int = Field(default=30, ge=0, le=3600)
+    bounded_pipeline_interval_minutes: int = Field(default=60, ge=30, le=1440)
+    bounded_pipeline_timeout_seconds: int = Field(default=2700, ge=300, le=7200)
+
     # Heavy research workers are opt-in. Persistent memory/results stay in Supabase;
     # Railway should not run the historical research factory continuously by default.
     autonomous_learning_enabled: bool = False
